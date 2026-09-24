@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  --fondo: #f6f7f5;
+  --superficie: #ffffff;
+  --texto: #1c2321;
+  --texto-suave: #5b6663;
+  --borde: #d9dedb;
+  --marca: #2f7d32;
+  --marca-texto: #ffffff;
+  --error: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #121614;
+    --superficie: #1b201e;
+    --texto: #e7ece9;
+    --texto-suave: #a3aeaa;
+    --borde: #2e3633;
+    --marca: #66bb6a;
+    --marca-texto: #0d1a0e;
+    --error: #f2b8b5;
+  }
+}
+
+@theme inline {
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-texto: var(--texto);
+  --color-texto-suave: var(--texto-suave);
+  --color-borde: var(--borde);
+  --color-marca: var(--marca);
+  --color-marca-texto: var(--marca-texto);
+  --color-error: var(--error);
+  --font-sans: var(--font-geist-sans);
+}
+
+/* 01 §16: texto base de 16 px en todas las pantallas. */
+html {
+  font-size: 16px;
+}
+
+body {
+  background: var(--fondo);
+  color: var(--texto);
+}

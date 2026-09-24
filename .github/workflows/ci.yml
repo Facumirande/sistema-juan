@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Tipos
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Migraciones al día con el esquema
+        run: |
+          pnpm db:generar
+          git diff --exit-code -- src/db/migraciones || (echo "El esquema cambió sin generar la migración (pnpm db:generar)." && exit 1)
+      - name: Pruebas (dominio al 100 %, integración con PGlite)
+        run: pnpm test:cobertura
+      - name: Build
+        run: pnpm build

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790230937740,
+      "tag": "0000_seguridad_tablas",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790230939421,
+      "tag": "0001_seguridad_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790231812110,
+      "tag": "0002_funciones_search_path",
+      "breakpoints": true
+    }
+  ]
+}
