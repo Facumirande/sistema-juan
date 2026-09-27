@@ -1,9 +1,9 @@
-import { and, asc, count, eq, gte, sql, sum } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, sql, sum } from "drizzle-orm";
 
 import { empresa, jornada, pedido } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
-import { hoyEnEmpresa, jornadaSugerida, type FechaISO } from "@/dominio/fechas/fechas";
+import { hoyEnEmpresa, jornadaSugerida, sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
 import type { EstadoJornada } from "@/dominio/precios/venta";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 
@@ -102,5 +102,22 @@ export async function fechasDeTrabajo(db: BaseDatos, authUserId: string): Promis
   return ejecutarComoUsuario(db, authUserId, null, async (tx) => {
     const { hoy, sugerida } = await hoyYSugerida(tx);
     return { hoy, sugerida };
+  });
+}
+
+/**
+ * Día que se está trabajando para preparar, repartir y entregar: la jornada más cercana (desde
+ * ayer) que ya empezó a comprarse, prepararse o repartirse; si no hay, hoy.
+ */
+export async function jornadaEnCurso(db: BaseDatos, authUserId: string): Promise<FechaISO> {
+  return ejecutarComoUsuario(db, authUserId, null, async (tx) => {
+    const { hoy } = await hoyYSugerida(tx);
+    const [j] = await tx
+      .select({ fecha: jornada.fecha })
+      .from(jornada)
+      .where(and(gte(jornada.fecha, sumarDias(hoy, -1)), inArray(jornada.estado, ["COMPRANDO", "PREPARANDO", "REPARTIENDO"])))
+      .orderBy(asc(jornada.fecha))
+      .limit(1);
+    return j?.fecha ?? hoy;
   });
 }

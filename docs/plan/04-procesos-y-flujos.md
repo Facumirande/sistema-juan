@@ -669,7 +669,7 @@ Las líneas con excedente mayor a un bulto de la presentación comprada se desta
 | Objetivo | Armar el pedido de cada cliente con lo comprado, registrar lo que realmente se prepara (peso real) y resolver faltantes, sustituciones y sobrantes antes de salir. |
 | Actores | PREPARADOR (nunca ve precios, RN-119), ADMIN. |
 | Disparador | "Iniciar preparación" (la jornada pasa a `PREPARANDO`). |
-| Precondiciones | Jornada `COMPRANDO` o `PREPARANDO`; permiso `preparacion.registrar`. |
+| Precondiciones | Jornada `COMPRANDO` o `PREPARANDO` (uso interno, 2026-09-27: también `ABIERTA`, sin haber armado la lista de compra); permiso `preparacion.registrar`. |
 
 **Estados de la entrega durante la preparación**
 
@@ -692,7 +692,7 @@ stateDiagram-v2
 **Pasos**
 
 1. Al iniciar la preparación el sistema crea una `entrega` `BORRADOR` por cada combinación cliente + punto de entrega con pedidos `EN_COMPRA` en la jornada (RN-111). Cada `entrega_item` referencia su `pedido_item` y copia `cantidad_pedida` (en unidad base). Dos pedidos del mismo cliente y punto van a la misma entrega.
-2. Para cada producto el sistema calcula **disponible** = comprado en la jornada (+ stock de sobrantes en fase 2) y lo compara con la necesidad. Si alcanza, propone `cantidad_preparada` = `cantidad_pedida`; si no, aplica el algoritmo de faltantes (5.e.1).
+2. Para cada producto el sistema calcula **disponible** = comprado en la jornada (+ stock de sobrantes en fase 2) y lo compara con la necesidad (si en la jornada no se registró ninguna compra, se propone lo pedido: no hay con qué comparar). Si alcanza, propone `cantidad_preparada` = `cantidad_pedida`; si no, aplica el algoritmo de faltantes (5.e.1).
 3. El preparador trabaja en una de dos vistas (sin precios):
    - **Por cliente**: arma el pedido completo del hospital, luego el del restaurante, etc. Imprime `DOC-07` Hoja de preparación por cliente.
    - **Por producto**: pesa todo el tomate y lo reparte entre los clientes (más rápido con productos a granel).

@@ -1,4 +1,4 @@
-import { numeric, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { numeric, text, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { empresa, usuario } from "./seguridad";
 
@@ -30,3 +30,10 @@ export const precioUnitario = (nombre: string) => numeric(nombre, { precision: 1
 export const cantidad = (nombre: string) => numeric(nombre, { precision: 12, scale: 3 });
 
 export const porcentaje = (nombre: string) => numeric(nombre, { precision: 7, scale: 3 });
+
+/** Documentos que no se borran: se anulan con motivo (03 §1.5). */
+export const camposAnulacion = () => ({
+  anuladoEn: marcaDeTiempo("anulado_en"),
+  anuladoPor: uuid("anulado_por").references((): AnyPgColumn => usuario.id),
+  motivoAnulacion: text("motivo_anulacion"),
+});

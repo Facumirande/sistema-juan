@@ -39,7 +39,7 @@ export default async function PaginaJornadas() {
             {jornadas.map((j) => (
               <tr key={j.id}>
                 <td>
-                  <Link href={`/pedidos?fecha=${j.fecha}`} className="font-medium capitalize underline-offset-4 hover:underline">
+                  <Link href={`/jornadas/${j.fecha}`} className="font-medium capitalize underline-offset-4 hover:underline">
                     {fechaConDia(j.fecha)}
                   </Link>
                 </td>

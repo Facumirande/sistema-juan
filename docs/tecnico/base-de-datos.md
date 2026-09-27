@@ -52,6 +52,14 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 - La cuenta ve su propio estado con la política `usuario_propio` (`src/modulos/usuarios/acceso.ts`).
 - Pendiente de una migración futura: renombrar esas dos columnas a `acceso_pedido_en` / `acceso_aprobado_en`.
 
+## Iteración 6: preparación, repartos, entregas y documentos
+
+- Migraciones `0009_entregas_y_repartos` (tablas) y `0010_entregas_rls`: aislamiento de las 4 tablas; `documento_emitido` solo admite `UPDATE` de estado, anulación, `pdf_path`, `pdf_sha256` y `enviado_a` (lo emitido no cambia). Una entrega vigente por cliente, punto y jornada (índice único parcial); el reparto de una entrega es de su misma jornada (FK compuesta `empresa_id, jornada_id, reparto_id`); nunca se entrega más de lo preparado (check).
+- Reglas puras en `src/dominio/entregas/entregas.ts` (`distribuirFaltante`, `evaluarPreparado`, `totalesEntrega`, `entregaConDiferencias`, `ordenarParadas`) y casos de uso en `src/modulos/entregas/` (preparación, documentos, repartos, entregas, panel).
+- El contenido de DOC-02 y DOC-03 se guarda en `documento_emitido.contenido` al emitir y las pantallas de impresión lo dibujan desde ahí. DOC-02 se arma con `lineasOperativas`, que elige columna por columna y no lee precios (RN-124); una prueba busca importes en el contenido guardado y en la preparación.
+- `reemitirSiCorresponde` sube la versión y reemite en la misma transacción cuando cambia una entrega que ya tenía documentos (RN-128).
+- La prueba de aceptación usa la jornada del 24/09 completa (`tests/integracion/escenario-24-09.ts`: pedidos, lista y compras).
+
 ## Iteración 5: cuentas corrientes con proveedores
 
 - Sin tablas nuevas: pagos, imputaciones y ajustes usan las de la iteración 4. Las deudas son compras vigentes (también las de saldo inicial) y movimientos `AJUSTE_DEBITO`; los créditos, pagos vigentes y movimientos `AJUSTE_CREDITO`. En el código se identifican con una clave (`C:`, `D:`, `P:`, `A:` + id) para repartirlos con las funciones puras de `src/dominio/compras/credito.ts` (`imputarFIFO`, `conciliarFIFO`, `validarImputacionManual`, `resumenVencimientos`, `libroConSaldo`).
@@ -59,7 +67,7 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 - Después de toda operación que libera deuda o crédito (compra a crédito, anulación, ajuste, saldo inicial, anulación de un pago) se aplica el saldo a favor por FIFO (RN-098); así se mantiene el invariante de 06 §2.2, que verifican las pruebas.
 - La fecha que cuenta en el libro es `coalesce(fecha_origen, fecha)` en la zona de la empresa: una deuda anterior o un pago cargado días después quedan en su día.
 - Cuidado con Drizzle: en una consulta de una sola tabla escribe las columnas sin el nombre de la tabla (`"id"`), así que dentro de una subconsulta correlacionada `${tabla.id}` apunta a la tabla de adentro. En esas subconsultas se escribe la referencia completa (`compra.id`).
-- Migraciones en Supabase: la 0000 a la 0008 se aplicaron con el conector (apply_migration, el contenido exacto de cada archivo) y se registraron en `drizzle.__drizzle_migrations` con el hash de Drizzle. Se verificó que columnas, restricciones, índices, políticas, triggers, permisos y RLS dan la misma huella (md5) que una base local migrada con Drizzle.
+- Migraciones en Supabase: la 0000 a la 0010 se aplicaron con el conector (apply_migration, el contenido exacto de cada archivo) y se registraron en `drizzle.__drizzle_migrations` con el hash de Drizzle. Se verificó que columnas, restricciones, índices, políticas, triggers, permisos y RLS dan la misma huella (md5) que una base local migrada con Drizzle.
 
 ## Iteración 4: lista de compra, compras y cuenta de proveedores
 

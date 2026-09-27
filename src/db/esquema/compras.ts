@@ -18,7 +18,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { presentacion, producto } from "./catalogo";
-import { camposComunes, cantidad, marcaDeTiempo, monto, precioUnitario } from "./comunes";
+import { camposAnulacion, camposComunes, cantidad, marcaDeTiempo, monto, precioUnitario } from "./comunes";
 import {
   condicionPago,
   estadoCompra,
@@ -33,12 +33,6 @@ import {
 import { jornada } from "./pedidos";
 import { proveedor, proveedorProducto } from "./proveedores";
 import { usuario } from "./seguridad";
-
-const camposAnulacion = () => ({
-  anuladoEn: marcaDeTiempo("anulado_en"),
-  anuladoPor: uuid("anulado_por").references((): AnyPgColumn => usuario.id),
-  motivoAnulacion: text("motivo_anulacion"),
-});
 
 /** 03 §9.1 — una por jornada; se regenera (versión + 1) conservando lo comprado. */
 export const listaCompra = pgTable(

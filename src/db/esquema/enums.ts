@@ -124,3 +124,19 @@ export const tipoMovimientoProveedor = pgEnum("tipo_movimiento_proveedor", [
   "AJUSTE_DEBITO",
   "AJUSTE_CREDITO",
 ]);
+
+// 03 §3.4 y §3.6 — preparación, repartos, entregas y documentos.
+
+export const estadoEntrega = pgEnum("estado_entrega", ["BORRADOR", "EN_PREPARACION", "PREPARADA", "EN_REPARTO", "ENTREGADA", "ANULADA"]);
+
+export const estadoFacturacion = pgEnum("estado_facturacion", ["SIN_FACTURAR", "FACTURADA"]);
+
+export const estadoReparto = pgEnum("estado_reparto", ["PLANIFICADO", "EN_CURSO", "FINALIZADO", "ANULADO"]);
+
+export const motivoDiferencia = pgEnum("motivo_diferencia", ["RECHAZO_CALIDAD", "FALTANTE", "NO_CONSEGUIDO", "ERROR_PREPARACION", "CAMBIO_CLIENTE", "OTRO"]);
+
+export const tipoDocumento = pgEnum("tipo_documento", ["DOC_01", "DOC_02", "DOC_03", "DOC_04", "DOC_05", "DOC_06", "DOC_07", "DOC_08"]);
+
+export const eventoDocumento = pgEnum("evento_documento", ["EMISION", "REIMPRESION"]);
+
+export const estadoDocumento = pgEnum("estado_documento", ["VIGENTE", "REEMPLAZADO", "ANULADO"]);

@@ -130,3 +130,33 @@ export const ESTADOS_PAGO: Readonly<Record<string, string>> = { PAGADA: "Pagada"
 export const CONDICIONES_COMPRA: Readonly<Record<string, string>> = { CONTADO: "Contado", CREDITO: "A crédito", MIXTA: "Parte ahora y parte a crédito" };
 
 export const MEDIOS_PAGO: Readonly<Record<string, string>> = { EFECTIVO: "Efectivo", TRANSFERENCIA: "Transferencia", CHEQUE: "Cheque", TARJETA: "Tarjeta", OTRO: "Otro" };
+
+export const ESTADOS_ENTREGA: Readonly<Record<string, string>> = {
+  BORRADOR: "Sin empezar",
+  EN_PREPARACION: "Preparando",
+  PREPARADA: "Preparada",
+  EN_REPARTO: "En camino",
+  ENTREGADA: "Entregada",
+  ANULADA: "Anulada",
+};
+
+export const ESTADOS_REPARTO: Readonly<Record<string, string>> = { PLANIFICADO: "Sin salir", EN_CURSO: "En camino", FINALIZADO: "Terminado", ANULADO: "Anulado" };
+
+/** Motivos de una diferencia al entregar (RN-126). */
+export const MOTIVOS_DIFERENCIA: Readonly<Record<string, string>> = {
+  RECHAZO_CALIDAD: "Rechazado por calidad",
+  FALTANTE: "Faltó mercadería",
+  NO_CONSEGUIDO: "No se consiguió",
+  ERROR_PREPARACION: "Error al preparar",
+  CAMBIO_CLIENTE: "El cliente canceló",
+  OTRO: "Otro",
+};
+
+/** Motivos de un faltante al preparar. */
+export const MOTIVOS_FALTANTE: Readonly<Record<string, string>> = {
+  NO_CONSEGUIDO: "No se consiguió",
+  FALTANTE: "Faltó mercadería",
+  ERROR_PREPARACION: "Error al preparar",
+  CAMBIO_CLIENTE: "El cliente canceló",
+  OTRO: "Otro",
+};

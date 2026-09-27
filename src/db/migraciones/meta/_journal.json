@@ -64,6 +64,20 @@
       "when": 1790445873339,
       "tag": "0008_compras_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790545684796,
+      "tag": "0009_entregas_y_repartos",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790545700901,
+      "tag": "0010_entregas_rls",
+      "breakpoints": true
     }
   ]
 }
