@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { esPermiso, PERMISOS } from "@/seguridad/catalogo-permisos";
 import { ROLES_SISTEMA } from "@/seguridad/roles-sistema";
-import { MENU, menuPara } from "@/ui/navegacion";
+import { MENU, menuDisponible, menuPara } from "@/ui/navegacion";
 
 describe("menú por permisos (08 §2.2)", () => {
   it("todas las pantallas usan permisos del catálogo", () => {
@@ -25,5 +25,12 @@ describe("menú por permisos (08 §2.2)", () => {
 
   it("con todos los permisos se ven todos los grupos", () => {
     expect(menuPara(PERMISOS).map((g) => g.grupo)).toEqual(MENU.map((g) => g.grupo));
+  });
+
+  it("el menú visible no muestra lo que todavía no está hecho", () => {
+    const visibles = menuDisponible(PERMISOS).flatMap((g) => g.items);
+    expect(visibles.length).toBeGreaterThan(0);
+    expect(visibles.every((i) => !i.enConstruccion)).toBe(true);
+    expect(menuDisponible(PERMISOS).every((g) => g.items.length > 0)).toBe(true);
   });
 });

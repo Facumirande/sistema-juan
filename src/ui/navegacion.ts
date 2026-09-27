@@ -21,10 +21,10 @@ export const MENU: readonly GrupoMenu[] = [
   {
     grupo: "Operación del día",
     items: [
-      { pantalla: "P-40", etiqueta: "Pedidos", ruta: "/pedidos", permisos: ["pedidos.ver"], enConstruccion: true },
-      { pantalla: "P-45", etiqueta: "Jornadas", ruta: "/jornadas", permisos: ["jornada.ver"], enConstruccion: true },
-      { pantalla: "P-50", etiqueta: "Lista de compra", ruta: "/lista-compra", permisos: ["lista_compra.ver"], enConstruccion: true },
-      { pantalla: "P-56", etiqueta: "Compras", ruta: "/compras", permisos: ["compras.ver"], enConstruccion: true },
+      { pantalla: "P-40", etiqueta: "Pedidos", ruta: "/pedidos", permisos: ["pedidos.ver"] },
+      { pantalla: "P-45", etiqueta: "Jornadas", ruta: "/jornadas", permisos: ["jornada.ver"] },
+      { pantalla: "P-50", etiqueta: "Lista de compra", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
+      { pantalla: "P-56", etiqueta: "Compras", ruta: "/compras", permisos: ["compras.ver"] },
       { pantalla: "P-70", etiqueta: "Preparación", ruta: "/preparacion", permisos: ["preparacion.ver"], enConstruccion: true },
       { pantalla: "P-75", etiqueta: "Repartos", ruta: "/repartos", permisos: ["repartos.ver"], enConstruccion: true },
       { pantalla: "P-77", etiqueta: "Mi reparto", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"], enConstruccion: true },
@@ -34,17 +34,17 @@ export const MENU: readonly GrupoMenu[] = [
   {
     grupo: "Comercial",
     items: [
-      { pantalla: "P-15", etiqueta: "Clientes", ruta: "/clientes", permisos: ["clientes.ver"], enConstruccion: true },
-      { pantalla: "P-10", etiqueta: "Productos", ruta: "/productos", permisos: ["productos.ver"], enConstruccion: true },
-      { pantalla: "P-32", etiqueta: "Precios de venta", ruta: "/precios/venta", permisos: ["precios.ver_margenes"], enConstruccion: true },
+      { pantalla: "P-15", etiqueta: "Clientes", ruta: "/clientes", permisos: ["clientes.ver"] },
+      { pantalla: "P-10", etiqueta: "Productos", ruta: "/productos", permisos: ["productos.ver"] },
+      { pantalla: "P-32", etiqueta: "Precios de venta", ruta: "/precios/venta", permisos: ["precios.ver_margenes"] },
     ],
   },
   {
     grupo: "Proveedores",
     items: [
-      { pantalla: "P-20", etiqueta: "Proveedores", ruta: "/proveedores", permisos: ["proveedores.ver"], enConstruccion: true },
-      { pantalla: "P-25", etiqueta: "Precios de compra", ruta: "/precios/compra", permisos: ["precios.ver_costos"], enConstruccion: true },
-      { pantalla: "P-60", etiqueta: "Cuentas de proveedores", ruta: "/cuentas-proveedores", permisos: ["pagos.ver"], enConstruccion: true },
+      { pantalla: "P-20", etiqueta: "Proveedores", ruta: "/proveedores", permisos: ["proveedores.ver"] },
+      { pantalla: "P-25", etiqueta: "Precios de compra", ruta: "/precios/compra", permisos: ["precios.ver_costos"] },
+      { pantalla: "P-60", etiqueta: "Deudas con proveedores", ruta: "/cuentas-proveedores", permisos: ["pagos.ver"] },
     ],
   },
   {
@@ -65,7 +65,7 @@ export const MENU: readonly GrupoMenu[] = [
     grupo: "Configuración",
     items: [
       { pantalla: "P-95", etiqueta: "Empresa", ruta: "/configuracion", permisos: ["configuracion.ver"], enConstruccion: true },
-      { pantalla: "P-96", etiqueta: "Usuarios y roles", ruta: "/usuarios", permisos: ["usuarios.administrar"], enConstruccion: true },
+      { pantalla: "P-96", etiqueta: "Usuarios", ruta: "/usuarios", permisos: ["usuarios.administrar"] },
       { pantalla: "P-98", etiqueta: "Auditoría", ruta: "/auditoria", permisos: ["auditoria.ver"], enConstruccion: true },
     ],
   },
@@ -78,4 +78,11 @@ export function menuPara(permisos: readonly Permiso[]): GrupoMenu[] {
     grupo: g.grupo,
     items: g.items.filter((i) => i.permisos.length === 0 || i.permisos.some((p) => propios.has(p))),
   })).filter((g) => g.items.length > 0);
+}
+
+/** Lo que se muestra en el menú: solo las pantallas que ya existen (sin "próximamente"). */
+export function menuDisponible(permisos: readonly Permiso[]): GrupoMenu[] {
+  return menuPara(permisos)
+    .map((g) => ({ grupo: g.grupo, items: g.items.filter((i) => !i.enConstruccion) }))
+    .filter((g) => g.items.length > 0);
 }

@@ -3,9 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { configuracionSupabase } from "./configuracion";
 
-const RUTAS_PUBLICAS = ["/login", "/recuperar", "/invitacion", "/auth"];
+const RUTAS_PUBLICAS = ["/login", "/configuracion-inicial", "/crear-cuenta", "/auth"];
 
-function esRutaPublica(ruta: string): boolean {
+function esRutaPublica(request: NextRequest): boolean {
+  const ruta = request.nextUrl.pathname;
+  // La vuelta de Google puede llegar a "/" con el código (si Supabase usa su "Site URL"): se deja pasar.
+  if (ruta === "/" && request.nextUrl.searchParams.has("code")) return true;
   return RUTAS_PUBLICAS.some((publica) => ruta === publica || ruta.startsWith(`${publica}/`));
 }
 
@@ -17,7 +20,7 @@ function esRutaPublica(ruta: string): boolean {
 export async function actualizarSesion(request: NextRequest): Promise<NextResponse> {
   const configuracion = configuracionSupabase();
   if (!configuracion) {
-    return esRutaPublica(request.nextUrl.pathname)
+    return esRutaPublica(request)
       ? NextResponse.next({ request })
       : NextResponse.redirect(new URL("/login", request.url));
   }
@@ -40,7 +43,7 @@ export async function actualizarSesion(request: NextRequest): Promise<NextRespon
   // No agregar código entre createServerClient y getClaims (recomendación de Supabase).
   const { data } = await supabase.auth.getClaims();
 
-  if (!data?.claims && !esRutaPublica(request.nextUrl.pathname)) {
+  if (!data?.claims && !esRutaPublica(request)) {
     const destino = new URL("/login", request.url);
     const redireccion = NextResponse.redirect(destino);
     for (const cookie of respuesta.cookies.getAll()) redireccion.cookies.set(cookie);

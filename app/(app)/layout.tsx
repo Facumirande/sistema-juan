@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
-import { menuPara, type GrupoMenu } from "@/ui/navegacion";
+import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
 function Menu({ grupos }: { grupos: GrupoMenu[] }) {
   return (
@@ -43,23 +43,17 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
   if (!authUserId) redirect("/login");
 
   const sesion = await obtenerSesion();
-  if (!sesion) {
-    return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-4 px-4">
-        <h1 className="text-xl font-semibold">Tu usuario no está habilitado</h1>
-        <p className="text-texto-suave">
-          Tu cuenta existe, pero no está activa en el sistema de ninguna empresa. Pedile a un administrador que te invite o te reactive.
-        </p>
-        <BotonSalir />
-      </main>
-    );
-  }
+  // Entró (con Google o su cuenta) pero todavía no está habilitado: pantalla de espera.
+  if (!sesion) redirect("/acceso-pendiente");
 
-  const grupos = menuPara(sesion.permisos);
+  // Entró con una clave provisoria: primero elige la suya.
+  if (sesion.debeCambiarClave) redirect("/crear-clave");
+
+  const grupos = menuDisponible(sesion.permisos);
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
-      <aside className="border-b border-borde bg-superficie md:w-64 md:border-b-0 md:border-r">
+      <aside className="border-b border-borde bg-superficie md:w-64 md:border-b-0 md:border-r print:hidden">
         <details className="md:hidden">
           <summary className="flex min-h-12 cursor-pointer items-center px-4 font-semibold">Menú</summary>
           <div className="px-2 pb-4">
@@ -70,15 +64,17 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
           <Menu grupos={grupos} />
         </div>
       </aside>
-      <div className="flex flex-1 flex-col">
-        <header className="flex min-h-14 items-center justify-between gap-3 border-b border-borde bg-superficie px-4">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex min-h-14 items-center justify-between gap-3 border-b border-borde bg-superficie px-4 print:hidden">
           <span className="font-semibold">Sistema Juan</span>
           <div className="flex items-center gap-3">
-            <span className="text-texto-suave">{sesion.nombre}</span>
+            <Link href="/mi-cuenta" className="flex min-h-11 items-center font-medium underline-offset-4 hover:underline">
+              {sesion.nombre}
+            </Link>
             <BotonSalir />
           </div>
         </header>
-        <main className="flex-1 p-4">{children}</main>
+        <main className="min-w-0 flex-1 p-4 print:p-0">{children}</main>
       </div>
     </div>
   );

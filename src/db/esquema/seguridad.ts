@@ -98,8 +98,12 @@ export const usuario = pgTable(
     nombreUsuario: text("nombre_usuario"),
     telefono: text("telefono"),
     activo: boolean("activo").notNull().default(true),
-    invitacionEnviadaEn: marcaDeTiempo("invitacion_enviada_en"),
-    invitacionAceptadaEn: marcaDeTiempo("invitacion_aceptada_en"),
+    // Pedidos de acceso (Google o "Crear una cuenta"). Usan las columnas que el plan pensó para
+    // invitaciones por correo, que no se usan: renombrarlas cuando se pueda migrar la base.
+    /** Cuándo la persona pidió acceso; nulo si no hay pedido (o fue rechazado). */
+    accesoPedidoEn: marcaDeTiempo("invitacion_enviada_en"),
+    /** Cuándo un administrador aprobó el pedido. */
+    accesoAprobadoEn: marcaDeTiempo("invitacion_aceptada_en"),
     debeCambiarClave: boolean("debe_cambiar_clave").notNull().default(false),
     ultimoAccesoEn: marcaDeTiempo("ultimo_acceso_en"),
     preferencias: jsonb("preferencias").$type<Record<string, unknown>>().notNull().default({}),

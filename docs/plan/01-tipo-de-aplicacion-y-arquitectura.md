@@ -133,7 +133,7 @@ Distribución de pantallas por enfoque (el detalle está en 08-pantallas-y-accio
 | **TypeScript** | Todo el código. | Tipos compartidos entre base de datos, dominio e interfaz; menos errores en cálculos de dinero y estados. | JavaScript sin tipos. |
 | **Tailwind CSS + shadcn/ui** | Estilos y componentes (tablas, formularios, diálogos, menús). | Componentes accesibles (Radix) copiados al repositorio, sin dependencia de versión; utilidades responsive simples. | MUI (bundle pesado para celulares de gama media); Bootstrap. |
 | **PostgreSQL gestionado en Supabase** | Base de datos principal. | Relacional, transacciones, tipo `numeric` exacto para dinero, vistas, restricciones, **Row Level Security** para aislar empresas. | MySQL (sin RLS nativo); MongoDB o Firebase (no aptos para cuentas corrientes y reportes contables). |
-| **Supabase Auth** | Inicio de sesión, invitaciones por correo, recuperación de contraseña, MFA (TOTP). | Resuelto y probado; integra con RLS; sin costo por usuario en el volumen esperado. | Auth.js (más código propio); Clerk/Auth0 (costo por usuario, datos fuera de la base). |
+| **Supabase Auth** | Inicio de sesión con usuario o correo; cuentas creadas por el servidor (sin invitaciones por correo, 02 §10); MFA (TOTP). | Resuelto y probado; integra con RLS; sin costo por usuario en el volumen esperado. | Auth.js (más código propio); Clerk/Auth0 (costo por usuario, datos fuera de la base). |
 | **Supabase Storage** | PDFs emitidos (DOC-01 a DOC-08), fotos de remitos firmados, firmas, logo de la empresa, foto de la boleta del proveedor. | Buckets privados con URLs firmadas de corta duración; misma consola que la base. | Amazon S3 o Vercel Blob (otro proveedor más). |
 | **Drizzle ORM** | Esquema tipado, consultas y migraciones. | SQL explícito y predecible; liviano en entorno serverless; soporta vistas, enums y claves compuestas. | Prisma (motor más pesado, menos control del SQL generado); SQL crudo sin tipos. |
 | **Zod** | Validación de toda entrada (formularios y server actions) y de las salidas (DTO por perfil de permisos). | Un esquema sirve para el formulario y para el servidor. | Yup, Valibot. |
@@ -296,7 +296,7 @@ Cada módulo es dueño de sus tablas (solo él las escribe) y expone consultas y
 | M15 | Stock y sobrantes (PROPUESTO) | Sobrantes previstos y reales, mermas, devoluciones; descuento de sobrantes en la próxima lista de compra. | ajuste_stock | M08, M11, M07 | Fase 2 | — |
 | M16 | Reportes | Ventas, compras, márgenes por cliente/producto/jornada, deuda con proveedores, precios desactualizados. | No posee tablas: usa vistas. | Todos (solo lectura) | MVP básico | — |
 | M17 | Configuración | Datos de la empresa, moneda, zona horaria, recargo global, estrategia de costo, redondeo, umbrales del semáforo, margen mínimo, numeración. | empresa, secuencia | — | MVP | — |
-| M18 | Usuarios y seguridad | Usuarios, roles, permisos, invitaciones, sesiones (ver 02-usuarios-roles-y-permisos.md). | usuario, rol, usuario_rol | M17 | MVP | — |
+| M18 | Usuarios y seguridad | Usuarios, roles, permisos, sesiones (ver 02-usuarios-roles-y-permisos.md). | usuario, rol, usuario_rol | M17 | MVP | — |
 | M19 | Auditoría | Registro inmutable de cambios sensibles: precios, recargos, overrides, anulaciones, excesos de límite, permisos. | auditoria | M18 (transversal a todos) | MVP | — |
 
 Correspondencia con el circuito del usuario (R3 y R13):
@@ -387,7 +387,7 @@ Organización por **dominio/módulo**, no por tipo técnico. Nombres de dominio 
 ```text
 sistema-fruver/
 ├─ app/                                  Rutas de Next.js (solo interfaz y entrada)
-│  ├─ (publico)/login, invitacion, recuperar
+│  ├─ (publico)/login, configuracion-inicial
 │  ├─ (app)/                             Layout autenticado con menú según permisos
 │  │  ├─ inicio/                         Tablero: jornada activa, alertas, semáforos
 │  │  ├─ productos/  clientes/  proveedores/

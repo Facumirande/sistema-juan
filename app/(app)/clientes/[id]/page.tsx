@@ -1,0 +1,138 @@
+import type { Metadata } from "next";
+
+import { obtenerBaseDatos } from "@/db/cliente";
+import { obtenerCliente } from "@/modulos/clientes/clientes";
+import { ultimosPedidosDeCliente } from "@/modulos/pedidos/pedidos";
+import { listarReglasCliente, recargosActuales } from "@/modulos/precios-venta/reglas";
+import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import { DIAS_SEMANA, PERIODICIDADES, TIPOS_CLIENTE } from "@/ui/etiquetas";
+import { FormularioAccion } from "@/ui/formulario-accion";
+import { Aviso, Encabezado, Estado, Tarjeta } from "@/ui/formularios";
+
+import { cambiarEstadoClienteAccion, cambiarEstadoPuntoAccion, editarClienteAccion, guardarPuntoAccion, marcarPrincipalAccion } from "../acciones";
+import { CamposCliente, CamposPunto } from "../campos-cliente";
+
+import { PedidosDelCliente, PreciosDelCliente } from "./secciones";
+
+export const metadata: Metadata = { title: "Cliente · Sistema Juan" };
+
+function dias(diasEntrega: number[]): string {
+  return diasEntrega.map((d) => DIAS_SEMANA[d - 1]?.etiqueta).join(", ");
+}
+
+/** P-16 Ficha de cliente: datos y puntos de entrega (08 §5.3). */
+export default async function FichaDeCliente({ params }: PageProps<"/clientes/[id]">) {
+  const sesion = await sesionParaPantalla("clientes.ver");
+  const id = idDeRuta((await params).id);
+  const db = obtenerBaseDatos();
+  const c = await cargarFicha(obtenerCliente(db, sesion.authUserId, id));
+  const [precios, objetivos, pedidos] = await Promise.all([
+    sesion.permisos.includes("precios.ver_margenes") ? listarReglasCliente(db, sesion.authUserId, id) : Promise.resolve(null),
+    sesion.permisos.includes("precios.editar_reglas") ? recargosActuales(db, sesion.authUserId) : Promise.resolve(null),
+    sesion.permisos.includes("pedidos.ver") ? ultimosPedidosDeCliente(db, sesion.authUserId, id) : Promise.resolve(null),
+  ]);
+  const puedeEditar = sesion.permisos.includes("clientes.editar");
+  const activos = c.puntosEntrega.filter((p) => p.activo);
+
+  return (
+    <section className="flex max-w-4xl flex-col gap-6">
+      <Encabezado
+        titulo={c.nombre}
+        volver={{ ruta: "/clientes", texto: "Clientes" }}
+        descripcion={`${TIPOS_CLIENTE[c.tipoCliente]} · prioridad ${c.prioridadFaltantes} · facturación ${PERIODICIDADES[c.periodicidadFacturacion]?.toLowerCase()}`}
+      >
+        <Estado activo={c.activo} />
+      </Encabezado>
+
+      {activos.length === 0 && <Aviso>Este cliente no tiene dónde entregarle: cargá un punto de entrega para poder confirmarle pedidos.</Aviso>}
+
+      {pedidos && (
+        <PedidosDelCliente clienteId={c.id} pedidos={pedidos} puedeCrear={sesion.permisos.includes("pedidos.crear") && c.activo && activos.length > 0} />
+      )}
+      {precios && <PreciosDelCliente clienteId={c.id} recargoCliente={precios.recargoCliente} reglas={precios.reglas} objetivos={objetivos} />}
+
+      <Tarjeta titulo="Puntos de entrega">
+        {c.puntosEntrega.length === 0 && <p className="text-texto-suave">Sin puntos de entrega.</p>}
+        <ul className="flex flex-col gap-3">
+          {c.puntosEntrega.map((p) => (
+            <li key={p.id} className="flex flex-col gap-1 rounded-lg border border-borde p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-semibold">
+                  {p.nombre}
+                  {p.esPrincipal && <span className="font-normal text-texto-suave"> · principal</span>}
+                </p>
+                <Estado activo={p.activo} />
+              </div>
+              <p>
+                {p.direccion}
+                {p.localidad && `, ${p.localidad}`}
+              </p>
+              <p className="text-sm text-texto-suave">
+                {[
+                  p.horarioDesde && p.horarioHasta ? `Recibe de ${p.horarioDesde} a ${p.horarioHasta}` : null,
+                  p.diasEntrega.length > 0 ? dias(p.diasEntrega) : null,
+                  p.contactoNombre,
+                  p.contactoTelefono,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {p.instruccionesEntrega && <p className="text-sm">{p.instruccionesEntrega}</p>}
+              {puedeEditar && (
+                <details>
+                  <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Editar</summary>
+                  <div className="flex flex-col gap-3">
+                    <FormularioAccion accion={guardarPuntoAccion} boton="Guardar" variante="secundario">
+                      <input type="hidden" name="clienteId" value={c.id} />
+                      <input type="hidden" name="id" value={p.id} />
+                      <CamposPunto punto={p} />
+                    </FormularioAccion>
+                    <div className="flex flex-wrap gap-2">
+                      {p.activo && !p.esPrincipal && (
+                        <FormularioAccion accion={marcarPrincipalAccion} boton="Hacer principal" variante="secundario">
+                          <input type="hidden" name="id" value={p.id} />
+                        </FormularioAccion>
+                      )}
+                      <FormularioAccion accion={cambiarEstadoPuntoAccion} boton={p.activo ? "Desactivar" : "Reactivar"} variante={p.activo ? "peligro" : "secundario"}>
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="activo" value={String(!p.activo)} />
+                      </FormularioAccion>
+                    </div>
+                  </div>
+                </details>
+              )}
+            </li>
+          ))}
+        </ul>
+        {puedeEditar && (
+          <details open={c.puntosEntrega.length === 0}>
+            <summary className="min-h-11 cursor-pointer py-2 font-medium">+ Agregar punto de entrega</summary>
+            <FormularioAccion accion={guardarPuntoAccion} boton="Agregar">
+              <input type="hidden" name="clienteId" value={c.id} />
+              <CamposPunto />
+            </FormularioAccion>
+          </details>
+        )}
+      </Tarjeta>
+
+      {puedeEditar && (
+        <Tarjeta titulo="Datos del cliente">
+          <FormularioAccion accion={editarClienteAccion} boton="Guardar cambios">
+            <input type="hidden" name="id" value={c.id} />
+            <CamposCliente cliente={c} />
+          </FormularioAccion>
+          <FormularioAccion
+            accion={cambiarEstadoClienteAccion}
+            boton={c.activo ? "Desactivar cliente" : "Reactivar cliente"}
+            variante={c.activo ? "peligro" : "secundario"}
+            confirmar={c.activo ? `¿Desactivar a ${c.nombre}? No se le van a poder cargar pedidos nuevos.` : undefined}
+          >
+            <input type="hidden" name="id" value={c.id} />
+            <input type="hidden" name="activo" value={String(!c.activo)} />
+          </FormularioAccion>
+        </Tarjeta>
+      )}
+    </section>
+  );
+}

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 
@@ -20,19 +21,20 @@ export interface SesionVisible {
   zonaHoraria: string;
   roles: string[];
   permisos: Permiso[];
+  debeCambiarClave: boolean;
 }
 
 /**
  * Usuario de Supabase Auth verificado (firma del token) o null. Marca la pantalla como
  * dinámica: nada que dependa de la sesión se prerenderiza ni se cachea entre usuarios (01 §12).
  */
-export async function obtenerAuthUserId(): Promise<string | null> {
+export const obtenerAuthUserId = cache(async (): Promise<string | null> => {
   await connection();
   if (!configuracionSupabase()) return null;
   const supabase = await crearClienteSupabaseServidor();
   const { data } = await supabase.auth.getClaims();
   return typeof data?.claims?.sub === "string" ? data.claims.sub : null;
-}
+});
 
 /**
  * Sesión del pedido actual, resuelta una vez por pedido. Devuelve null si no hay sesión o
@@ -50,9 +52,22 @@ export const obtenerSesion = cache(async (): Promise<SesionVisible | null> => {
       zonaHoraria: c.zonaHoraria,
       roles: c.roles,
       permisos: c.permisos.lista(),
+      debeCambiarClave: c.debeCambiarClave,
     }));
   } catch (error) {
     if (esErrorDeNegocio(error, "NO_AUTENTICADO")) return null;
     throw error;
   }
 });
+
+/**
+ * Sesión de una pantalla que exige un permiso: sin sesión manda al ingreso y sin permiso al
+ * tablero. La verificación que vale es la de cada caso de uso; esto evita mostrar pantallas vacías.
+ */
+export async function sesionParaPantalla(permiso: Permiso | null): Promise<SesionVisible & { authUserId: string }> {
+  const authUserId = await obtenerAuthUserId();
+  const sesion = await obtenerSesion();
+  if (!authUserId || !sesion) redirect("/login");
+  if (permiso && !sesion.permisos.includes(permiso)) redirect("/inicio");
+  return { ...sesion, authUserId };
+}

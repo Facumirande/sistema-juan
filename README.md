@@ -21,17 +21,19 @@ Sistema de gestión para distribuidores de frutas y verduras: pedidos, lista de 
 
 ## Configuración
 
-Copiar `.env.example` a `.env.local` y completar con los datos del proyecto de Supabase. Sin esa configuración la aplicación arranca y muestra el aviso en la pantalla de ingreso. Roles y conexión de la base: [`docs/tecnico/base-de-datos.md`](docs/tecnico/base-de-datos.md).
+Copiar `.env.example` a `.env.local` y completar con los datos del proyecto de Supabase, incluida `SUPABASE_SECRET_KEY` (la usa solo el servidor para crear las cuentas). Sin esa configuración la aplicación arranca y muestra el aviso en la pantalla de ingreso.
+
+Primer uso: `pnpm dev` y abrir `http://localhost:3000`. Mientras el sistema no está configurado, el ingreso lleva a la **configuración inicial** (nombre del negocio y usuario del dueño). Los demás usuarios se crean desde la pantalla **Usuarios**. Roles y conexión de la base: [`docs/tecnico/base-de-datos.md`](docs/tecnico/base-de-datos.md).
 
 ## Estructura
 
 ```text
 app/                 Rutas de Next.js (pantallas)
-src/dominio/         Cálculos puros con pruebas: dinero, fechas, unidades, numeración
+src/dominio/         Cálculos puros con pruebas: dinero, fechas, unidades, numeración, precios de compra
 src/seguridad/       Catálogo de permisos y roles de sistema (02)
 src/db/              Esquema Drizzle, migraciones, transacción con empresa fijada, numeración, auditoría
-src/modulos/         Casos de uso por módulo (sesión, alta de empresa…)
-src/lib/supabase/    Clientes de Supabase Auth y proxy de sesión
+src/modulos/         Casos de uso por módulo (usuarios, catálogo, proveedores, clientes, precios de compra…)
+src/lib/supabase/    Clientes de Supabase Auth, cuentas (clave secreta) y proxy de sesión
 src/ui/              Navegación y componentes compartidos
 tests/               dominio/, seguridad/, integracion/
 ```

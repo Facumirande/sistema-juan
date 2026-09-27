@@ -52,3 +52,75 @@ export const ACCIONES_CON_MOTIVO = [
   "CORRECCION_ENTREGA",
   "REAPERTURA_JORNADA",
 ] as const;
+
+// 03 §3.4 y §3.5 — catálogo, clientes y compras.
+
+export const unidadMedida = pgEnum("unidad_medida", ["KG", "UNIDAD", "ATADO", "MAPLE", "BANDEJA", "DOCENA", "PAQUETE", "LITRO"]);
+
+export const grupoProducto = pgEnum("grupo_producto", ["FRUTA", "VERDURA", "OTRO"]);
+
+export const tipoCliente = pgEnum("tipo_cliente", ["HOSPITAL", "RESTAURANTE", "COMERCIO", "INSTITUCION", "OTRO"]);
+
+export const periodicidadFacturacion = pgEnum("periodicidad_facturacion", ["POR_ENTREGA", "SEMANAL", "QUINCENAL", "MENSUAL"]);
+
+export const condicionPago = pgEnum("condicion_pago", ["CONTADO", "CREDITO", "MIXTA"]);
+
+/** 03 §3.3 — cómo cambió un precio de compra. */
+export const origenPrecioCompra = pgEnum("origen_precio_compra", ["MANUAL", "COMPRA", "IMPORTACION"]);
+
+// 03 §3.1 y §3.3 — pedidos, jornada y precios de venta.
+
+export const estadoJornada = pgEnum("estado_jornada", ["ABIERTA", "COMPRANDO", "PREPARANDO", "REPARTIENDO", "CERRADA"]);
+
+export const estadoPedido = pgEnum("estado_pedido", [
+  "BORRADOR",
+  "CONFIRMADO",
+  "EN_COMPRA",
+  "EN_PREPARACION",
+  "PREPARADO",
+  "EN_REPARTO",
+  "ENTREGADO",
+  "CANCELADO",
+]);
+
+export const canalPedido = pgEnum("canal_pedido", ["TELEFONO", "WHATSAPP", "EMAIL", "PRESENCIAL", "PORTAL"]);
+
+export const tipoReglaPrecio = pgEnum("tipo_regla_precio", ["RECARGO", "PRECIO_FIJO"]);
+
+export const origenPrecioVenta = pgEnum("origen_precio_venta", [
+  "PRECIO_FIJO_CLIENTE_PRODUCTO",
+  "RECARGO_CLIENTE_PRODUCTO",
+  "RECARGO_CLIENTE_CATEGORIA",
+  "RECARGO_CLIENTE",
+  "RECARGO_PRODUCTO",
+  "RECARGO_CATEGORIA",
+  "RECARGO_GLOBAL",
+  "MANUAL",
+]);
+
+export const origenCosto = pgEnum("origen_costo", ["PREFERIDO", "MINIMO", "ULTIMO_COSTO_REAL", "REAL_JORNADA", "SIN_DATO"]);
+
+// 03 §3.1, §3.2 y §3.5 — lista de compra, compras y cuenta corriente de proveedores.
+
+export const estadoListaCompraItem = pgEnum("estado_lista_compra_item", ["PENDIENTE", "PARCIAL", "COMPRADO", "NO_CONSEGUIDO"]);
+
+export const estadoCompra = pgEnum("estado_compra", ["REGISTRADA", "ANULADA"]);
+
+export const tipoCompra = pgEnum("tipo_compra", ["MERCADERIA", "SALDO_INICIAL"]);
+
+export const medioPago = pgEnum("medio_pago", ["EFECTIVO", "TRANSFERENCIA", "CHEQUE", "TARJETA", "OTRO"]);
+
+export const origenPago = pgEnum("origen_pago", ["EN_COMPRA", "POSTERIOR"]);
+
+export const estadoRegistro = pgEnum("estado_registro", ["REGISTRADO", "ANULADO"]);
+
+/** + aumenta la deuda con el proveedor; − la disminuye (03 §3.5). */
+export const tipoMovimientoProveedor = pgEnum("tipo_movimiento_proveedor", [
+  "SALDO_INICIAL",
+  "CARGO_COMPRA",
+  "PAGO",
+  "ANULACION_COMPRA",
+  "ANULACION_PAGO",
+  "AJUSTE_DEBITO",
+  "AJUSTE_CREDITO",
+]);

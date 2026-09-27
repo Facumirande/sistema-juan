@@ -36,3 +36,23 @@ export function sumarDias(fecha: FechaISO, dias: number): FechaISO {
   base.setUTCDate(base.getUTCDate() + dias);
   return base.toISOString().slice(0, 10);
 }
+
+/** Días entre dos fechas operativas (`hasta − desde`); negativo si `hasta` es anterior. */
+export function diasEntre(desde: FechaISO, hasta: FechaISO): number {
+  for (const f of [desde, hasta]) {
+    if (!PATRON_FECHA.test(f)) throw new ErrorDeNegocio("VALIDACION", `Fecha inválida: ${f}.`);
+  }
+  const milisegundosPorDia = 86_400_000;
+  return Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / milisegundosPorDia);
+}
+
+/**
+ * Jornada que se propone para un pedido nuevo (04 §5.b.1): mañana en la zona de la empresa;
+ * si ya pasó la hora de corte de pedidos ("HH:MM"), pasado mañana.
+ */
+export function jornadaSugerida(ahora: Date, zonaHoraria: string, horaCorte: string | null): FechaISO {
+  const manana = sumarDias(hoyEnEmpresa(ahora, zonaHoraria), 1);
+  if (!horaCorte) return manana;
+  const horaActual = format(new TZDate(ahora, zonaHoraria), "HH:mm");
+  return horaActual >= horaCorte.slice(0, 5) ? sumarDias(manana, 1) : manana;
+}

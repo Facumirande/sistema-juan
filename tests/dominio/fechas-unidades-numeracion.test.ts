@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ErrorDeNegocio, esErrorDeNegocio } from "@/dominio/errores";
-import { formatearFecha, formatearFechaHora, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
+import { formatearFecha, formatearFechaHora, hoyEnEmpresa, jornadaSugerida, sumarDias } from "@/dominio/fechas/fechas";
 import { formatearNumeroConVersion, formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
 import { aUnidadBase, costoPorUnidadBase, presentacionesNecesarias } from "@/dominio/unidades/unidades";
 
@@ -28,6 +28,13 @@ describe("fechas en la zona de la empresa (01 §18)", () => {
       "24/09/2026 07:40",
     );
     expect(codigoDeError(() => formatearFecha("24/09/2026"))).toBe("VALIDACION");
+  });
+
+  it("propone mañana para un pedido nuevo, o pasado mañana si pasó la hora de corte", () => {
+    const tarde = new Date("2026-09-23T21:30:00Z"); // 18:30 en Buenos Aires
+    expect(jornadaSugerida(tarde, "America/Argentina/Buenos_Aires", null)).toBe("2026-09-24");
+    expect(jornadaSugerida(tarde, "America/Argentina/Buenos_Aires", "20:00")).toBe("2026-09-24");
+    expect(jornadaSugerida(tarde, "America/Argentina/Buenos_Aires", "18:00:00")).toBe("2026-09-25");
   });
 
   it("calcula vencimientos sumando días (RN-106)", () => {

@@ -128,7 +128,7 @@ Quién: ADMINISTRATIVO o ADMIN (`pagos.registrar`); el COMPRADOR registra solo l
 | Fecha | Sí | No futura (RN-095). |
 | Monto | Sí | > 0. |
 | Medio | Sí | `EFECTIVO`, `TRANSFERENCIA`, `CHEQUE`, `TARJETA`, `OTRO` (con descripción: billetera virtual, compensación, etc.). |
-| Referencia | Según medio | `TRANSFERENCIA`: número de operación o comprobante. `CHEQUE`: número, banco y fecha de cobro. `OTRO`: descripción. (En el modelo: `referencia`, más `cheque_banco` y `cheque_fecha_cobro` para cheques; la cartera de cheques con vencimientos es PROPUESTO.) |
+| Referencia | No (uso interno, 2026-09-27) | `TRANSFERENCIA`: número de operación o comprobante. `CHEQUE`: número, banco y fecha de cobro. `OTRO`: descripción. Se recomienda cargarla, pero no se exige. (En el modelo: `referencia`, más `cheque_banco` y `cheque_fecha_cobro` para cheques; la cartera de cheques con vencimientos es PROPUESTO.) |
 | Imputación | Sí | Automática FIFO (por defecto) o manual. |
 | Comprobante | No | Foto o PDF del recibo o de la transferencia (Storage). |
 | Observaciones | No | Texto libre. |
@@ -192,7 +192,7 @@ sequenceDiagram
 | El proveedor reclama una diferencia de precio | `AJUSTE_DEBITO` | "+$5.000 diferencia en COM-000118". Sube el saldo de la cuenta y queda como partida pendiente (con vencimiento opcional) que el próximo pago cancela por FIFO. |
 | Recargo por pago fuera de término | `AJUSTE_DEBITO` | "+$3.000 interés". |
 
-**Saldo inicial** (RN-110): al empezar a usar el sistema, por cada proveedor con deuda previa se registra una `compra` de tipo `SALDO_INICIAL` (sin líneas ni jornada, con su fecha y vencimiento) y su movimiento `SALDO_INICIAL` (+). Si se quiere controlar el vencimiento de cada deuda anterior, se carga una compra de saldo inicial por cada boleta pendiente. Como son compras, participan de la imputación FIFO y de los vencimientos igual que las demás. Se permite una sola carga por proveedor; una segunda requiere ADMIN y queda auditada.
+**Saldo inicial** (RN-110): al empezar a usar el sistema, por cada proveedor con deuda previa se registra una `compra` de tipo `SALDO_INICIAL` (sin líneas ni jornada, con su fecha y vencimiento) y su movimiento `SALDO_INICIAL` (+). Si se quiere controlar el vencimiento de cada deuda anterior, se carga una compra de saldo inicial por cada boleta pendiente. Como son compras, participan de la imputación FIFO y de los vencimientos igual que las demás. Se pueden cargar varias (una por boleta) con `pagos.ajustar`; cada una queda auditada (decisión de uso interno, 2026-09-27: no se exige ADMIN para la segunda).
 
 ---
 

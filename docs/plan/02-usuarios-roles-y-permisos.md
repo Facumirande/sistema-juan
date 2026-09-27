@@ -13,7 +13,7 @@
 7. [Visibilidad a nivel de campo](#7-visibilidad-a-nivel-de-campo)
 8. [Cómo se garantiza en el servidor](#8-cómo-se-garantiza-en-el-servidor)
 9. [Combinación de roles y modo usuario único](#9-combinación-de-roles-y-modo-usuario-único)
-10. [Alta, invitación, desactivación y cambio de roles](#10-alta-invitación-desactivación-y-cambio-de-roles)
+10. [Alta, desactivación y cambio de roles](#10-alta-desactivación-y-cambio-de-roles)
 11. [Sesiones y auditoría de accesos](#11-sesiones-y-auditoría-de-accesos)
 12. [Casos de prueba de permisos](#12-casos-de-prueba-de-permisos)
 
@@ -165,7 +165,7 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `reportes.exportar` | Exportar reportes a CSV/Excel. | Sí | V / C / M |
 | `configuracion.ver` | Ver la configuración de la empresa. | No | M |
 | `configuracion.editar` | Modificar configuración: moneda, zona horaria, recargo global, estrategia de costo, redondeo, umbrales del semáforo, margen mínimo, numeración, módulos habilitados. | Sí | M |
-| `usuarios.administrar` | Invitar, desactivar y reactivar usuarios; asignar roles; crear y editar roles personalizados; cerrar sesiones de otros. | Sí | P |
+| `usuarios.administrar` | Dar de alta, desactivar y reactivar usuarios; asignar roles; crear y editar roles personalizados; cerrar sesiones de otros. | Sí | P |
 | `auditoria.ver` | Consultar el registro de auditoría. | No | P |
 
 ---
@@ -344,53 +344,40 @@ Cuando la empresa tiene **un solo usuario activo y es ADMIN**:
 3. No se piden confirmaciones "de otro rol" (p. ej. autorizar un exceso de límite sigue pidiendo motivo, porque la auditoría lo exige, pero no pide otro usuario).
 4. Los documentos se comportan igual: DOC-02 y DOC-07 salen sin precios aunque los imprima el dueño.
 5. El ADMIN dispone de **"Ver como…"**: vista previa de lo que verá un PREPARADOR o un REPARTIDOR, útil antes de sumar personal.
-6. Al invitar al segundo usuario, el sistema sale del modo usuario único sin migraciones ni cambios de datos.
+6. Al dar de alta al segundo usuario, el sistema sale del modo usuario único sin migraciones ni cambios de datos.
 
 ---
 
-## 10. Alta, invitación, desactivación y cambio de roles
+## 10. Alta, desactivación y cambio de roles
 
-### 10.1 Invitación con correo electrónico
+> **Decisión 26/09/2026 (uso interno):** no hay invitaciones ni recuperación de contraseña por correo. El correo incluido en Supabase solo entrega a los miembros del equipo del proyecto, y para un solo negocio no vale la pena contratar uno. Las columnas `invitacion_*` de `usuario` quedan sin uso.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor A as ADMIN
-    participant UI as Pantalla Usuarios
-    participant SA as Servidor
-    participant AUTH as Supabase Auth
-    participant DB as PostgreSQL
-    actor U as Nuevo usuario
+### 10.1 Primer usuario: configuración inicial
 
-    A->>UI: Invitar: nombre, correo, roles (ej. PREPARADOR)
-    UI->>SA: invitarUsuario (requiere usuarios.administrar)
-    SA->>DB: INSERT usuario (activo, invitacion pendiente) y usuario_rol
-    SA->>AUTH: enviar invitación por correo
-    SA->>DB: INSERT auditoria (CAMBIO_PERMISOS: alta de usuario y roles)
-    AUTH-->>U: Correo con enlace (válido 72 h)
-    U->>AUTH: Abre el enlace y define su contraseña
-    AUTH-->>SA: Sesión iniciada
-    SA->>DB: UPDATE usuario.invitacion_aceptada_en
-    SA-->>U: Pantalla de inicio según sus roles, con sugerencia de instalar la PWA
-```
+Mientras el sistema no está configurado, el ingreso lleva a `/configuracion-inicial` ("Primer uso"): nombre, usuario y contraseña de quien lo abre por primera vez y, opcional, el nombre del negocio. El servidor crea la cuenta en Supabase Auth, la empresa principal (id fijo: solo se puede crear una vez) y el usuario con rol ADMIN, y entra directo. (El caso de uso admite crear dos personas a la vez; la pantalla ofrece una.) Si la cuenta ya se había creado a mano en Supabase y no pertenece a nadie, la reutiliza con la contraseña nueva. Después de eso la pantalla deja de existir.
 
-### 10.2 Personal sin correo electrónico
+### 10.2 Alta de usuarios: cada uno por su cuenta (decisión del 26/09/2026)
 
-Frecuente en depósito y reparto. El ADMIN crea el usuario con un **nombre de usuario** (ej. `marta.deposito`); el sistema genera internamente un identificador con forma de correo no entregable (`marta.deposito@<empresa>.interno`) y una **contraseña inicial** que se muestra una sola vez para entregarla en persona. En el primer ingreso se exige cambiarla (`usuario.debe_cambiar_clave`). La recuperación de contraseña de estos usuarios la hace el ADMIN.
+Quien quiere entrar abre el sistema y toca **Entrar con Google** (Supabase Auth con el proveedor Google, vuelve por `/auth/callback`) o **Crear una cuenta** (`/crear-cuenta`: nombre, usuario y contraseña; la cuenta la crea el servidor). En los dos casos queda un **pedido de acceso** (`usuario` inactivo con `accesoPedidoEn`) y la persona ve `/acceso-pendiente` hasta que alguien con `usuarios.administrar` lo **habilita** (queda ADMIN) o lo **rechaza** (la cuenta queda bloqueada). Como mucho 5 pedidos sin responder. El inicio del administrador avisa cuando hay pedidos.
+
+### 10.2.1 Alta de usuarios por el ADMIN (queda en el código, sin pantalla)
+
+> **Uso real (26/09/2026):** lo usan dos personas y las dos son ADMIN; la pantalla no muestra roles y todo usuario nuevo es ADMIN. Lo que sigue sobre roles queda para cuando haga falta alguien con acceso limitado.
+
+El ADMIN crea cada usuario en P-96 con un **nombre de usuario** (ej. `marta.deposito`, pensado para el personal sin correo) o un **correo**, sus roles y una **clave provisoria** que genera el sistema (8 letras fáciles de dictar); se muestra una sola vez para pasársela. En el primer ingreso la persona elige su propia contraseña (`/crear-clave`, `usuario.debe_cambiar_clave`) y no puede usar el sistema hasta hacerlo. Un nombre de usuario se guarda en Supabase Auth como un correo interno no entregable (`marta.deposito@sistema-juan.interno`); en el ingreso se escribe solo `marta.deposito`. Cada persona cambia su contraseña en "Mi cuenta" (P-03); si la olvida, el ADMIN le da otra clave provisoria y vuelve a elegir una. Las cuentas las crea el servidor con la clave secreta de Supabase: nunca el navegador.
 
 ### 10.3 Reglas de administración
 
 | # | Regla |
 |---|---|
-| 1 | Solo quien tiene `usuarios.administrar` invita, cambia roles, desactiva, reactiva y crea roles personalizados. |
+| 1 | Solo quien tiene `usuarios.administrar` da de alta, cambia roles, desactiva, reactiva y crea roles personalizados. |
 | 2 | Siempre debe quedar **al menos un usuario activo con rol ADMIN**; el sistema rechaza desactivar o quitarle el rol al último. |
 | 3 | Un ADMIN no puede quitarse a sí mismo el rol ADMIN si no hay otro ADMIN activo. |
 | 4 | **Desactivar** (`usuario.activo = false`): bloquea el acceso en Supabase Auth y cierra todas sus sesiones en el momento. No se borra: su nombre sigue en pedidos, compras y auditoría. Si tiene un reparto EN_CURSO o líneas de lista de compra asignadas, el sistema pide reasignarlas antes. |
 | 5 | **Reactivar**: devuelve el acceso con los mismos roles (se audita). |
 | 6 | **Cambio de roles**: rige desde el siguiente pedido al servidor (los permisos se leen en cada pedido, sin caché de larga duración). Se audita con roles antes y después. |
 | 7 | **Roles personalizados**: el ADMIN puede crear roles nuevos (ej. "Encargado de depósito" = PREPARADOR + `repartos.gestionar`). Los roles de sistema no se borran; el rol ADMIN no se puede editar. |
-| 8 | Las invitaciones pendientes vencen a las 72 h y se pueden reenviar. |
-| 9 | Recuperación de contraseña por correo (autogestión); el ADMIN puede forzar un cambio de contraseña. |
+| 9 | Sin recuperación por correo: el ADMIN pone una contraseña nueva; cada uno cambia la suya en "Mi cuenta". |
 
 ---
 
@@ -404,7 +391,7 @@ Frecuente en depósito y reparto. El ADMIN crea el usuario con un **nombre de us
 | Dispositivos compartidos | Para una tablet del depósito compartida, se recomienda que cada preparador tenga su usuario y use "Cambiar de usuario" (la auditoría identifica a la persona). Un usuario genérico de depósito es posible pero no recomendado. |
 | Registro de ingresos | Cada inicio de sesión genera una fila en `auditoria` con acción `INICIO_SESION`, IP y dispositivo (user agent). `usuario.ultimo_acceso_en` se actualiza como máximo una vez por hora. Los intentos fallidos quedan en el registro de Supabase Auth. |
 | Pantalla de accesos | El ADMIN ve por usuario: último acceso, dispositivos recientes, sesiones abiertas, y puede **cerrar todas las sesiones** de un usuario (ej. celular perdido). |
-| Qué se audita de usuarios | Alta, invitación, aceptación, cambio de roles, cambio de permisos de un rol, desactivación, reactivación, cambio de contraseña forzado, cierre de sesiones por el ADMIN. |
+| Qué se audita de usuarios | Alta, cambio de roles, cambio de permisos de un rol, desactivación, reactivación, contraseña nueva puesta por el ADMIN, cierre de sesiones por el ADMIN. |
 
 ---
 

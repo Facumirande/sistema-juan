@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:cobertura": "vitest run --coverage",
     "db:generar": "drizzle-kit generate",
-    "db:migracion-sql": "drizzle-kit generate --custom"
+    "db:migracion-sql": "drizzle-kit generate --custom",
+    "db:aplicar": "node --env-file=.env.local scripts/aplicar-migraciones.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

@@ -16,6 +16,8 @@ export interface ContextoUsuario {
   zonaHoraria: string;
   roles: string[];
   permisos: PermisosEfectivos;
+  /** Entró con una clave provisoria: antes de usar el sistema elige la suya (02 §10.2). */
+  debeCambiarClave: boolean;
 }
 
 const SESION_INVALIDA = "Tu sesión no es válida o tu usuario está desactivado. Ingresá de nuevo.";
@@ -28,7 +30,14 @@ const SESION_INVALIDA = "Tu sesión no es válida o tu usuario está desactivado
 export async function resolverContexto(tx: Transaccion, authUserId: string): Promise<ContextoUsuario> {
   await fijarUsuarioAuth(tx, authUserId);
   const [u] = await tx
-    .select({ id: usuario.id, empresaId: usuario.empresaId, nombre: usuario.nombre, email: usuario.email, activo: usuario.activo })
+    .select({
+      id: usuario.id,
+      empresaId: usuario.empresaId,
+      nombre: usuario.nombre,
+      email: usuario.email,
+      activo: usuario.activo,
+      debeCambiarClave: usuario.debeCambiarClave,
+    })
     .from(usuario)
     .where(eq(usuario.authUserId, authUserId));
   if (!u || !u.activo) throw new ErrorDeNegocio("NO_AUTENTICADO", SESION_INVALIDA);
@@ -51,6 +60,7 @@ export async function resolverContexto(tx: Transaccion, authUserId: string): Pro
     zonaHoraria: e.zonaHoraria,
     roles: roles.filter((r) => r.activo).map((r) => r.codigo),
     permisos: new PermisosEfectivos(roles),
+    debeCambiarClave: u.debeCambiarClave,
   };
 }
 

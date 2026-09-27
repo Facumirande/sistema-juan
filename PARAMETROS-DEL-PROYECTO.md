@@ -2,7 +2,7 @@
 
 Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que se toma, cambia o descarta una decisión; el detalle completo del diseño está en [docs/plan/](docs/plan/).
 
-**Última actualización:** 2026-09-24
+**Última actualización:** 2026-09-27
 
 ---
 
@@ -10,13 +10,14 @@ Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que
 
 | Campo | Valor |
 |---|---|
-| Etapa actual | Construcción del MVP: fase 0 hecha (proyecto base, pruebas, CI) y base de la iteración 1 (seguridad, permisos, datos de empresa y usuarios) construida, probada y con la base de datos creada en Supabase. Falta dar de alta la empresa y el primer usuario |
+| Uso | **Interno, para un solo negocio** (el del hermano del desarrollador). Sin formalidades: no hay equipo contratado, presupuesto, calendario, demos ni aprobaciones firmadas. Las decisiones abiertas se toman con valores por defecto razonables que se cambian desde la configuración cuando haga falta |
+| Etapa actual | Construcción del MVP. Iteraciones 1 a 5 construidas y probadas: acceso (primer uso, pedidos de acceso con Google o cuenta propia), catálogo, proveedores, clientes, precios de compra, precios de venta (7 niveles, reglas por cliente, recargos), pedidos por día de entrega, lista de compra (DOC-01), compras con control del límite de crédito y cuentas corrientes con proveedores (pagos, ajustes, vencimientos, DOC-05). La base de Supabase está al día (migraciones 0000 a 0008). Siguiente: iteración 6 (preparación, repartos, entregas y documentos) |
 | Código | Next.js 16 en la raíz del repositorio; guía técnica en `README.md` y `docs/tecnico/` |
 | Documentación del plan | [docs/plan/](docs/plan/) — el índice es `docs/plan/README.md` |
 | Nombre del sistema | "Sistema Juan". Es de uso interno: no lleva nombre comercial (decisión D-02) |
 | País y moneda | Argentina, pesos argentinos (`AR`, `ARS`, zona horaria `America/Argentina/Buenos_Aires`) (decisión D-01) |
 | Repositorio git | Rama `main`; repositorio remoto en GitHub pendiente |
-| Proyecto de Supabase | `sistema-juan-dev` (ref `zdtbxsdgbkiaesjczgav`, región São Paulo `sa-east-1`) en la organización "Near". Es el entorno de desarrollo; producción será un proyecto aparte. Migraciones 0000 a 0002 aplicadas; asesor de seguridad sin avisos |
+| Proyecto de Supabase | `sistema-juan-dev` (ref `zdtbxsdgbkiaesjczgav`, región São Paulo `sa-east-1`) en la organización "Near". Es el entorno de desarrollo; producción será un proyecto aparte (plan gratuito mientras alcance). Migraciones 0000 a 0008 aplicadas con el conector de Supabase y registradas en `drizzle.__drizzle_migrations` (27/09); esquema verificado igual al local. Asesor de seguridad: solo el aviso de contraseñas filtradas (opción del plan pago). Clave secreta cargada y probada (26/09). `DATABASE_MIGRACIONES_URL` (opcional) permite aplicar las próximas migraciones desde la terminal con `pnpm db:aplicar` |
 | Idioma | Español: interfaz, documentación y nombres del modelo de datos |
 
 ## 2. Negocio
@@ -137,6 +138,10 @@ Reservados para fases posteriores (PROPUESTO): DOC-09 Estado de cuenta de client
 
 Un usuario puede tener varios roles; los permisos son granulares con claves `modulo.accion`.
 
+**Uso real:** el sistema lo usan **dos personas, las dos ADMIN** (el dueño y su esposa). La interfaz no muestra roles: todo usuario que se agrega es ADMIN. Los roles y permisos siguen en la base por si algún día entra alguien con acceso limitado.
+
+**Cuentas:** el primer uso lo hizo Facundo (el desarrollador), que administra y mejora el sistema. Las demás personas entran **por su cuenta**: con **Google** o con **"Crear una cuenta"** (nombre, usuario y contraseña). Toda cuenta nueva queda como **pedido de acceso** y no ve nada hasta que alguien habilitado la aprueba en Usuarios (queda ADMIN); rechazar bloquea la cuenta. Hay como mucho 5 pedidos sin responder, para que nadie llene la lista. Se entra las veces que haga falta y desde cualquier dispositivo; la sesión queda abierta. Si alguien con usuario olvida su contraseña, "Darle una clave provisoria" y la persona elige una nueva al entrar. No hay correos del sistema.
+
 | Rol | Alcance |
 |---|---|
 | ADMIN | Dueño; todo. Puede operar el circuito completo como usuario único |
@@ -148,41 +153,41 @@ Un usuario puede tener varios roles; los permisos son granulares con claves `mod
 
 ## 11. Parámetros configurables por empresa
 
-Valores por defecto con los que se crea una empresa (campos de `empresa`, `docs/plan/03-modelo-de-datos.md` §4.1). "Propuesto" = lo propone el plan y falta que el dueño lo confirme (decisión D-03).
+Valores por defecto con los que se crea la empresa (campos de `empresa`, `docs/plan/03-modelo-de-datos.md` §4.1). Se adoptan los que propone el plan (D-03) y se cambian desde la configuración cuando el negocio lo pida.
 
 | Parámetro | Valor por defecto | Estado |
 |---|---|---|
 | Umbrales del semáforo de crédito | 70 % / 90 % / 100 % | Fijado |
-| Estrategia de costo de referencia | PREFERIDO | Propuesto |
-| Recargo global | 30 % | Propuesto |
-| Margen mínimo para alerta (sobre venta) | 15 % | Propuesto |
-| Regla de redondeo del precio de venta | Al múltiplo de $1 más cercano (los ejemplos del plan usan $10 hacia arriba) | Propuesto |
-| Precios de venta con o sin IVA | Sin IVA incluido; alícuota por defecto 0 % | Propuesto (a confirmar con el contador, D-04) |
-| Días para considerar un precio de compra desactualizado | 7 | Propuesto |
-| Porcentaje de variación brusca de precio | 30 % | Propuesto |
+| Estrategia de costo de referencia | PREFERIDO | Adoptado |
+| Recargo global | 30 % | Adoptado |
+| Margen mínimo para alerta (sobre venta) | 15 % | Adoptado |
+| Regla de redondeo del precio de venta | Al múltiplo de $1 más cercano (los ejemplos del plan usan $10 hacia arriba) | Adoptado |
+| Precios de venta con o sin IVA | Sin IVA: los precios son los que se cobran; alícuota por defecto 0 %; el IVA de compras no se computa (D-04) | Adoptado |
+| Días para considerar un precio de compra desactualizado | 7 | Adoptado |
+| Porcentaje de variación brusca de precio | 30 % | Adoptado |
 | Moneda | ARS (pesos argentinos) | Fijado (D-01) |
-| Otros (preferido caro, avisos, tolerancia de peso, faltantes, facturación automática…) | Ver `docs/plan/07-reglas-de-negocio.md` §4 | Propuesto |
+| Otros (preferido caro, avisos, tolerancia de peso, faltantes, facturación automática…) | Ver `docs/plan/07-reglas-de-negocio.md` §4 | Adoptado |
 
 ## 12. Alcance por fases
 
 - **Fase 1 (MVP):** todo lo pedido explícitamente. Incluye catálogo, clientes, proveedores, precios de compra y venta con márgenes, pedidos, lista de compra, compras, créditos y pagos con límite, preparación, entregas y los documentos imprimibles. La facturación del MVP es un registro de venta por entrega, un comprobante interno no fiscal y una exportación para el contador.
-- **Plan de construcción del MVP** (`docs/plan/10-plan-de-implementacion.md`): fase 0 de preparación y 8 iteraciones; ≈ 30 semanas y 1.620 a 2.220 horas con 2 desarrolladores (estimación de orden de magnitud). Uso por partes: R1 pedidos, lista de compra y compras; R2 preparación y reparto; R3 facturación y cierre (MVP completo).
+- **Plan de construcción del MVP** (`docs/plan/10-plan-de-implementacion.md`): las 8 iteraciones en el orden del circuito, sin fechas ni presupuesto. Se empieza a usar por partes apenas cada una sirve: R1 pedidos, lista de compra y compras; R2 preparación y reparto; R3 facturación y cierre (MVP completo). La facturación del MVP es interna (no fiscal).
 - **Fases posteriores (PROPUESTO, no pedido explícitamente):** cuenta corriente y cobranzas de clientes, facturación fiscal electrónica (ARCA/AFIP en Argentina, DGI/CFE en Uruguay), modo offline, stock y sobrantes, pedidos habituales, portal de clientes, integración con WhatsApp, reportes avanzados, multi-empresa comercial.
 
-## 13. Decisiones pendientes
+## 13. Decisiones
 
-Detalle, fecha límite y propuesta de cada una en `docs/plan/10-plan-de-implementacion.md` §11.
+No quedan decisiones pendientes que frenen la construcción. Como es un sistema interno, las que eran formales se cerraron con la propuesta del plan; cualquiera se puede revisar cuando el uso real lo pida. Detalle en `docs/plan/10-plan-de-implementacion.md` §11.
 
-- ~~D-01 · País de operación y moneda~~ → **Resuelta (2026-09-24):** Argentina, pesos argentinos. La facturación fiscal futura será con ARCA/AFIP.
-- ~~D-02 · Nombre comercial del sistema y dominio~~ → **Resuelta (2026-09-24):** no hace falta nombre comercial (uso interno). El dominio se define al publicar en producción.
-- D-03 · Confirmar los valores por defecto de la sección 11.
-- D-04 · Precios de venta con o sin IVA, alícuotas por producto y si el IVA de compras se computa.
-- D-05 · Si se permite cancelar un pedido que ya está en preparación (caso borde 33 de `07-reglas-de-negocio.md`).
-- D-06 · Envío automático de la lista contable (DOC-03) por correo al confirmar cada entrega.
-- D-07 · Una o dos copias de la lista de entrega (DOC-02).
-- D-08 · Volumen real del negocio (clientes, productos, proveedores, pedidos por día, usuarios).
-- D-09 · Adelantar el modo offline a una fase 1b (se decide con el piloto de compras).
-- D-10 · Equipo de desarrollo y presupuesto.
+- **D-01 · País y moneda (2026-09-24):** Argentina, pesos argentinos. Si algún día hace falta facturación fiscal, será con ARCA/AFIP.
+- **D-02 · Nombre y dominio (2026-09-24):** sin nombre comercial. El dominio se ve al publicar (puede ser el gratuito del hosting).
+- **D-03 · Valores por defecto (2026-09-26):** los de la sección 11, cambiables desde la configuración.
+- **D-04 · IVA (2026-09-26):** precios sin IVA (son los que se cobran), alícuota 0 %, el IVA de compras no se computa. Sin consulta al contador: el sistema no emite facturas fiscales.
+- **D-05 · Cancelar un pedido en preparación (2026-09-26):** como propone el plan: la entrega queda con cantidad 0.
+- **D-06 · Envío automático de DOC-03 (2026-09-26):** no; se imprime o se comparte a mano.
+- **D-07 · Copias de DOC-02 (2026-09-26):** dos (una para el cliente y una firmada para el negocio), como propone el plan.
+- **D-08 · Volumen del negocio (2026-09-26):** no se releva; se asume un negocio chico (pocos usuarios, decenas de clientes y proveedores). No cambia el diseño.
+- **D-09 · Modo offline antes de tiempo (2026-09-26):** no; se evalúa si en el mercado falta señal.
+- **D-10 · Equipo y presupuesto (2026-09-26):** no aplica: lo desarrolla el hermano del dueño con Claude, sin presupuesto ni calendario.
 
 ## 14. Registro de cambios
 
@@ -192,3 +197,11 @@ Detalle, fecha límite y propuesta de cada una en `docs/plan/10-plan-de-implemen
 | 2026-09-24 | Plan completado: documentos 08 (pantallas), 09 (documentos imprimibles), 10 (plan de implementación) e índice `docs/plan/README.md`. Se agrega DOC-08 Comprobante interno de venta y se reservan DOC-09 y DOC-10 (PROPUESTO). Estados de `reparto` y `documento_emitido` incorporados a la sección 6. El REPARTIDOR puede marcar la salida y el regreso de sus propios repartos. Valores por defecto propuestos en la sección 11. Decisiones pendientes ampliadas (D-01 a D-10). Armonización de nombres entre documentos: permisos según el catálogo de 02 (`jornada.*`, `pagos.ajustar`, `proveedores.editar_limite`, `entregas.emitir_documentos`), imputaciones con `activa` y partidas de ajuste en 03, lista de compra de una fila por jornada, enum `motivo_diferencia` y `REAL_JORNADA`. |
 | 2026-09-24 | Decisiones D-01 (Argentina, ARS) y D-02 (sin nombre comercial, uso interno). Proyecto Supabase de desarrollo `sistema-juan-dev` creado en São Paulo con las migraciones 0000 a 0002 (la 0002 fija el `search_path` de las funciones internas, aviso del asesor de Supabase) y el usuario de conexión `app_servidor`. |
 | 2026-09-24 | Inicio de la construcción. Repositorio git local; proyecto Next.js 16 con Supabase SSR, Drizzle, Zod y decimal.js. Fase 0 e iteración 1 (base): dominio de dinero, fechas, unidades y numeración; catálogo de 67 permisos y roles de sistema; tablas `empresa`, `usuario`, `rol`, `usuario_rol`, `secuencia`, `auditoria` con RLS forzado; alta de empresa; ingreso y menú por permisos. Decisiones técnicas: pruebas de base con PGlite en lugar de Supabase local con Docker (no hay Docker en la máquina de desarrollo), Vitest 3 por compatibilidad con Node 20, roles de base `app_servidor`/`app_negocio`/`app_operativo`/`app_alta`. El ingreso por nombre de usuario (personal sin correo, 02 §10.2) queda para la pantalla de usuarios. |
+| 2026-09-26 | **Uso interno, sin formalidades:** el sistema es para el negocio del hermano del desarrollador. Se cierran D-03 a D-10 con las propuestas del plan (sección 13) y el plan 10 queda sin equipo, costos, cronograma, demos ni aprobaciones. **Sin pasos a mano en Supabase:** el negocio y el primer ADMIN se crean en la pantalla de configuración inicial (empresa principal con id fijo, se puede hacer una sola vez); el ADMIN crea los usuarios en la pantalla Usuarios con nombre de usuario o correo, sin invitaciones ni recuperación por correo; ingreso con "usuario o correo"; pantalla "Mi cuenta" para cambiar la contraseña. Se quita el script de alta por terminal. Nueva variable `SUPABASE_SECRET_KEY` (solo servidor). |
+| 2026-09-26 | **Iteración 2:** tablas `categoria`, `producto`, `presentacion`, `proveedor`, `proveedor_producto`, `historial_precio_compra`, `cliente`, `punto_entrega` (migraciones 0003 y 0004, con RLS; el historial solo admite completar `vigente_hasta`). Pantallas P-10, P-11, P-12, P-15, P-16, P-20, P-21, P-25, P-26, P-29 y DOC-06. Decisiones técnicas: la comparación de ofertas (mejor precio, % sobre el mejor, desactualizado) se calcula en `src/dominio/precios/compra.ts` en lugar de las vistas `v_oferta_vigente` y `v_comparador_precios`; los números se escriben a la argentina ("17.550", "1.234,56"); `historial_precio_compra.variacion_pct` es `numeric(10,3)` para que un error de tipeo no rompa el guardado; volver a agregar una oferta quitada la reactiva con su historial; el recargo de productos, categorías y clientes se edita en la iteración 3. Quedan para más adelante: actualización masiva por porcentaje (P-27), importar planilla (P-28), comparador rápido del celular (P-30) y el registro de DOC-06 en `documento_emitido`. Nueva variable opcional `DATABASE_POOL_MAX`. |
+| 2026-09-26 | **Dos usuarios, sin formalidades:** lo usan solo el dueño y su esposa, los dos ADMIN. El primer uso crea a las dos personas a la vez; la pantalla Usuarios queda sin roles (agregar, cambiar contraseña, quitar acceso); el ingreso es "usuario y contraseña" con botón para ver la contraseña (sin campo de repetir); el menú muestra solo lo que ya funciona y el inicio tiene accesos directos. |
+| 2026-09-26 | **Cada uno inventa su contraseña:** el primer uso crea solo al desarrollador (entra primero a probar). A los demás se los agrega con nombre y usuario; reciben una clave provisoria de 8 letras y en su primer ingreso eligen su contraseña (pantalla `/crear-clave`, usa `usuario.debe_cambiar_clave`). "Darle una clave provisoria" reemplaza a "cambiar su contraseña". |
+| 2026-09-26 | **Iteración 3:** tablas `regla_precio` (con restricciones de exclusión por vigencia, extensión `btree_gist`), `jornada`, `pedido`, `pedido_item` (migraciones 0005 y 0006; las líneas solo se borran en BORRADOR, por trigger). Cálculo del precio de venta de 05 §5.8 en `src/dominio/precios/venta.ts` (7 niveles, redondeo, IVA, alertas, costo de referencia), probado con los ejemplos del plan. Pantallas: Pedidos por día (P-40), carga y detalle de pedido (P-41/P-42), Jornadas (P-45), Precios de venta con recargos y lista de precios por cliente (P-32 simplificada), precios del cliente (P-33) en su ficha. Decisiones técnicas: el número `PED-` se asigna al crear (también a los borradores); crear una regla que empieza después de otra vigente sin fin cierra la anterior el día antes ("nuevo precio desde"); todo cambio de precio de compra, preferido, regla o recargo recalcula los pedidos pendientes (RN-088). Quedan para más adelante: matriz producto × cliente, simulador, cantidad atípica (RN-023) y el costo real de la jornada (llega con las compras). |
+| 2026-09-26 | **Acceso por cuenta propia:** cada persona entra con Google o con "Crear una cuenta" y queda como pedido de acceso hasta que un administrador la habilita (Usuarios → Habilitar / Rechazar; aviso en el inicio). Se quita "Agregar una persona". Los pedidos usan las columnas `invitacion_enviada_en` / `invitacion_aceptada_en` de `usuario` (en el código, `accesoPedidoEn` / `accesoAprobadoEn`) para no migrar la base todavía. "Entrar con Google" aparece solo cuando el proveedor Google está activado en Supabase. |
+| 2026-09-26 | **Iteración 4:** tablas `lista_compra`, `lista_compra_item`, `compra`, `compra_item`, `pago_proveedor`, `movimiento_cuenta_proveedor`, `imputacion_pago_proveedor` (migraciones 0007 y 0008; movimientos e ítems de compra sin `UPDATE`, compras y pagos solo con las columnas de anulación editables). Lista de compra por puesto con sugerencia de proveedor por costo y crédito, compras CONTADO/CREDITO/MIXTA con bloqueo por límite (RN-063) y confirmación de precios con variación brusca (RN-058), anulación con movimiento compensatorio y reimputación FIFO del pago liberado, deuda anterior al sistema (saldo inicial) y costo real de la jornada para los precios de venta. Pantallas P-50, P-55, P-56, P-57, P-60 (resumen), cuenta en la ficha del proveedor y DOC-01. Una línea ya comprada muestra el sobrante real (comprado − necesidad), no el previsto. |
+| 2026-09-27 | **Iteración 5:** cuentas corrientes con proveedores sin tablas nuevas. Pagos posteriores con imputación FIFO o elegida a mano (RN-096, RN-097) y vista previa de qué compras cancela; saldo a favor que se aplica solo a la próxima compra a crédito (RN-098); reimputar y anular pagos (RN-100); ajustes de débito y crédito con compra relacionada (RN-102); anular una compra de contado preguntando si el proveedor devolvió la plata (06 §6.1); vencimientos, deuda vencida y por vencer con aviso en el inicio (RN-106, RN-107). Pantallas P-60 (con filtros, vencido y último pago), P-61, P-62, P-63, P-64 y DOC-05; el detalle de compra muestra qué pagos la cancelan. Aceptación: los 12 pasos de 06 §12 dan los mismos saldos, estados e imputaciones. Decisiones por uso interno: la referencia del pago es opcional para cualquier medio, y la deuda anterior al sistema se puede cargar en varias boletas sin pedir permiso especial. Quedan para cuando se publique: el control nocturno de consistencia y la tarea programada de alertas (hoy los avisos se calculan al abrir el inicio). Corrección: las subconsultas de "lo imputado" y del contador de reglas por cliente daban 0 cuando la consulta tenía una sola tabla (Drizzle omite el nombre de la tabla); ahora se escriben con el nombre completo. **Supabase al día:** migraciones 0003 a 0008 aplicadas con el conector y registradas para Drizzle. |

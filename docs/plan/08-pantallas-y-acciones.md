@@ -123,7 +123,7 @@ Enfoque: **M** = mobile-first; **D** = desktop-first (usable en celular); **M/D*
 
 | ID | Pantalla | Ruta | Módulo | Enfoque | Permiso para abrir | Datos | Fase |
 |---|---|---|---|---|---|---|---|
-| P-01 | Ingreso, invitación y recuperación | `/login`, `/invitacion`, `/recuperar` | M18 | M/D | Pública | — | MVP |
+| P-01 | Ingreso y configuración inicial | `/login`, `/configuracion-inicial` | M18 | M/D | Pública | — | MVP |
 | P-02 | Tablero | `/inicio` | M16 | M/D | Sesión | O +V +C +M +F | MVP |
 | P-03 | Mi cuenta | `/mi-cuenta` | M18 | M/D | Sesión | P (propios) | MVP |
 | P-10 | Productos | `/productos` | M01 | D | `productos.ver` | O | MVP |
@@ -211,10 +211,11 @@ Formato de cada pantalla: **quién la usa**, **qué muestra** y una tabla de **a
 
 ### 5.1 Acceso, inicio y cuenta
 
-#### P-01 Ingreso, invitación y recuperación
+#### P-01 Ingreso y configuración inicial
 
-- Ingreso con correo (o nombre de usuario para personal sin correo, 02 §10.2) y contraseña; segundo factor si el usuario tiene MFA.
-- Invitación: el enlace del correo abre la pantalla para definir la contraseña (válido 72 h). Primer ingreso con `debe_cambiar_clave`: pide la contraseña nueva antes de continuar.
+- Ingreso con "usuario o correo" y contraseña (02 §10.2).
+- Configuración inicial (solo mientras el sistema no está configurado, 02 §10.1): nombre del negocio, nombre, usuario y contraseña del dueño.
+- Sin invitaciones ni recuperación por correo (decisión del 26/09/2026): el ADMIN crea las cuentas y pone contraseñas nuevas.
 - Después del primer ingreso en el celular: sugerencia de **instalar la app** (PWA) con instrucciones para Android y iPhone.
 
 #### P-02 Tablero
@@ -693,7 +694,7 @@ Pestañas: **Compras pendientes** (Total · Pagado · Pendiente · Vence · Esta
 
 #### P-62 Registrar pago
 
-Campos de 06 §4.1: proveedor, fecha (no futura), monto, medio, referencia (obligatoria para transferencia y cheque; para cheque: número, banco y fecha de cobro), comprobante (foto o PDF), observaciones, imputación **FIFO** (por defecto, `empresa.imputacion_pagos_default`) o **Manual**.
+Campos de 06 §4.1: proveedor, fecha (no futura), monto, medio, referencia (opcional; para cheque: número, banco y fecha de cobro), comprobante (foto o PDF), observaciones, imputación **FIFO** (por defecto, `empresa.imputacion_pagos_default`) o **Manual**.
 
 - Con FIFO, la vista previa muestra qué compras quedarían pagadas y el saldo a favor resultante antes de confirmar.
 - Con Manual, lista de compras pendientes con un campo de importe por compra; valida cada importe ≤ pendiente y la suma ≤ monto (RN-097).
@@ -702,7 +703,7 @@ Campos de 06 §4.1: proveedor, fecha (no futura), monto, medio, referencia (obli
 #### P-63 Ajuste y saldo inicial
 
 - **Ajuste:** tipo (`AJUSTE_DEBITO` / `AJUSTE_CREDITO`), monto, motivo obligatorio, compra relacionada (opcional; un ajuste de crédito con compra relacionada se imputa a ella). Advierte si un débito hace superar el límite.
-- **Saldo inicial:** una fila por boleta pendiente anterior al sistema (fecha de origen, número, importe, vencimiento) o una sola por el total; crea compras de tipo `SALDO_INICIAL` con su movimiento (RN-110). Una segunda carga para el mismo proveedor solo con ADMIN.
+- **Saldo inicial:** una fila por boleta pendiente anterior al sistema (fecha de origen, número, importe, vencimiento) o una sola por el total; crea compras de tipo `SALDO_INICIAL` con su movimiento (RN-110). Se pueden cargar varias para el mismo proveedor (una por boleta).
 - Permiso: `pagos.ajustar`; todo queda en `auditoria`.
 
 #### P-64 Detalle de pago
@@ -925,7 +926,8 @@ Secciones (campos de `empresa`, 03 §4.1). Ver: `configuracion.ver`. Editar: `co
 
 #### P-96 Usuarios y roles
 
-- **Usuarios:** nombre, correo o nombre de usuario, roles, estado (activo, invitación pendiente, desactivado), último acceso. Acciones: invitar por correo, crear sin correo (la contraseña inicial se muestra una sola vez), cambiar roles, desactivar / reactivar (siempre queda al menos un ADMIN activo; pide reasignar repartos y líneas de compra asignadas), forzar cambio de contraseña, reenviar invitación (02 §10).
+- **Uso real (26/09/2026):** dos personas, las dos ADMIN. La pantalla muestra nombre y usuario de cada una (y "Todavía no eligió su contraseña" si corresponde), con "Darle una clave provisoria" y "Quitarle el acceso", y "Agregar una persona" con nombre y usuario (sin roles: es ADMIN; el sistema da la clave provisoria). Lo que sigue queda para cuando haga falta alguien con acceso limitado.
+- **Usuarios:** nombre, nombre de usuario o correo, roles, estado (activo, desactivado). Acciones: crear con nombre de usuario o correo (la contraseña inicial, elegida o generada, se muestra una sola vez), cambiar roles, poner una contraseña nueva, desactivar / reactivar (siempre queda al menos un ADMIN activo; nadie se desactiva a sí mismo; cuando existan, pide reasignar repartos y líneas de compra asignadas) (02 §10).
 - **Roles:** roles de sistema y personalizados con su lista de permisos agrupados por módulo y marcados por clase de datos (O, V, C, M, F, P). En PREPARADOR y REPARTIDOR los permisos prohibidos aparecen deshabilitados con la explicación (02 §6). El rol ADMIN no se edita.
 - **Ver como…:** vista previa de las pantallas operativas como las verá un PREPARADOR o un REPARTIDOR (02 §9.2), con el banner "Viendo como PREPARADOR" (C-09). Es de solo lectura.
 

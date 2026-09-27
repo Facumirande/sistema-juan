@@ -7,26 +7,10 @@ import { auditar } from "@/db/auditoria";
 import { auditoria, empresa, rol, secuencia, usuario, usuarioRol } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import { cambiarRol, enEmpresa } from "@/db/transaccion";
-import { esErrorDeNegocio } from "@/dominio/errores";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { ROLES_SISTEMA } from "@/seguridad/roles-sistema";
 
-import { crearBaseDePrueba, crearEmpresaDePrueba, type BaseDePrueba } from "./base-de-prueba";
-
-async function codigoDeError(promesa: Promise<unknown>): Promise<string> {
-  try {
-    await promesa;
-  } catch (e) {
-    if (esErrorDeNegocio(e)) return e.codigo;
-    const mensaje = e instanceof Error ? `${e.message} ${String((e as { cause?: unknown }).cause ?? "")}` : String(e);
-    if (/row-level security/i.test(mensaje)) return "RLS";
-    if (/permission denied/i.test(mensaje)) return "PERMISO_BD";
-    if (/registro inmutable/i.test(mensaje)) return "INMUTABLE";
-    if (/check constraint/i.test(mensaje)) return "CHECK";
-    return `OTRO: ${mensaje}`;
-  }
-  return "SIN_ERROR";
-}
+import { codigoDeError, crearBaseDePrueba, crearEmpresaDePrueba, type BaseDePrueba } from "./base-de-prueba";
 
 let base: BaseDePrueba;
 let empresaA: Awaited<ReturnType<typeof crearEmpresaDePrueba>>;
@@ -50,7 +34,12 @@ describe("estructura de seguridad", () => {
                or c.relname = 'empresa')
         order by 1`),
     );
-    expect(tablas.rows.map((t) => t.tabla)).toEqual(["auditoria", "empresa", "rol", "secuencia", "usuario", "usuario_rol"]);
+    expect(tablas.rows.map((t) => t.tabla)).toEqual([
+      "auditoria", "categoria", "cliente", "compra", "compra_item", "empresa", "historial_precio_compra",
+      "imputacion_pago_proveedor", "jornada", "lista_compra", "lista_compra_item", "movimiento_cuenta_proveedor",
+      "pago_proveedor", "pedido", "pedido_item", "presentacion", "producto", "proveedor", "proveedor_producto",
+      "punto_entrega", "regla_precio", "rol", "secuencia", "usuario", "usuario_rol",
+    ]);
     for (const t of tablas.rows) expect(t, t.tabla).toMatchObject({ rls: true, forzada: true, politica: true });
   });
 

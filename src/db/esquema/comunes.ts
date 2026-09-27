@@ -1,4 +1,4 @@
-import { timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { numeric, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { empresa, usuario } from "./seguridad";
 
@@ -20,3 +20,13 @@ export function camposComunes() {
     actualizadoPor: uuid("actualizado_por").references((): AnyPgColumn => usuario.id),
   };
 }
+
+// Tipos numéricos de 03 §1.4. Drizzle los devuelve como texto: se operan con decimal.js.
+
+export const monto = (nombre: string) => numeric(nombre, { precision: 14, scale: 2 });
+
+export const precioUnitario = (nombre: string) => numeric(nombre, { precision: 14, scale: 4 });
+
+export const cantidad = (nombre: string) => numeric(nombre, { precision: 12, scale: 3 });
+
+export const porcentaje = (nombre: string) => numeric(nombre, { precision: 7, scale: 3 });

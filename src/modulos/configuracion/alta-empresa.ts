@@ -9,16 +9,23 @@ import { cambiarRol, fijarEmpresa } from "@/db/transaccion";
 import type { BaseDatos } from "@/db/tipos";
 import { NOMBRE_ROL_ADMIN, ROLES_SISTEMA, TODOS_LOS_PERMISOS } from "@/seguridad/roles-sistema";
 
+const esquemaAdministrador = z.object({
+  authUserId: z.uuid(),
+  nombre: z.string().trim().min(2).max(120),
+  email: z.email(),
+  nombreUsuario: z.string().nullish(),
+});
+
 export const esquemaAltaEmpresa = z.object({
+  /** Solo la configuración inicial lo fija (empresa principal); si no, se genera. */
+  empresaId: z.uuid().optional(),
   nombre: z.string().trim().min(2).max(120),
   pais: z.enum(["AR", "UY"]).default("AR"),
   moneda: z.enum(["ARS", "UYU"]).default("ARS"),
   zonaHoraria: z.string().trim().min(3).default("America/Argentina/Buenos_Aires"),
-  administrador: z.object({
-    authUserId: z.uuid(),
-    nombre: z.string().trim().min(2).max(120),
-    email: z.email(),
-  }),
+  administrador: esquemaAdministrador,
+  /** Más usuarios ADMIN creados junto con la empresa (ej. las dos personas que usan el sistema). */
+  otrosAdministradores: z.array(esquemaAdministrador).default([]),
 });
 
 export type DatosAltaEmpresa = z.input<typeof esquemaAltaEmpresa>;
@@ -26,16 +33,18 @@ export type DatosAltaEmpresa = z.input<typeof esquemaAltaEmpresa>;
 export interface ResultadoAltaEmpresa {
   empresaId: string;
   administradorId: string;
+  /** Todos los ADMIN creados, en el orden recibido. */
+  administradorIds: string[];
 }
 
 /**
  * Crea una empresa lista para usar: configuración con los valores por defecto,
- * numeración de todos los documentos, los 6 roles de sistema (02 §2) y su primer
- * usuario ADMIN. Corre con los roles de base sin BYPASSRLS, en una sola transacción.
+ * numeración de todos los documentos, los 6 roles de sistema (02 §2) y sus usuarios
+ * ADMIN. Corre con los roles de base sin BYPASSRLS, en una sola transacción.
  */
 export async function darDeAltaEmpresa(db: BaseDatos, datos: DatosAltaEmpresa): Promise<ResultadoAltaEmpresa> {
   const d = esquemaAltaEmpresa.parse(datos);
-  const empresaId = randomUUID();
+  const empresaId = d.empresaId ?? randomUUID();
 
   return db.transaction(async (tx) => {
     await cambiarRol(tx, "app_alta");
@@ -82,19 +91,22 @@ export async function darDeAltaEmpresa(db: BaseDatos, datos: DatosAltaEmpresa): 
     const rolAdmin = roles.find((r) => r.codigo === "ADMIN");
     if (!rolAdmin) throw new Error("No se creó el rol ADMIN.");
 
-    const [admin] = await tx
+    const administradores = [d.administrador, ...d.otrosAdministradores];
+    const creados = await tx
       .insert(usuario)
-      .values({
-        empresaId,
-        authUserId: d.administrador.authUserId,
-        nombre: d.administrador.nombre,
-        email: d.administrador.email,
-        invitacionAceptadaEn: new Date(),
-      })
+      .values(
+        administradores.map((a) => ({
+          empresaId,
+          authUserId: a.authUserId,
+          nombre: a.nombre,
+          email: a.email,
+          nombreUsuario: a.nombreUsuario ?? null,
+        })),
+      )
       .returning({ id: usuario.id });
-    if (!admin) throw new Error("No se creó el usuario administrador.");
+    if (creados.length !== administradores.length) throw new Error("No se crearon los usuarios administradores.");
 
-    await tx.insert(usuarioRol).values({ empresaId, usuarioId: admin.id, rolId: rolAdmin.id });
+    await tx.insert(usuarioRol).values(creados.map((u) => ({ empresaId, usuarioId: u.id, rolId: rolAdmin.id })));
 
     await auditar(tx, {
       empresaId,
@@ -102,10 +114,10 @@ export async function darDeAltaEmpresa(db: BaseDatos, datos: DatosAltaEmpresa): 
       accion: "CREAR",
       entidad: "empresa",
       entidadId: empresaId,
-      resumen: `Alta de la empresa "${d.nombre}" con su administrador ${d.administrador.nombre}.`,
+      resumen: `Alta de la empresa "${d.nombre}" con ${administradores.length === 1 ? `su administrador ${d.administrador.nombre}` : `${administradores.map((a) => a.nombre).join(" y ")} como administradores`}.`,
       datosDespues: { nombre: d.nombre, pais: d.pais, moneda: d.moneda, zonaHoraria: d.zonaHoraria },
     });
 
-    return { empresaId, administradorId: admin.id };
+    return { empresaId, administradorId: creados[0]!.id, administradorIds: creados.map((u) => u.id) };
   });
 }

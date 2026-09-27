@@ -2,6 +2,8 @@
 
 > **Propósito:** ordenar la construcción del sistema en fases e iteraciones que entreguen algo usable lo antes posible, con criterios de aceptación verificables, una estrategia de pruebas, la puesta en marcha con datos reales y las decisiones que el dueño tiene que tomar antes de cada etapa. Cubre la parte de "fases" y "costos de desarrollo" de R16.
 
+> **Contexto real (26/09/2026):** es un sistema de **uso interno para un solo negocio** (el del hermano del desarrollador). No se aplican el equipo, los costos, el cronograma, las demos, la aceptación firmada, la capacitación formal, las cuentas pagas ni el acompañamiento de §2, §4, §6, §8.3, §8.4, §10, §12 y §13: quedan como referencia por si el sistema se ofrece a otros. Lo que sí rige: el orden de las iteraciones (§5, sin fechas), las pruebas automáticas (§7) y la carga de datos (§8.1 y §8.2). Las decisiones de §11 están todas tomadas.
+
 ## Contenido
 
 1. [Resumen](#1-resumen)
@@ -103,7 +105,7 @@ Cada iteración termina con: código publicado en staging, pruebas automáticas 
 | Operación | Entornos (local, preview, producción), Sentry, backups diarios, respaldo lógico semanal (01 §14), ventana de publicación. |
 | Reglas | RN-144 a RN-152 (base). |
 
-**Aceptación:** casos 10 a 14 de 02 §12; prueba con dos empresas en la que ningún listado muestra datos de la otra; la auditoría no se puede modificar ni borrar con el rol de la aplicación; invitación por correo y alta sin correo funcionando.
+**Aceptación:** casos 10 a 14 de 02 §12; prueba con dos empresas en la que ningún listado muestra datos de la otra; la auditoría no se puede modificar ni borrar con el rol de la aplicación; configuración inicial desde la app y alta de usuarios con nombre de usuario o correo desde la pantalla Usuarios (sin invitaciones por correo).
 
 ### I2 · Catálogo, clientes, proveedores y precios de compra (3 semanas · 200 a 260 h)
 
@@ -388,14 +390,14 @@ Ninguna de estas funciones fue pedida explícitamente; se ordenan según su valo
 |---|---|---|---|---|
 | D-01 | País de operación y moneda | Inicio de I1 | Formatos, zona horaria, IVA, facturación fiscal (fase 3) | **Resuelta:** Argentina, `ARS` (24/09/2026). |
 | D-02 | Nombre comercial del sistema y dominio | Fin de F0 | Dominio, correos, encabezado de documentos | **Resuelta:** sin nombre comercial, sistema de uso interno (24/09/2026). |
-| D-03 | Valores por defecto de los parámetros (PARAMETROS §11) | Inicio de I3 (precios) e I4 (compras) | Cálculo de precios y alertas | Los de 03 §4.1 (recargo global 30 %, estrategia `PREFERIDO`, redondeo al $1 más cercano, margen mínimo 15 %, precios sin IVA, 7 días, 30 %). |
-| D-04 | Precios de venta con o sin IVA; alícuotas por producto; si el IVA de compras se computa | Inicio de I3 | Cálculo de precios y totales de DOC-03 y DOC-08 | Consultar con el contador. |
-| D-05 | Cancelar un pedido que ya está en preparación (caso 33 de 07) | Inicio de I6 | Estados del pedido | Mantener el contrato (entrega con cantidad 0) en el MVP; evaluar un permiso específico después del piloto. |
-| D-06 | Envío automático de DOC-03 por correo al confirmar cada entrega | Inicio de I6 | Configuración y correo | Envío manual en el MVP (09 §7.3); automático PROPUESTO. |
-| D-07 | Copias de DOC-02 (una u dos) | Inicio de I6 | Impresión | Dos copias: original para el cliente y duplicado firmado para la empresa (09, DOC-02). |
-| D-08 | Volumen real: clientes, productos, proveedores, pedidos por día, usuarios | F0 | Dimensionamiento y estimación | — |
-| D-09 | Adelantar el modo offline a una fase 1b | Hito R1 | Calendario de la fase 2 | Decidir con los datos del piloto de compras. |
-| D-10 | Equipo de desarrollo y presupuesto | F0 | Todo el calendario | Equipo de §2. |
+| D-03 | Valores por defecto de los parámetros (PARAMETROS §11) | Inicio de I3 (precios) e I4 (compras) | Cálculo de precios y alertas | **Resuelta:** los de 03 §4.1 (recargo global 30 %, estrategia `PREFERIDO`, redondeo al $1 más cercano, margen mínimo 15 %, 7 días, 30 %), cambiables desde la configuración (26/09/2026). |
+| D-04 | Precios de venta con o sin IVA; alícuotas por producto; si el IVA de compras se computa | Inicio de I3 | Cálculo de precios y totales de DOC-03 y DOC-08 | **Resuelta:** sin IVA, alícuota 0 %, IVA de compras no computado; sin consulta al contador porque no hay facturación fiscal (26/09/2026). |
+| D-05 | Cancelar un pedido que ya está en preparación (caso 33 de 07) | Inicio de I6 | Estados del pedido | **Resuelta:** se mantiene el contrato (entrega con cantidad 0) (26/09/2026). |
+| D-06 | Envío automático de DOC-03 por correo al confirmar cada entrega | Inicio de I6 | Configuración y correo | **Resuelta:** envío manual (09 §7.3) (26/09/2026). |
+| D-07 | Copias de DOC-02 (una u dos) | Inicio de I6 | Impresión | **Resuelta:** dos copias, original para el cliente y duplicado firmado (26/09/2026). |
+| D-08 | Volumen real: clientes, productos, proveedores, pedidos por día, usuarios | F0 | Dimensionamiento y estimación | **Resuelta:** negocio chico; no se releva (26/09/2026). |
+| D-09 | Adelantar el modo offline a una fase 1b | Hito R1 | Calendario de la fase 2 | **Resuelta:** no por ahora; se revisa si falta señal en el mercado (26/09/2026). |
+| D-10 | Equipo de desarrollo y presupuesto | F0 | Todo el calendario | **No aplica:** desarrollo propio con Claude, sin presupuesto (26/09/2026). |
 
 Cada decisión tomada se registra en `PARAMETROS-DEL-PROYECTO.md` y en el documento del plan afectado.
 

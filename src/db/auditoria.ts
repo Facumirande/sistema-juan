@@ -39,3 +39,21 @@ export async function auditar(tx: Transaccion, registro: RegistroAuditoria): Pro
     requestId: registro.requestId ?? null,
   });
 }
+
+/** Solo los campos que cambiaron, para `datos_antes` y `datos_despues`. */
+export function diferencias<T extends Record<string, unknown>>(
+  antes: T,
+  despues: Partial<T>,
+): { datosAntes: Record<string, unknown>; datosDespues: Record<string, unknown>; hayCambios: boolean } {
+  const datosAntes: Record<string, unknown> = {};
+  const datosDespues: Record<string, unknown> = {};
+  for (const [clave, valor] of Object.entries(despues)) {
+    if (valor === undefined) continue;
+    const previo = antes[clave];
+    if (JSON.stringify(previo ?? null) !== JSON.stringify(valor ?? null)) {
+      datosAntes[clave] = previo ?? null;
+      datosDespues[clave] = valor ?? null;
+    }
+  }
+  return { datosAntes, datosDespues, hayCambios: Object.keys(datosDespues).length > 0 };
+}

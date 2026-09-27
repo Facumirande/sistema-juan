@@ -1,2 +1,7 @@
 export * from "./enums";
 export * from "./seguridad";
+export * from "./catalogo";
+export * from "./proveedores";
+export * from "./clientes";
+export * from "./pedidos";
+export * from "./compras";
