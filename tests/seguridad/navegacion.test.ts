@@ -13,14 +13,16 @@ describe("menú por permisos (08 §2.2)", () => {
 
   it("el REPARTIDOR ve su reparto, entregas y sus documentos, nada con precios ni deudas (08 §6)", () => {
     const menu = menuPara(ROLES_SISTEMA.REPARTIDOR.porDefecto);
-    expect(menu.map((g) => g.grupo)).toEqual(["Inicio", "Operación del día", "Administración"]);
-    expect(menu[1]?.items.map((i) => i.etiqueta)).toEqual(["Jornadas", "Mi reparto", "Entregas"]);
-    expect(menu[2]?.items.map((i) => i.etiqueta)).toEqual(["Documentos emitidos"]);
+    expect(menu.map((g) => g.grupo)).toEqual(["Día de trabajo", "Cada paso por separado"]);
+    expect(menu[0]?.items.map((i) => i.etiqueta)).toEqual(["Hoy", "Mi reparto", "Todos los días"]);
+    expect(menu[1]?.items.map((i) => i.etiqueta)).toEqual(["Entregas", "Documentos emitidos"]);
   });
 
   it("el VENDEDOR no ve proveedores, precios de compra ni configuración", () => {
     const grupos = menuPara(ROLES_SISTEMA.VENDEDOR.porDefecto).map((g) => g.grupo);
-    expect(grupos).toEqual(["Inicio", "Operación del día", "Comercial", "Administración"]);
+    expect(grupos).toEqual(["Día de trabajo", "Registros", "Cada paso por separado"]);
+    const registros = menuPara(ROLES_SISTEMA.VENDEDOR.porDefecto).find((g) => g.grupo === "Registros");
+    expect(registros?.items.map((i) => i.etiqueta)).toEqual(["Clientes", "Productos"]);
   });
 
   it("con todos los permisos se ven todos los grupos", () => {

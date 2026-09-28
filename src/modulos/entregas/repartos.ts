@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
@@ -166,28 +166,43 @@ export async function proponerOrden(db: BaseDatos, authUserId: string, repartoId
   });
 }
 
+async function emitirLosQueFaltan(tx: Transaccion, c: ContextoUsuario, donde: SQL | undefined, soloPreparadas: boolean): Promise<{ emitidas: number; problemas: string[] }> {
+  const entregas = await tx
+    .select({ id: entrega.id, numero: entrega.numero, estado: entrega.estado, version: entrega.version, cliente: cliente.nombre })
+    .from(entrega)
+    .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+    .where(and(donde, ne(entrega.estado, "ANULADA")))
+    .orderBy(asc(cliente.nombre));
+  let emitidas = 0;
+  const problemas: string[] = [];
+  for (const e of entregas) {
+    if (e.estado !== "PREPARADA" && e.estado !== "EN_REPARTO") {
+      if (!soloPreparadas) problemas.push(`${e.cliente}: todavía no está preparada.`);
+      continue;
+    }
+    if (await documentosAlDia(tx, e.id, e.version)) continue;
+    const res: ResultadoEmision = await emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true });
+    if (res.resultado === "EMITIDOS") emitidas++;
+    if (res.resultado === "SIN_PRECIO") problemas.push(`${e.cliente}: falta precio de ${res.productos.join(", ")}.`);
+  }
+  return { emitidas, problemas };
+}
+
 /** Emite los documentos que falten de las entregas preparadas del reparto (P-76). */
 export async function emitirDocumentosDelReparto(db: BaseDatos, authUserId: string, repartoId: string): Promise<{ emitidas: number; problemas: string[] }> {
   return ejecutarComoUsuario(db, authUserId, "entregas.emitir_documentos", async (tx, c) => {
     const { r } = await repartoBloqueado(tx, repartoId);
-    const entregas = await tx
-      .select({ id: entrega.id, numero: entrega.numero, estado: entrega.estado, version: entrega.version, cliente: cliente.nombre })
-      .from(entrega)
-      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-      .where(and(eq(entrega.repartoId, r.id), ne(entrega.estado, "ANULADA")));
-    let emitidas = 0;
-    const problemas: string[] = [];
-    for (const e of entregas) {
-      if (e.estado !== "PREPARADA" && e.estado !== "EN_REPARTO") {
-        problemas.push(`${e.cliente}: todavía no está preparada.`);
-        continue;
-      }
-      if (await documentosAlDia(tx, e.id, e.version)) continue;
-      const res: ResultadoEmision = await emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true });
-      if (res.resultado === "EMITIDOS") emitidas++;
-      if (res.resultado === "SIN_PRECIO") problemas.push(`${e.cliente}: falta precio de ${res.productos.join(", ")}.`);
-    }
-    return { emitidas, problemas };
+    return emitirLosQueFaltan(tx, c, eq(entrega.repartoId, r.id), false);
+  });
+}
+
+/** Emite los documentos que falten de todas las entregas preparadas del día (pantalla "Hoy"). */
+export async function emitirDocumentosDelDia(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<{ emitidas: number; problemas: string[] }> {
+  return ejecutarComoUsuario(db, authUserId, "entregas.emitir_documentos", async (tx, c) => {
+    const j = await jornadaDeFecha(tx, fecha);
+    if (!j) return { emitidas: 0, problemas: [] };
+    exigirJornadaAbierta(j);
+    return emitirLosQueFaltan(tx, c, eq(entrega.jornadaId, j.id), true);
   });
 }
 

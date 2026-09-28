@@ -64,16 +64,17 @@ Documentos relacionados: `01-tipo-de-aplicacion-y-arquitectura.md` (enfoque mobi
 
 ### 2.2 Menú por grupos (PC)
 
+**Decisión del 28/09/2026 (uso interno):** la pantalla principal es **Hoy** (P-02), que lleva el día de trabajo paso a paso; los datos que se cargan de vez en cuando (clientes, productos, proveedores, precios) van aparte en **Registros**, y las cuentas con el balance en su propio grupo. Cada paso del día sigue teniendo su pantalla, en un grupo plegado para ir directo.
+
 | Grupo | Pantallas | Visible si el usuario tiene… |
 |---|---|---|
-| Inicio | Tablero | Sesión iniciada |
-| Operación del día | Pedidos · Jornadas · Lista de compra · Compras · Preparación · Repartos · Entregas | El permiso de ver de cada pantalla |
-| Comercial | Clientes · Productos · Precios de venta | `clientes.ver` · `productos.ver` · `precios.ver_margenes` |
-| Proveedores | Proveedores · Precios de compra · Cuentas de proveedores | `proveedores.ver` · `precios.ver_costos` · `pagos.ver` |
-| Administración | Facturación · Reportes · Documentos emitidos | `facturacion.ver` · `reportes.ver` · algún permiso `documentos.*` |
-| Configuración | Empresa · Usuarios y roles · Auditoría | `configuracion.ver` · `usuarios.administrar` · `auditoria.ver` |
+| Día de trabajo | Hoy · Mi reparto · Todos los días (jornadas) | Sesión · `repartos.ver_propios` · `jornada.ver` |
+| Registros | Clientes · Productos · Proveedores · Precios de compra · Precios de venta | `clientes.ver` · `productos.ver` · `proveedores.ver` · `precios.ver_costos` · `precios.ver_margenes` |
+| Cuentas y balance | Balance · Movimientos · Deudas con proveedores · Facturación · Reportes | `reportes.ver` · `reportes.ver` · `pagos.ver` · `facturacion.ver` · `reportes.ver` |
+| Cada paso por separado (plegado) | Pedidos · Lista de compra · Compras · Preparación · Repartos · Entregas · Documentos emitidos | El permiso de ver de cada pantalla |
+| Configuración | Empresa · Usuarios · Auditoría | `configuracion.ver` · `usuarios.administrar` · `auditoria.ver` |
 
-Los grupos sin ninguna pantalla visible no aparecen. En **modo usuario único** (02 §9.2) el grupo "Operación del día" se muestra primero y en el orden del circuito: Pedidos → Lista de compra → Compras → Preparación → Entregas → Documentos → Pagos.
+Los grupos sin ninguna pantalla visible no aparecen. (Menú original del plan: Inicio · Operación del día · Comercial · Proveedores · Administración · Configuración.) En **modo usuario único** (02 §9.2) el grupo "Operación del día" se muestra primero y en el orden del circuito: Pedidos → Lista de compra → Compras → Preparación → Entregas → Documentos → Pagos.
 
 ### 2.3 Barra inferior del celular por rol
 
@@ -124,7 +125,7 @@ Enfoque: **M** = mobile-first; **D** = desktop-first (usable en celular); **M/D*
 | ID | Pantalla | Ruta | Módulo | Enfoque | Permiso para abrir | Datos | Fase |
 |---|---|---|---|---|---|---|---|
 | P-01 | Ingreso y configuración inicial | `/login`, `/configuracion-inicial` | M18 | M/D | Pública | — | MVP |
-| P-02 | Tablero | `/inicio` | M16 | M/D | Sesión | O +V +C +M +F | MVP |
+| P-02 | Hoy (día de trabajo paso a paso) | `/inicio`, `/inicio?fecha=` | M16 | M | Sesión | O +V +C +F | MVP |
 | P-03 | Mi cuenta | `/mi-cuenta` | M18 | M/D | Sesión | P (propios) | MVP |
 | P-10 | Productos | `/productos` | M01 | D | `productos.ver` | O | MVP |
 | P-11 | Ficha de producto | `/productos/[id]` | M01 | D | `productos.ver` | O +C +V +M | MVP |
@@ -174,6 +175,8 @@ Enfoque: **M** = mobile-first; **D** = desktop-first (usable en celular); **M/D*
 | P-87 | Detalle de comprobante | `/facturacion/[id]` | M13 | D | `facturacion.ver` | V | MVP |
 | P-88 | Exportar para el contador | `/facturacion/exportar` | M13 | D | `facturacion.exportar` | V C F | MVP |
 | P-90 | Reportes | `/reportes`, `/reportes/[codigo]` | M16 | D | `reportes.ver` | según reporte | MVP básico |
+| P-91 | Balance (gráficos en el tiempo) | `/balance` | M16 | D | `reportes.ver` | V C M F | MVP (uso interno) |
+| P-93 | Movimientos (registro) | `/balance/movimientos` | M16 | D | `reportes.ver` | V C F | MVP (uso interno) |
 | P-92 | Documentos emitidos | `/documentos` | M12 | D | Algún permiso `documentos.imprimir_*` | según documento | MVP |
 | P-95 | Configuración de la empresa | `/configuracion` | M17 | D | `configuracion.ver` | M | MVP |
 | P-96 | Usuarios y roles | `/usuarios` | M18 | D | `usuarios.administrar` | P | MVP |
@@ -218,9 +221,23 @@ Formato de cada pantalla: **quién la usa**, **qué muestra** y una tabla de **a
 - Sin invitaciones ni recuperación por correo (decisión del 26/09/2026): el ADMIN crea las cuentas y pone contraseñas nuevas.
 - Después del primer ingreso en el celular: sugerencia de **instalar la app** (PWA) con instrucciones para Android y iPhone.
 
-#### P-02 Tablero
+#### P-02 Hoy (día de trabajo paso a paso)
 
-Una sola pantalla que cambia según los permisos. Se arma con vistas (no depende de la tarea programada, 01 §6.4).
+**Como quedó construida (28/09/2026, uso interno).** Es la pantalla con la que arranca el día. Arriba, los avisos (personas esperando acceso, deuda vencida o por vencer con proveedores); después, los días cercanos para elegir (ayer, hoy, mañana y las jornadas sin cerrar), el día elegido con su barra de avance, y los **siete pasos** en orden:
+
+| Paso | Hecho cuando… | Acción principal desde "Hoy" |
+|---|---|---|
+| 1. Pedidos | hay pedidos confirmados y ninguno en borrador | **Cargar pedido** (elegir el cliente y abre el pedido) · ver los pedidos |
+| 2. Lista de compra | la lista está armada y al día | **Armar / actualizar la lista** · ver · imprimir (DOC-01) |
+| 3. Compras en el mercado | todas las líneas de la lista están compradas o no conseguidas | **Registrar una compra** · lista por puesto · precios en el puesto |
+| 4. Preparación | todas las entregas están preparadas | **Empezar a preparar** o seguir · hoja de preparación (DOC-07) |
+| 5. Remitos | todas las entregas tienen DOC-02 y DOC-03 de su versión vigente | **Hacer los que faltan** · imprimir todos los remitos juntos (`/entregas/remitos`, una o dos copias) o todas las listas contables |
+| 6. Reparto y entrega | todas las entregas están entregadas | **Armar el reparto** · confirmar entregas |
+| 7. Cierre del día | la jornada está cerrada | **Revisar y cerrar el día** · ver el resumen |
+
+El paso que toca ("Ahora") se muestra abierto, con una explicación corta y sus botones; los demás, en una línea con su estado (Listo, En curso, Falta, Salteado) y se abren al tocarlos. Un paso que nunca se empezó cuando ya arrancó uno posterior figura como **salteado** (por ejemplo, preparar sin haber armado la lista); uno que quedó a medias sigue **en curso** pero deja de ser el que toca si ya se terminó uno posterior. Sin elegir fecha, se muestra la jornada más temprana desde ayer que ya arrancó o tiene pedidos confirmados y no está cerrada; si no hay, el día para el que se toman pedidos. La lógica está en `src/dominio/jornadas/pasos.ts`.
+
+**Plan original (referencia).** Una sola pantalla que cambia según los permisos. Se arma con vistas (no depende de la tarea programada, 01 §6.4).
 
 | Bloque | Contenido | Quién lo ve |
 |---|---|---|
@@ -900,6 +917,18 @@ Cada reporte tiene filtros de período y dimensión, tabla, gráfico simple cuan
 | R-09 | Faltantes, sobrantes y diferencias | Productos no conseguidos, faltantes por cliente, sobrantes por jornada (cantidad; valorizado al costo con `precios.ver_costos`), diferencias y rechazos por motivo. | O (+C) |
 | R-10 | Productos y clientes | Para cada producto: clientes, cantidades y frecuencia (la consulta de R14). | O (+V) |
 | R-11 | Pedidos | Por cliente, canal y día de la semana; pedidos tardíos; clientes habituales sin pedido. | O |
+
+#### P-91 Balance (uso interno, 28/09/2026)
+
+Lo vendido, lo comprado, la ganancia y la deuda con proveedores a lo largo del tiempo. Filtros en una fila: últimos 30 días, este mes, últimos 3 meses, este año, o desde/hasta, y agrupar por día, semana (de lunes a domingo) o mes (se sugiere según el largo del período).
+
+- **Cifras:** vendido (entregas confirmadas, por su día de entrega), ganancia y % sobre lo vendido, comprado (mercadería de las jornadas), pagado a proveedores en el período, deuda con proveedores hoy y lo entregado sin facturar.
+- **Gráficos**, cada uno con su tabla ("Ver tabla") y un recuadro con los valores al pasar el dedo o el mouse: ventas y compras (dos líneas en el mismo eje), ganancia por período (columnas: azul si ganó, rojo si perdió), deuda con proveedores al final de cada período (línea), clientes que más compraron y productos más vendidos (barras con lo que ganó cada uno).
+- Cada importe respeta los permisos de precios (sin `precios.ver_venta` no se ve lo vendido; la ganancia pide `precios.ver_costos` y `precios.ver_margenes`; la deuda, `proveedores.ver_credito`).
+
+#### P-93 Movimientos (uso interno, 28/09/2026)
+
+Registro de lo que pasó en el período, del más nuevo al más viejo: ventas (entregas confirmadas), compras, pagos a proveedores y ajustes de sus cuentas, sin lo anulado. Filtro por tipo y fechas, totales por tipo arriba, cada fila lleva a su documento, e **Imprimir**. Muestra hasta 500 filas.
 
 #### P-92 Documentos emitidos
 

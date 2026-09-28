@@ -12,46 +12,56 @@ export interface ItemMenu {
 
 export interface GrupoMenu {
   grupo: string;
+  /** Grupo secundario: se muestra cerrado y se abre al tocarlo. */
+  plegado?: true;
   items: readonly ItemMenu[];
 }
 
-/** Menú por grupos de 08 §2.2. */
+/**
+ * Menú por grupos (08 §2.2, reorganizado para el uso interno): arriba el día de trabajo (la
+ * pantalla "Hoy" lleva paso a paso por pedidos, compras, preparación, remitos y entregas);
+ * aparte, los registros (datos de clientes, productos, proveedores y precios), las cuentas con el
+ * balance, y cada paso del día por separado para ir directo.
+ */
 export const MENU: readonly GrupoMenu[] = [
-  { grupo: "Inicio", items: [{ pantalla: "P-02", etiqueta: "Tablero", ruta: "/inicio", permisos: [] }] },
   {
-    grupo: "Operación del día",
+    grupo: "Día de trabajo",
     items: [
-      { pantalla: "P-40", etiqueta: "Pedidos", ruta: "/pedidos", permisos: ["pedidos.ver"] },
-      { pantalla: "P-45", etiqueta: "Jornadas", ruta: "/jornadas", permisos: ["jornada.ver"] },
-      { pantalla: "P-50", etiqueta: "Lista de compra", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
-      { pantalla: "P-56", etiqueta: "Compras", ruta: "/compras", permisos: ["compras.ver"] },
-      { pantalla: "P-70", etiqueta: "Preparación", ruta: "/preparacion", permisos: ["preparacion.ver"] },
-      { pantalla: "P-75", etiqueta: "Repartos", ruta: "/repartos", permisos: ["repartos.ver"] },
+      { pantalla: "P-02", etiqueta: "Hoy", ruta: "/inicio", permisos: [] },
       { pantalla: "P-77", etiqueta: "Mi reparto", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"] },
-      { pantalla: "P-79", etiqueta: "Entregas", ruta: "/entregas", permisos: ["entregas.ver"] },
+      { pantalla: "P-45", etiqueta: "Todos los días", ruta: "/jornadas", permisos: ["jornada.ver"] },
     ],
   },
   {
-    grupo: "Comercial",
+    grupo: "Registros",
     items: [
       { pantalla: "P-15", etiqueta: "Clientes", ruta: "/clientes", permisos: ["clientes.ver"] },
       { pantalla: "P-10", etiqueta: "Productos", ruta: "/productos", permisos: ["productos.ver"] },
+      { pantalla: "P-20", etiqueta: "Proveedores", ruta: "/proveedores", permisos: ["proveedores.ver"] },
+      { pantalla: "P-25", etiqueta: "Precios de compra", ruta: "/precios/compra", permisos: ["precios.ver_costos"] },
       { pantalla: "P-32", etiqueta: "Precios de venta", ruta: "/precios/venta", permisos: ["precios.ver_margenes"] },
     ],
   },
   {
-    grupo: "Proveedores",
+    grupo: "Cuentas y balance",
     items: [
-      { pantalla: "P-20", etiqueta: "Proveedores", ruta: "/proveedores", permisos: ["proveedores.ver"] },
-      { pantalla: "P-25", etiqueta: "Precios de compra", ruta: "/precios/compra", permisos: ["precios.ver_costos"] },
+      { pantalla: "P-91", etiqueta: "Balance", ruta: "/balance", permisos: ["reportes.ver"] },
+      { pantalla: "P-93", etiqueta: "Movimientos", ruta: "/balance/movimientos", permisos: ["reportes.ver"] },
       { pantalla: "P-60", etiqueta: "Deudas con proveedores", ruta: "/cuentas-proveedores", permisos: ["pagos.ver"] },
+      { pantalla: "P-85", etiqueta: "Facturación", ruta: "/facturacion", permisos: ["facturacion.ver"] },
+      { pantalla: "P-90", etiqueta: "Reportes", ruta: "/reportes", permisos: ["reportes.ver"] },
     ],
   },
   {
-    grupo: "Administración",
+    grupo: "Cada paso por separado",
+    plegado: true,
     items: [
-      { pantalla: "P-85", etiqueta: "Facturación", ruta: "/facturacion", permisos: ["facturacion.ver"] },
-      { pantalla: "P-90", etiqueta: "Reportes", ruta: "/reportes", permisos: ["reportes.ver"] },
+      { pantalla: "P-40", etiqueta: "Pedidos", ruta: "/pedidos", permisos: ["pedidos.ver"] },
+      { pantalla: "P-50", etiqueta: "Lista de compra", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
+      { pantalla: "P-56", etiqueta: "Compras", ruta: "/compras", permisos: ["compras.ver"] },
+      { pantalla: "P-70", etiqueta: "Preparación", ruta: "/preparacion", permisos: ["preparacion.ver"] },
+      { pantalla: "P-75", etiqueta: "Repartos", ruta: "/repartos", permisos: ["repartos.ver"] },
+      { pantalla: "P-79", etiqueta: "Entregas", ruta: "/entregas", permisos: ["entregas.ver"] },
       {
         pantalla: "P-92",
         etiqueta: "Documentos emitidos",
@@ -75,7 +85,7 @@ export const MENU: readonly GrupoMenu[] = [
 export function menuPara(permisos: readonly Permiso[]): GrupoMenu[] {
   const propios = new Set(permisos);
   return MENU.map((g) => ({
-    grupo: g.grupo,
+    ...g,
     items: g.items.filter((i) => i.permisos.length === 0 || i.permisos.some((p) => propios.has(p))),
   })).filter((g) => g.items.length > 0);
 }
@@ -83,6 +93,6 @@ export function menuPara(permisos: readonly Permiso[]): GrupoMenu[] {
 /** Lo que se muestra en el menú: solo las pantallas que ya existen (sin "próximamente"). */
 export function menuDisponible(permisos: readonly Permiso[]): GrupoMenu[] {
   return menuPara(permisos)
-    .map((g) => ({ grupo: g.grupo, items: g.items.filter((i) => !i.enConstruccion) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => !i.enConstruccion) }))
     .filter((g) => g.items.length > 0);
 }

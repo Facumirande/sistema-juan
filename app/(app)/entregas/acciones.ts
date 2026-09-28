@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { anularEntrega, confirmarEntrega, corregirEntrega, emitirDocumentos } from "@/modulos/entregas/entregas";
+import { emitirDocumentosDelDia } from "@/modulos/entregas/repartos";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
@@ -61,5 +62,14 @@ export async function anularEntregaAccion(_estado: EstadoAccion, datos: FormData
   return ejecutarAccion(async ({ db, authUserId }) => {
     await anularEntrega(db, authUserId, { entregaId: campo(datos, "entregaId"), motivo: campo(datos, "motivo") });
     return { ok: true, mensaje: "Entrega anulada. Sus pedidos vuelven a preparación para armarse de nuevo." };
+  });
+}
+
+/** Pantalla "Hoy": hace los remitos que falten de las entregas preparadas del día. */
+export async function emitirRemitosDelDiaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const r = await emitirDocumentosDelDia(db, authUserId, campo(datos, "fecha"));
+    const texto = r.emitidas ? `Remitos hechos: ${r.emitidas}.` : "No había remitos para hacer.";
+    return r.problemas.length ? { ok: false, mensaje: `${texto} ${r.problemas.join(" ")}` } : { ok: true, mensaje: texto };
   });
 }

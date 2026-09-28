@@ -4,26 +4,43 @@ import { redirect } from "next/navigation";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
+function Items({ grupo }: { grupo: GrupoMenu }) {
+  return grupo.items.map((item) =>
+    item.enConstruccion ? (
+      <span key={item.pantalla} className="flex min-h-11 items-center justify-between rounded-lg px-3 text-texto-suave">
+        {item.etiqueta}
+        <span className="text-xs">próximamente</span>
+      </span>
+    ) : (
+      <Link key={item.pantalla} href={item.ruta} className="flex min-h-11 items-center rounded-lg px-3 font-medium hover:bg-fondo">
+        {item.etiqueta}
+      </Link>
+    ),
+  );
+}
+
 function Menu({ grupos }: { grupos: GrupoMenu[] }) {
+  const titulo = "px-3 text-xs font-semibold uppercase tracking-wide text-texto-suave";
   return (
     <nav aria-label="Menú principal" className="flex flex-col gap-5">
-      {grupos.map((g) => (
-        <div key={g.grupo} className="flex flex-col gap-1">
-          <p className="px-3 text-xs font-semibold uppercase tracking-wide text-texto-suave">{g.grupo}</p>
-          {g.items.map((item) =>
-            item.enConstruccion ? (
-              <span key={item.pantalla} className="flex min-h-11 items-center justify-between rounded-lg px-3 text-texto-suave">
-                {item.etiqueta}
-                <span className="text-xs">próximamente</span>
-              </span>
-            ) : (
-              <Link key={item.pantalla} href={item.ruta} className="flex min-h-11 items-center rounded-lg px-3 font-medium hover:bg-fondo">
-                {item.etiqueta}
-              </Link>
-            ),
-          )}
-        </div>
-      ))}
+      {grupos.map((g) =>
+        g.plegado ? (
+          <details key={g.grupo} className="group flex flex-col gap-1">
+            <summary className={`${titulo} flex min-h-9 cursor-pointer list-none items-center justify-between`}>
+              {g.grupo}
+              <span aria-hidden className="text-base transition-transform group-open:rotate-90">›</span>
+            </summary>
+            <div className="mt-1 flex flex-col gap-1">
+              <Items grupo={g} />
+            </div>
+          </details>
+        ) : (
+          <div key={g.grupo} className="flex flex-col gap-1">
+            <p className={titulo}>{g.grupo}</p>
+            <Items grupo={g} />
+          </div>
+        ),
+      )}
     </nav>
   );
 }
@@ -66,7 +83,9 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-14 items-center justify-between gap-3 border-b border-borde bg-superficie px-4 print:hidden">
-          <span className="font-semibold">Sistema Juan</span>
+          <Link href="/inicio" className="flex min-h-11 items-center font-semibold">
+            Sistema Juan
+          </Link>
           <div className="flex items-center gap-3">
             <Link href="/mi-cuenta" className="flex min-h-11 items-center font-medium underline-offset-4 hover:underline">
               {sesion.nombre}

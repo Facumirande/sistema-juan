@@ -9,6 +9,12 @@
   --marca: #2f7d32;
   --marca-texto: #ffffff;
   --error: #b3261e;
+  /* Gráficos (paleta validada para superficie blanca): series, grilla y línea de base. */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-negativa: #e34948;
+  --grilla: #e1e0d9;
+  --base-grafico: #c3c2b7;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,6 +27,11 @@
     --marca: #66bb6a;
     --marca-texto: #0d1a0e;
     --error: #f2b8b5;
+    --serie-1: #3987e5;
+    --serie-2: #d95926;
+    --serie-negativa: #e66767;
+    --grilla: #2c2c2a;
+    --base-grafico: #383835;
   }
 }
 
@@ -33,6 +44,11 @@
   --color-marca: var(--marca);
   --color-marca-texto: var(--marca-texto);
   --color-error: var(--error);
+  --color-serie-1: var(--serie-1);
+  --color-serie-2: var(--serie-2);
+  --color-serie-negativa: var(--serie-negativa);
+  --color-grilla: var(--grilla);
+  --color-base-grafico: var(--base-grafico);
   --font-sans: var(--font-geist-sans);
 }
 
