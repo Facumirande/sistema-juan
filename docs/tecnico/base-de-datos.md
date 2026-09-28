@@ -52,6 +52,13 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 - La cuenta ve su propio estado con la política `usuario_propio` (`src/modulos/usuarios/acceso.ts`).
 - Pendiente de una migración futura: renombrar esas dos columnas a `acceso_pedido_en` / `acceso_aprobado_en`.
 
+## Iteración 7: facturación, cierre de jornada y reportes
+
+- Migraciones `0011_facturacion` (tablas `factura` y `factura_entrega`) y `0012_facturacion_rls`: aislamiento de las dos tablas; un comprobante solo admite `UPDATE` de estado, anulación, `exportada_en`, `pdf_path` y observaciones; de `factura_entrega` solo `activa`. Índice único parcial: una entrega en un solo comprobante vigente.
+- `src/modulos/facturacion/facturacion.ts` emite el comprobante (automático al confirmar para clientes `POR_ENTREGA`, o por período) y lo anula; `exportacion.ts` arma las seis hojas para el contador y `src/lib/planilla.ts` escribe el .xlsx (o los CSV en .zip) con `fflate`, con fecha fija en el zip para que el mismo período dé los mismos bytes.
+- El resumen del día es una función pura (`src/dominio/jornadas/resumen.ts`) probada con los números de 04 §5.h; `src/modulos/jornadas/cierre.ts` junta los datos, valida (RN-040) y lo guarda en `jornada.resumen` al cerrar.
+- Reportes básicos en `src/modulos/reportes/reportes.ts`; los importes dependen de los permisos de precios.
+
 ## Iteración 6: preparación, repartos, entregas y documentos
 
 - Migraciones `0009_entregas_y_repartos` (tablas) y `0010_entregas_rls`: aislamiento de las 4 tablas; `documento_emitido` solo admite `UPDATE` de estado, anulación, `pdf_path`, `pdf_sha256` y `enviado_a` (lo emitido no cambia). Una entrega vigente por cliente, punto y jornada (índice único parcial); el reparto de una entrega es de su misma jornada (FK compuesta `empresa_id, jornada_id, reparto_id`); nunca se entrega más de lo preparado (check).

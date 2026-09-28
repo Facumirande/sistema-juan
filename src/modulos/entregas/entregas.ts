@@ -16,6 +16,7 @@ import { textoOpcional, validar } from "@/modulos/validacion";
 import { configuracionEmpresa, entregaBloqueada, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto } from "./comun";
 import { documentosAlDia, documentosDeEntrega, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ContenidoListaContable, type ContenidoListaEntrega, type ResultadoEmision } from "./documentos";
 import { finalizarSiCorresponde } from "./repartos";
+import { facturarAlConfirmar } from "@/modulos/facturacion/facturacion";
 
 // Entregas (04 §5.f): confirmación, diferencias, correcciones y anulación (RN-120 a RN-135).
 
@@ -292,7 +293,11 @@ async function aplicarEntregado(tx: Transaccion, c: ContextoUsuario, entregaId: 
  * con quién recibió y la hora del servidor; los pedidos, ENTREGADO. Con diferencias, versión nueva y
  * reemisión de los documentos con lo entregado.
  */
-export async function confirmarEntrega(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaConfirmacion>): Promise<{ documentos: ResultadoEmision | null; conDiferencias: boolean }> {
+export async function confirmarEntrega(
+  db: BaseDatos,
+  authUserId: string,
+  datos: z.input<typeof esquemaConfirmacion>,
+): Promise<{ documentos: ResultadoEmision | null; conDiferencias: boolean; factura: string | null }> {
   const d = validar(esquemaConfirmacion, datos);
   return ejecutarComoUsuario(db, authUserId, "entregas.confirmar", async (tx, c) => {
     const e = await entregaBloqueada(tx, d.entregaId);
@@ -325,7 +330,9 @@ export async function confirmarEntrega(db: BaseDatos, authUserId: string, datos:
     if (e.version === 0) documentos = await emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true });
     else if (conDiferencias) documentos = await reemitirSiCorresponde(tx, c, e.id);
     await finalizarSiCorresponde(tx, c, e.repartoId);
-    return { documentos, conDiferencias };
+    // Clientes que facturan por entrega: el comprobante sale solo (RN-143).
+    const factura = await facturarAlConfirmar(tx, c, e.id);
+    return { documentos, conDiferencias, factura };
   });
 }
 

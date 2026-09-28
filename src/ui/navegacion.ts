@@ -50,8 +50,8 @@ export const MENU: readonly GrupoMenu[] = [
   {
     grupo: "Administración",
     items: [
-      { pantalla: "P-85", etiqueta: "Facturación", ruta: "/facturacion", permisos: ["facturacion.ver"], enConstruccion: true },
-      { pantalla: "P-90", etiqueta: "Reportes", ruta: "/reportes", permisos: ["reportes.ver"], enConstruccion: true },
+      { pantalla: "P-85", etiqueta: "Facturación", ruta: "/facturacion", permisos: ["facturacion.ver"] },
+      { pantalla: "P-90", etiqueta: "Reportes", ruta: "/reportes", permisos: ["reportes.ver"] },
       {
         pantalla: "P-92",
         etiqueta: "Documentos emitidos",

@@ -36,7 +36,7 @@ describe("estructura de seguridad", () => {
     );
     expect(tablas.rows.map((t) => t.tabla)).toEqual([
       "auditoria", "categoria", "cliente", "compra", "compra_item", "documento_emitido", "empresa", "entrega",
-      "entrega_item", "historial_precio_compra", "imputacion_pago_proveedor", "jornada", "lista_compra",
+      "entrega_item", "factura", "factura_entrega", "historial_precio_compra", "imputacion_pago_proveedor", "jornada", "lista_compra",
       "lista_compra_item", "movimiento_cuenta_proveedor", "pago_proveedor", "pedido", "pedido_item", "presentacion",
       "producto", "proveedor", "proveedor_producto", "punto_entrega", "regla_precio", "reparto", "rol", "secuencia",
       "usuario", "usuario_rol",

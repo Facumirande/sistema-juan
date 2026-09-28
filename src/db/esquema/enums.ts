@@ -140,3 +140,9 @@ export const tipoDocumento = pgEnum("tipo_documento", ["DOC_01", "DOC_02", "DOC_
 export const eventoDocumento = pgEnum("evento_documento", ["EMISION", "REIMPRESION"]);
 
 export const estadoDocumento = pgEnum("estado_documento", ["VIGENTE", "REEMPLAZADO", "ANULADO"]);
+
+// 03 §3.7 — facturación (en el MVP, comprobante interno no fiscal).
+
+export const tipoComprobante = pgEnum("tipo_comprobante", ["INTERNO"]);
+
+export const estadoFactura = pgEnum("estado_factura", ["EMITIDA", "ANULADA"]);

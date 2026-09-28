@@ -7,6 +7,7 @@ import { crearProducto, obtenerProducto } from "@/modulos/catalogo/productos";
 import { anularEntrega, confirmarEntrega, corregirEntrega, documentoDeEntrega, emitirDocumentos, entregaParaConfirmar, listarEntregas, obtenerEntrega } from "@/modulos/entregas/entregas";
 import { iniciarPreparacion, marcarPreparada, obtenerEntregaParaPreparar, obtenerPreparacion, prepararTodoComoPropuesto, registrarPreparado, sustituirProducto } from "@/modulos/entregas/preparacion";
 import { agregarAlReparto, crearReparto, obtenerReparto, proponerOrden, quitarDelReparto, salirDeReparto } from "@/modulos/entregas/repartos";
+import { anularComprobante, listarComprobantes } from "@/modulos/facturacion/facturacion";
 import { obtenerPedido } from "@/modulos/pedidos/pedidos";
 import { crearOferta } from "@/modulos/precios-compra/ofertas";
 
@@ -183,7 +184,8 @@ describe("repartos y entregas (04 §5.f, RN-120 a RN-134)", () => {
       recibidoCargo: "dueño",
       lineas: [{ itemId: tomate.id, entregada: "50", motivo: "RECHAZO_CALIDAD", detalle: "4 kg golpeados" }],
     });
-    expect(r).toEqual({ documentos: { resultado: "EMITIDOS", version: 2 }, conDiferencias: true });
+    // La verdulería factura por entrega: el comprobante sale solo con la versión 2 (RN-143).
+    expect(r).toEqual({ documentos: { resultado: "EMITIDOS", version: 2 }, conDiferencias: true, factura: "FAC-000001" });
     const doc03 = await documentoDeEntrega(j.base.db, j.admin, { entregaId: verduleria, tipo: "DOC_03" });
     expect(doc03?.tipo === "DOC_03" && [doc03.version, doc03.contenido.total, doc03.contenido.recibido?.por]).toEqual([2, "222770.00", "Pepe"]);
     const v1 = await enEmpresa(j.base.db, j.empresaId, (tx) =>
@@ -195,7 +197,7 @@ describe("repartos y entregas (04 §5.f, RN-120 a RN-134)", () => {
 
   it("entregado completo no cambia la versión; con la última parada el reparto termina", async () => {
     const restaurante = entregas["Restaurante La Esquina"]!;
-    expect(await confirmarEntrega(j.base.db, j.admin, { entregaId: restaurante, modo: "COMPLETA", recibidoPor: "Sergio" })).toEqual({ documentos: null, conDiferencias: false });
+    expect(await confirmarEntrega(j.base.db, j.admin, { entregaId: restaurante, modo: "COMPLETA", recibidoPor: "Sergio" })).toEqual({ documentos: null, conDiferencias: false, factura: "FAC-000002" });
     await confirmarEntrega(j.base.db, j.admin, { entregaId: entregas["Hospital San Martín"]!, modo: "COMPLETA", recibidoPor: "Graciela" });
     const r = await obtenerReparto(j.base.db, j.admin, entregas.reparto!);
     expect(r.estado).toBe("FINALIZADO");
@@ -207,6 +209,10 @@ describe("repartos y entregas (04 §5.f, RN-120 a RN-134)", () => {
   it("la oficina corrige lo entregado con motivo: versión nueva y auditoría (RN-128)", async () => {
     const restaurante = entregas["Restaurante La Esquina"]!;
     const papa = (await obtenerEntrega(j.base.db, j.admin, restaurante)).lineas.find((l) => l.producto === "Papa")!;
+    // Facturada no se corrige: primero se anula el comprobante (RN-138, RN-139).
+    expect(await codigoDeError(corregirEntrega(j.base.db, j.admin, { entregaId: restaurante, motivo: "Faltó una bolsa de papa", lineas: [{ itemId: papa.id, entregada: "25", motivo: "FALTANTE" }] }))).toBe("DOCUMENTO_EMITIDO");
+    const [fac] = await listarComprobantes(j.base.db, j.admin, { desde: "2000-01-01", hasta: "2999-12-31" }).then((l) => l.filter((f) => f.cliente === "Restaurante La Esquina"));
+    await anularComprobante(j.base.db, j.admin, { facturaId: fac!.id, motivo: "Hay que corregir la papa" });
     const r = await corregirEntrega(j.base.db, j.admin, { entregaId: restaurante, motivo: "Faltó una bolsa de papa", lineas: [{ itemId: papa.id, entregada: "25,0", motivo: "FALTANTE" }] });
     expect(r).toEqual({ resultado: "EMITIDOS", version: 2 });
     const doc03 = await documentoDeEntrega(j.base.db, j.admin, { entregaId: restaurante, tipo: "DOC_03" });

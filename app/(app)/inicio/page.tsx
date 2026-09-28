@@ -19,6 +19,8 @@ const ACCESOS: { titulo: string; detalle: string; ruta: string; permiso: Permiso
   { titulo: "Preparación", detalle: "Armar el pedido de cada cliente con lo que se compró.", ruta: "/preparacion", permiso: "preparacion.ver" },
   { titulo: "Repartos", detalle: "Quién lleva qué, en qué orden, y la hoja de ruta.", ruta: "/repartos", permiso: "repartos.ver" },
   { titulo: "Entregas", detalle: "Qué se entregó, con qué diferencias y sus remitos.", ruta: "/entregas", permiso: "entregas.ver" },
+  { titulo: "Facturación", detalle: "Comprobantes de lo entregado y exportación para el contador.", ruta: "/facturacion", permiso: "facturacion.ver" },
+  { titulo: "Reportes", detalle: "Ventas, márgenes, compras, deudas y diferencias.", ruta: "/reportes", permiso: "reportes.ver" },
   { titulo: "Deudas con proveedores", detalle: "Cuánto se le debe a cada uno y cuánto crédito queda.", ruta: "/cuentas-proveedores", permiso: "pagos.ver" },
   { titulo: "Actualizar precios en el puesto", detalle: "Desde el celular, puesto por puesto.", ruta: "/precios/compra/rapida", permiso: "precios.editar_compra" },
   { titulo: "Precios de compra", detalle: "Qué cuesta cada cosa en cada proveedor.", ruta: "/precios/compra", permiso: "precios.ver_costos" },

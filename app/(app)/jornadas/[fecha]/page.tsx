@@ -89,6 +89,11 @@ export default async function PanelJornada({ params }: PageProps<"/jornadas/[fec
             <Bloque titulo="Reparto y entregas" ruta={`/repartos?fecha=${fecha}`} texto="Ver repartos">
               {suma(p.repartos, "PLANIFICADO", "EN_CURSO", "FINALIZADO")} repartos · {p.entregas.ENTREGADA ?? 0} de {entregasTotal} entregadas
             </Bloque>
+            {sesion.permisos.includes("jornada.cerrar") && entregasTotal > 0 && (
+              <Bloque titulo="Cierre" ruta={`/jornadas/${fecha}/cierre`} texto={p.estado === "CERRADA" ? "Ver resumen" : "Cerrar el día"}>
+                {p.estado === "CERRADA" ? "Jornada cerrada: el resumen quedó guardado." : "Revisar pendientes y ver el resumen del día."}
+              </Bloque>
+            )}
           </div>
         </>
       )}
