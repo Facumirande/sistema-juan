@@ -16,6 +16,13 @@ const DEL_TIPO: Readonly<Record<string, Etiqueta>> = {
   OTRO: { texto: "Otro", color: "gris" },
 };
 
+const DIBUJO_DEL_TIPO: Readonly<Record<string, string>> = { HOSPITAL: "🏥", RESTAURANTE: "🍽️", COMERCIO: "🏪", INSTITUCION: "🏫", OTRO: "👤" };
+
+/** Un dibujo para reconocer de un vistazo qué tipo de cliente es. */
+export function dibujoDeCliente(tipoCliente: string): string {
+  return DIBUJO_DEL_TIPO[tipoCliente] ?? "👤";
+}
+
 export function etiquetaDeTipo(tipoCliente: string): Etiqueta {
   return DEL_TIPO[tipoCliente] ?? { texto: tipoCliente, color: "gris" };
 }
@@ -27,7 +34,8 @@ export const ETIQUETA_PRIORIDAD: Readonly<Record<string, Etiqueta | null>> = {
 };
 
 export function etiquetasDePedido(p: { tipoCliente: string; prioridad: string; esTardio: boolean }): Etiqueta[] {
-  return [ETIQUETA_PRIORIDAD[p.prioridad], etiquetaDeTipo(p.tipoCliente), p.esTardio ? { texto: "Llegó tarde", color: "amarillo" as const } : null].filter(
+  // "Otro" no dice nada: solo se muestra el tipo si es uno conocido (hospital, restaurante…).
+  return [ETIQUETA_PRIORIDAD[p.prioridad], p.tipoCliente === "OTRO" ? null : etiquetaDeTipo(p.tipoCliente), p.esTardio ? { texto: "Llegó tarde", color: "amarillo" as const } : null].filter(
     (e): e is Etiqueta => e !== null && e !== undefined,
   );
 }

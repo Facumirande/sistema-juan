@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { startTransition, useActionState, type ReactNode } from "react";
 
 import { ESTADO_INICIAL, type EstadoAccion } from "./estado-accion";
@@ -40,8 +41,13 @@ export function BotonAccion({
         {children}
       </button>
       {estado.mensaje && !estado.ok && (
-        <span role="alert" className="text-xs text-error">
+        <span role="alert" className="mt-1 text-sm text-error">
           {estado.mensaje}
+          {estado.enlace && (
+            <Link href={estado.enlace.href} className="mt-1 flex min-h-10 items-center justify-center rounded-lg bg-marca px-3 font-semibold text-marca-texto">
+              {estado.enlace.texto} →
+            </Link>
+          )}
         </span>
       )}
     </span>

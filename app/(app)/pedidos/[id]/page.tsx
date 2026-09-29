@@ -12,7 +12,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { ALERTAS_PRECIO, CANALES, ESTADOS_PEDIDO, ORIGENES_VENTA, UNIDADES_CORTAS, fechaConDia, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
-import { AreaTexto, Aviso, Campo, CampoNumero, Encabezado, Selector, Tabla, Tarjeta } from "@/ui/formularios";
+import { AreaTexto, Aviso, Campo, CampoNumero, Encabezado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 
 import {
   agregarLineaAccion,
@@ -89,6 +89,14 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
         <span className={`rounded-full border px-3 py-1 font-semibold ${p.estado === "CANCELADO" ? "border-error text-error" : "border-marca"}`}>
           {ESTADOS_PEDIDO[p.estado]}
         </span>
+        {p.editable && (
+          <Link href={`/pedidos/${p.id}/cambiar`} className={clasesBoton("principal")}>
+            ✏️ {p.lineas.some((l) => !l.cancelado) ? "Cambiar productos" : "Agregar productos"}
+          </Link>
+        )}
+        <Link href={`/inicio?fecha=${p.fecha}&pedido=${p.id}`} className={clasesBoton("secundario")}>
+          Ver en el tablero
+        </Link>
       </Encabezado>
 
       {p.otrosDelMismoDia.length > 0 && (
@@ -107,7 +115,14 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
 
       <Tarjeta titulo="Productos">
         {p.lineas.length === 0 ? (
-          <p className="text-texto-suave">Todavía no tiene productos.</p>
+          <p className="text-texto-suave">
+            Todavía no tiene productos.{" "}
+            {p.editable && (
+              <Link href={`/pedidos/${p.id}/cambiar`} className="font-semibold underline underline-offset-2">
+                Agregalos tocando los recuadros
+              </Link>
+            )}
+          </p>
         ) : (
           <Tabla>
             <thead>

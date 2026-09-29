@@ -133,3 +133,11 @@ body {
     font-size: 11px;
   }
 }
+
+/* Filas que se deslizan de costado en el celular (días, filtros): sin barra visible. */
+@utility sin-barra {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

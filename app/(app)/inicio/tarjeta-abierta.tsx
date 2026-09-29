@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { tiempoRelativo } from "@/dominio/colaboracion/tiempo";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
@@ -14,7 +15,7 @@ import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
 import { ESTADOS_PEDIDO, fechaConDia } from "@/ui/etiquetas";
-import { FONDO_ETIQUETA, etiquetasDePedido } from "@/ui/etiquetas-tablero";
+import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";
 
 import { HiloDeNotas } from "../actividad/notas";
@@ -27,8 +28,9 @@ import {
   sacarDeListaAccion,
 } from "./acciones";
 
-// La tarjeta abierta (como en Trello): etiquetas, miembro, plazo, lo que pidió (con lo ya comprado
-// o preparado tildado), notas entre las personas e historial; al costado, lo que se puede hacer.
+// La tarjeta abierta (como en Trello), grande y despejada: primero lo que lleva el pedido (con lo
+// ya comprado o preparado tildado) y el botón para cambiarlo; después dónde se entrega, las notas
+// entre las personas y el historial. Al costado, lo que se puede hacer.
 
 type Avance = Awaited<ReturnType<typeof avanceDeTarjeta>>;
 
@@ -39,22 +41,33 @@ const PLAZO: Record<Avance["estadoPlazo"], string> = {
   a_tiempo: "bg-black/10 dark:bg-white/10",
 };
 const EN_PALABRAS_PLAZO: Record<Avance["estadoPlazo"], string> = { listo: "entregado", vencido: "vencido", pronto: "por vencer", a_tiempo: "a tiempo" };
+const SE_CAMBIA = ["BORRADOR", "CONFIRMADO", "EN_COMPRA"];
 
-function Seccion({ icono, titulo, children }: { icono: string; titulo: string; children: ReactNode }) {
+function Seccion({ icono, titulo, derecha, children }: { icono: string; titulo: string; derecha?: ReactNode; children: ReactNode }) {
   return (
-    <section className="flex gap-3">
-      <span aria-hidden className="w-6 shrink-0 pt-0.5 text-center text-lg">
-        {icono}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <h3 className="font-semibold">{titulo}</h3>
-        {children}
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <span aria-hidden className="text-2xl leading-none">
+          {icono}
+        </span>
+        <h3 className="flex-1 text-xl font-semibold">{titulo}</h3>
+        {derecha}
       </div>
+      <div className="flex min-w-0 flex-col gap-3 sm:pl-10">{children}</div>
     </section>
   );
 }
 
-const botonLateral = "flex min-h-9 w-full items-center gap-2 rounded-md bg-black/5 px-3 text-left text-sm font-medium hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15";
+function Dato({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-sm font-semibold text-tarjeta-suave">{titulo}</p>
+      {children}
+    </div>
+  );
+}
+
+const botonLateral = "flex min-h-12 w-full items-center gap-2 rounded-xl bg-black/5 px-4 text-left text-base font-medium hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15";
 
 export function TarjetaAbierta({
   pedido: p,
@@ -79,132 +92,192 @@ export function TarjetaAbierta({
   const plazo = textoPlazo(p.entregaDesde, p.entregaHasta);
   const abierto = p.estado !== "CANCELADO" && p.estado !== "ENTREGADO";
   const editable = abierto && puede("pedidos.editar");
+  const cambiable = SE_CAMBIA.includes(p.estado) && puede("pedidos.editar") && (p.estado !== "EN_COMPRA" || puede("pedidos.editar_en_curso"));
   const hechos = avance.lineas.filter((l) => l.hecha).length;
+  const vacio = avance.lineas.length === 0;
   const destino = { coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad };
 
   return (
-    <div className="flex flex-col gap-5 p-4 sm:p-6">
-      <header className="flex gap-3 pr-10">
-        <span aria-hidden className="w-6 shrink-0 pt-1 text-center text-xl">
-          🗂
+    <div className="flex flex-col gap-8 p-5 sm:p-8">
+      <header className="flex items-start gap-4 pr-12">
+        <span aria-hidden className="flex size-16 shrink-0 items-center justify-center rounded-full bg-black/5 text-4xl dark:bg-white/10">
+          {dibujoDeCliente(p.tipoCliente)}
         </span>
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold">{p.cliente}</h2>
-          <p className="text-sm text-tarjeta-suave">
-            en la columna <b>{columna?.titulo ?? ESTADOS_PEDIDO[p.estado]}</b> · {p.numero} · entrega del {fechaConDia(p.fecha)}
+          <h2 className="text-3xl leading-tight font-semibold">{p.cliente}</h2>
+          <p className="mt-1 text-base text-tarjeta-suave">
+            En <b>{columna?.titulo ?? ESTADOS_PEDIDO[p.estado]}</b> · {p.numero} · se entrega el {fechaConDia(p.fecha)}
           </p>
         </div>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-[1fr_190px]">
-        <div className="flex min-w-0 flex-col gap-6">
-          <div className="flex flex-wrap gap-x-6 gap-y-3 pl-9">
-            <div>
-              <p className="mb-1 text-xs font-semibold text-tarjeta-suave">Se encarga</p>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="flex min-w-0 flex-col gap-8">
+          <div className="flex flex-wrap gap-x-10 gap-y-4 sm:pl-10">
+            <Dato titulo="Se encarga">
               {avance.responsable ? (
-                <span className="flex items-center gap-2">
-                  <Avatar persona={avance.responsable} /> <span className="text-sm">{avance.responsable.id === yo ? "Vos" : avance.responsable.nombre}</span>
+                <span className="flex items-center gap-2 text-base">
+                  <Avatar persona={avance.responsable} /> {avance.responsable.id === yo ? "Vos" : avance.responsable.nombre}
                 </span>
               ) : (
-                <span className="text-sm text-tarjeta-suave">Nadie</span>
+                <span className="text-tarjeta-suave">Nadie</span>
               )}
-            </div>
-            <div>
-              <p className="mb-1 text-xs font-semibold text-tarjeta-suave">Etiquetas</p>
-              <div className="flex flex-wrap gap-1">
-                {etiquetas.map((e) => (
-                  <span key={e.texto} className={`rounded px-2 py-1 text-xs font-semibold text-etiqueta-texto ${FONDO_ETIQUETA[e.color]}`}>
-                    {e.texto}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="mb-1 text-xs font-semibold text-tarjeta-suave">Plazo</p>
+            </Dato>
+            {etiquetas.length > 0 && (
+              <Dato titulo="Etiquetas">
+                <div className="flex flex-wrap gap-1.5">
+                  {etiquetas.map((e) => (
+                    <span key={e.texto} className={`rounded-md px-3 py-1 text-sm font-bold text-etiqueta-texto ${FONDO_ETIQUETA[e.color]}`}>
+                      {e.texto}
+                    </span>
+                  ))}
+                </div>
+              </Dato>
+            )}
+            <Dato titulo="Plazo">
               {plazo ? (
-                <span className={`inline-flex items-center gap-1 rounded px-2 py-1 text-sm font-medium ${PLAZO[avance.estadoPlazo]}`}>
+                <span className={`inline-flex items-center gap-1 rounded-md px-3 py-1 font-medium ${PLAZO[avance.estadoPlazo]}`}>
                   ⏰ {plazo} · {EN_PALABRAS_PLAZO[avance.estadoPlazo]}
                 </span>
               ) : (
-                <span className="text-sm text-tarjeta-suave">Sin plazo{p.horarioLugar && ` (recibe ${p.horarioLugar})`}</span>
+                <span className="text-tarjeta-suave">Sin horario{p.horarioLugar && ` (el lugar recibe ${p.horarioLugar})`}</span>
               )}
-            </div>
+            </Dato>
           </div>
 
+          <Seccion
+            icono="🧺"
+            titulo={avance.que ? `Lo que lleva · ${hechos} de ${avance.lineas.length} ${avance.que === "comprado" ? "comprados" : "preparados"}` : "Lo que lleva"}
+            derecha={
+              cambiable && !vacio ? (
+                <Link href={`/pedidos/${p.id}/cambiar`} className="flex min-h-11 items-center gap-2 rounded-xl bg-[var(--etiqueta-azul)] px-4 font-semibold text-etiqueta-texto">
+                  ✏️ Cambiar productos
+                </Link>
+              ) : null
+            }
+          >
+            {avance.que && !vacio && (
+              <div className="flex items-center gap-3 text-sm text-tarjeta-suave">
+                <span className="w-10 tabular-nums">{Math.round((hechos / avance.lineas.length) * 100)} %</span>
+                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                  <div className={`h-2.5 rounded-full ${hechos === avance.lineas.length ? "bg-[var(--listo-fondo)]" : "bg-[var(--etiqueta-azul)]"}`} style={{ width: `${(hechos / avance.lineas.length) * 100}%` }} />
+                </div>
+              </div>
+            )}
+            {vacio ? (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-black/20 p-6 text-center dark:border-white/25">
+                <p className="text-lg font-semibold">Este pedido todavía no tiene productos.</p>
+                <p className="text-tarjeta-suave">Cargale lo que lleva; después se puede confirmar y pasar a la lista de compra.</p>
+                {cambiable && (
+                  <Link href={`/pedidos/${p.id}/cambiar`} className="flex min-h-12 items-center rounded-xl bg-marca px-5 text-lg font-semibold text-marca-texto">
+                    ＋ Agregar productos
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {avance.lineas.map((l) => (
+                  <li key={l.id} className={`flex items-center gap-3 rounded-xl p-3 ${l.hecha && avance.que ? "bg-[var(--listo-fondo)]/40" : "bg-black/[0.04] dark:bg-white/[0.06]"}`}>
+                    <span aria-hidden className="text-3xl leading-none">
+                      {dibujoDeProducto(l.producto, l.grupo)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-lg leading-tight font-medium ${l.hecha && avance.que ? "line-through opacity-70" : ""}`}>{l.producto}</span>
+                      <span className="block font-semibold tabular-nums">{l.cantidad}</span>
+                    </span>
+                    {avance.que && (
+                      <span aria-hidden className="text-xl">
+                        {l.hecha ? "✅" : "⬜"}
+                      </span>
+                    )}
+                    <span className="sr-only">{l.hecha ? "hecho" : "pendiente"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {p.totalEstimado !== null && !vacio && (
+              <p className="text-lg">
+                Total estimado <b>{formatearMoneda(p.totalEstimado)}</b>
+              </p>
+            )}
+          </Seccion>
+
           <Seccion icono="📍" titulo="Dónde se entrega">
-            <p className="text-sm">
-              {p.puntoEntrega} · {p.direccion}
+            <p className="text-base">
+              <b>{p.puntoEntrega}</b> · {p.direccion}
               {p.localidad && `, ${p.localidad}`}
               {p.horarioLugar && <span className="block text-tarjeta-suave">Recibe {p.horarioLugar}</span>}
             </p>
             <div className="flex flex-wrap gap-2">
-              <a href={enlacesGoogleMaps([destino])[0]} target="_blank" rel="noreferrer" className="rounded-md bg-black/5 px-3 py-1.5 text-sm font-medium hover:bg-black/10 dark:bg-white/10">
+              <a href={enlacesGoogleMaps([destino])[0]} target="_blank" rel="noreferrer" className="flex min-h-11 items-center rounded-xl bg-black/5 px-4 font-medium hover:bg-black/10 dark:bg-white/10">
                 🧭 Cómo llegar (Google Maps)
               </a>
-              <a href={enlaceWaze(destino)} target="_blank" rel="noreferrer" className="rounded-md bg-black/5 px-3 py-1.5 text-sm font-medium hover:bg-black/10 dark:bg-white/10">
+              <a href={enlaceWaze(destino)} target="_blank" rel="noreferrer" className="flex min-h-11 items-center rounded-xl bg-black/5 px-4 font-medium hover:bg-black/10 dark:bg-white/10">
                 Waze
               </a>
             </div>
           </Seccion>
 
           {(p.observaciones || p.observacionesInternas) && (
-            <Seccion icono="☰" titulo="Descripción">
-              {p.observaciones && <p className="text-sm whitespace-pre-line">Del cliente: {p.observaciones}</p>}
-              {p.observacionesInternas && <p className="text-sm whitespace-pre-line text-tarjeta-suave">Internas: {p.observacionesInternas}</p>}
+            <Seccion icono="📝" titulo="Nota del pedido">
+              {p.observaciones && <p className="text-base whitespace-pre-line">{p.observaciones}</p>}
+              {p.observacionesInternas && <p className="whitespace-pre-line text-tarjeta-suave">Internas: {p.observacionesInternas}</p>}
             </Seccion>
           )}
 
-          <Seccion icono="☑" titulo={avance.que ? `Productos · ${hechos} de ${avance.lineas.length} ${avance.que === "comprado" ? "comprados" : "preparados"}` : "Productos"}>
-            {avance.que && avance.lineas.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-tarjeta-suave">
-                <span className="w-9 tabular-nums">{Math.round((hechos / avance.lineas.length) * 100)} %</span>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
-                  <div className={`h-2 rounded-full ${hechos === avance.lineas.length ? "bg-[var(--listo-fondo)]" : "bg-[var(--etiqueta-azul)]"}`} style={{ width: `${(hechos / avance.lineas.length) * 100}%` }} />
-                </div>
-              </div>
-            )}
-            {avance.lineas.length === 0 ? (
-              <p className="text-sm text-tarjeta-suave">Todavía no tiene productos.</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {avance.lineas.map((l) => (
-                  <li key={l.id} className="flex items-baseline gap-2 text-sm">
-                    <span aria-hidden className={l.hecha ? "text-[var(--listo-fondo)]" : "text-tarjeta-suave"}>
-                      {l.hecha ? "☑" : "☐"}
-                    </span>
-                    <span className={`flex-1 ${l.hecha && avance.que ? "text-tarjeta-suave line-through" : ""}`}>{l.producto}</span>
-                    <span className="text-tarjeta-suave tabular-nums">{l.cantidad}</span>
-                    <span className="sr-only">{l.hecha ? "hecho" : "pendiente"}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {p.totalEstimado !== null && avance.lineas.length > 0 && <p className="text-sm text-tarjeta-suave">Total estimado {formatearMoneda(p.totalEstimado)}</p>}
-          </Seccion>
-
-          <Seccion icono="💬" titulo="Notas">
+          <Seccion icono="💬" titulo="Notas entre ustedes">
             <HiloDeNotas entidadTipo="PEDIDO" entidadId={p.id} notas={notas.notas} personas={notas.personas} yo={yo} zonaHoraria={zonaHoraria} />
           </Seccion>
 
           <Seccion icono="🕘" titulo="Historial">
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-3">
               {historial.map((h) => (
-                <li key={h.id} className="flex items-start gap-2 text-sm">
+                <li key={h.id} className="flex items-start gap-3">
                   <Avatar persona={h.persona} tamano="chico" />
                   <span>
-                    <b>{h.persona.nombre.split(" ")[0]}</b> {h.resumen} <span className="text-xs text-tarjeta-suave">· {tiempoRelativo(h.en, ahora, zonaHoraria)}</span>
+                    <b>{h.persona.nombre.split(" ")[0]}</b> {h.resumen} <span className="text-sm text-tarjeta-suave">· {tiempoRelativo(h.en, ahora, zonaHoraria)}</span>
                   </span>
                 </li>
               ))}
-              {historial.length === 0 && <li className="text-sm text-tarjeta-suave">Sin movimientos todavía.</li>}
+              {historial.length === 0 && <li className="text-tarjeta-suave">Sin movimientos todavía.</li>}
             </ul>
           </Seccion>
         </div>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-semibold text-tarjeta-suave">Acciones</p>
+            {p.estado === "BORRADOR" &&
+              puede("pedidos.confirmar") &&
+              (vacio ? (
+                <p className="rounded-xl bg-[var(--pronto-fondo)] p-3 text-sm font-medium text-[var(--pronto-texto)]">Para confirmarlo, primero agregale productos.</p>
+              ) : (
+                <BotonAccion accion={confirmarElegidosAccion} datos={{ pedido: p.id }} className={`${botonLateral} bg-marca font-semibold text-marca-texto hover:bg-marca`}>
+                  ✓ Confirmar el pedido
+                </BotonAccion>
+              ))}
+            {cambiable && (
+              <Link href={`/pedidos/${p.id}/cambiar`} className={botonLateral}>
+                ✏️ {vacio ? "Agregar productos" : "Cambiar productos"}
+              </Link>
+            )}
+            {(p.estado === "BORRADOR" || p.estado === "CONFIRMADO") && !vacio && puede("lista_compra.generar") && (
+              <BotonAccion accion={armarListaConElegidosAccion} datos={{ pedido: p.id }} className={botonLateral}>
+                🛒 Agregar a la lista de compra
+              </BotonAccion>
+            )}
+            {p.estado === "EN_COMPRA" && puede("lista_compra.generar") && (
+              <BotonAccion accion={sacarDeListaAccion} datos={{ pedido: p.id }} className={botonLateral} confirmar="¿Sacar este pedido de la lista de compra? Lo ya comprado queda.">
+                ↩ Sacar de la lista
+              </BotonAccion>
+            )}
+            <Link href={`/pedidos/${p.id}`} className={botonLateral}>
+              🗒️ Ver el pedido completo
+            </Link>
+          </div>
           {editable && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-tarjeta-suave">Prioridad</p>
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-tarjeta-suave">¿Es urgente?</p>
               {(["ALTA", "NORMAL", "BAJA"] as const).map((pr) => (
                 <BotonAccion
                   key={pr}
@@ -218,8 +291,8 @@ export function TarjetaAbierta({
             </div>
           )}
           {editable && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-tarjeta-suave">Se encarga</p>
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-tarjeta-suave">Se encarga</p>
               {avance.personas.map((persona) => (
                 <BotonAccion
                   key={persona.id}
@@ -233,42 +306,21 @@ export function TarjetaAbierta({
             </div>
           )}
           {editable && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-tarjeta-suave">Plazo de entrega</p>
-              <FormularioAccion accion={plazoAccion} boton="Guardar plazo" variante="secundario" className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-tarjeta-suave">Horario de entrega</p>
+              <FormularioAccion accion={plazoAccion} boton="Guardar horario" variante="secundario" className="flex flex-col gap-3">
                 <input type="hidden" name="pedidoId" value={p.id} />
-                <label className="flex items-center justify-between gap-2 text-sm">
+                <label className="flex items-center justify-between gap-2">
                   Desde
-                  <input type="time" name="desde" defaultValue={p.entregaDesde ?? ""} className="h-9 rounded-md border border-borde bg-tarjeta px-2" />
+                  <input type="time" name="desde" defaultValue={p.entregaDesde ?? ""} className="h-11 rounded-lg border border-borde bg-tarjeta px-2" />
                 </label>
-                <label className="flex items-center justify-between gap-2 text-sm">
+                <label className="flex items-center justify-between gap-2">
                   Antes de
-                  <input type="time" name="hasta" defaultValue={p.entregaHasta ?? ""} className="h-9 rounded-md border border-borde bg-tarjeta px-2" />
+                  <input type="time" name="hasta" defaultValue={p.entregaHasta ?? ""} className="h-11 rounded-lg border border-borde bg-tarjeta px-2" />
                 </label>
               </FormularioAccion>
             </div>
           )}
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-semibold text-tarjeta-suave">Acciones</p>
-            {p.estado === "BORRADOR" && puede("pedidos.confirmar") && (
-              <BotonAccion accion={confirmarElegidosAccion} datos={{ pedido: p.id }} className={botonLateral}>
-                ✓ Confirmar
-              </BotonAccion>
-            )}
-            {(p.estado === "BORRADOR" || p.estado === "CONFIRMADO") && puede("lista_compra.generar") && (
-              <BotonAccion accion={armarListaConElegidosAccion} datos={{ pedido: p.id }} className={botonLateral}>
-                🛒 Agregar a la lista de compra
-              </BotonAccion>
-            )}
-            {p.estado === "EN_COMPRA" && puede("lista_compra.generar") && (
-              <BotonAccion accion={sacarDeListaAccion} datos={{ pedido: p.id }} className={botonLateral} confirmar="¿Sacar este pedido de la lista de compra? Lo ya comprado queda.">
-                ↩ Sacar de la lista
-              </BotonAccion>
-            )}
-            <Link href={`/pedidos/${p.id}`} className={botonLateral}>
-              ✏️ Abrir el pedido completo
-            </Link>
-          </div>
         </aside>
       </div>
     </div>

@@ -64,7 +64,16 @@ Documentos relacionados: `01-tipo-de-aplicacion-y-arquitectura.md` (enfoque mobi
 
 ### 2.2 Menú por grupos (PC)
 
-**Decisión del 28/09/2026 (uso interno):** la pantalla principal es **Hoy** (P-02), que lleva el día de trabajo paso a paso; los datos que se cargan de vez en cuando (clientes, productos, proveedores, precios) van aparte en **Registros**, y las cuentas con el balance en su propio grupo. Cada paso del día sigue teniendo su pantalla, en un grupo plegado para ir directo.
+**Simplificado el 29/09/2026 (pedido del usuario: sacar lo que no se usa a diario):** cada entrada lleva un dibujo, la pantalla en la que se está queda marcada y **Nuevo pedido** es un botón destacado.
+
+| Grupo | Pantallas | Visible si el usuario tiene… |
+|---|---|---|
+| Día de trabajo | Tablero de pedidos · **Nuevo pedido** · Viaje de entrega · Mi reparto (solo para quien no maneja todos los repartos) · Actividad y notas | Sesión · `pedidos.crear` · `repartos.ver` · `repartos.ver_propios` sin `repartos.gestionar` · Sesión |
+| Registros | Clientes · Productos · Proveedores | `clientes.ver` · `productos.ver` · `proveedores.ver` |
+| Cuentas | Balance · Deudas con proveedores · Facturación | `reportes.ver` · `pagos.ver` · `facturacion.ver` |
+| Más opciones (plegado) | El día paso a paso · Todos los días · Lista de pedidos · Lista de compra · Compras · Preparación · Repartos · Entregas · Precios de compra · Precios de venta · Movimientos · Reportes · Documentos emitidos · Usuarios · Empresa · Auditoría | El permiso de ver de cada pantalla |
+
+**Versión anterior (28/09/2026, uso interno):** la pantalla principal es **Hoy** (P-02), que lleva el día de trabajo paso a paso; los datos que se cargan de vez en cuando (clientes, productos, proveedores, precios) van aparte en **Registros**, y las cuentas con el balance en su propio grupo. Cada paso del día sigue teniendo su pantalla, en un grupo plegado para ir directo.
 
 | Grupo | Pantallas | Visible si el usuario tiene… |
 |---|---|---|
@@ -225,6 +234,8 @@ Formato de cada pantalla: **quién la usa**, **qué muestra** y una tabla de **a
 - Después del primer ingreso en el celular: sugerencia de **instalar la app** (PWA) con instrucciones para Android y iPhone.
 
 #### P-02 Hoy (día de trabajo paso a paso)
+
+**Más grande y despejado (29/09/2026):** es la pantalla principal ("Tablero de pedidos" en el menú). Listas de 340 px con tarjetas grandes: dibujo del tipo de cliente, nombre en letra grande, **lo que lleva a la vista** (hasta 4 productos con su dibujo y cantidad, "y N más") y los indicadores más grandes; una tarjeta sin productos lo dice ("Sin productos todavía · tocá para cargarlos") y lleva directo a cargarlos. Arriba, el botón **＋ Nuevo pedido** (en el celular, flotante abajo a la derecha) y los avisos como píldoras compactas. La tarjeta abierta ocupa más (hasta 1024 px): primero **Lo que lleva** en recuadros con **✏️ Cambiar productos**, después dónde se entrega, la nota, las notas entre ustedes y el historial; al costado, botones grandes (confirmar, cambiar productos, agregar a la lista, prioridad, quién se encarga y horario).
 
 **Tablero de pedidos (28/09/2026, segunda versión, pedido del usuario: "tipo Trello").** "Hoy" abre en el **tablero**; la pestaña "☰ Paso a paso" muestra los siete pasos de abajo. El tablero imita la presentación y la mecánica de Trello: fondo de color, listas grises con tarjetas blancas, etiquetas de colores, fecha de vencimiento, miembros y la tarjeta que se abre encima.
 
@@ -499,6 +510,17 @@ Lista de la jornada seleccionada (se puede cambiar a "todas" con filtro de fecha
 
 #### P-41 Carga rápida de pedido (celular)
 
+**Construida como carga visual (29/09/2026, pedido del usuario: "más fácil, intuitiva y visual, con recuadros"; los pedidos los cargan siempre las mismas dos personas).** `/pedidos/nuevo` (desde el botón **Nuevo pedido** del tablero, del menú, de la ficha del cliente o del paso a paso) y `/pedidos/[id]/cambiar` (**Cambiar productos**, la misma pantalla con lo que el pedido ya lleva):
+
+1. **¿Para quién es?** Recuadros grandes con el dibujo del tipo de cliente, el nombre y la dirección, y un buscador. Si el cliente tiene varios lugares de entrega, se elige con botones.
+2. **¿Para qué día?** Botones con los próximos 7 días (Hoy, Mañana, Jueves…; los días cerrados, deshabilitados) y "Otro día". Si el cliente ya tiene un pedido ese día, lo avisa con el botón **Cambiar el PED-…** para sumarle productos a ese en vez de cargar otro.
+3. **¿Qué lleva?** Recuadros de productos con su dibujo, por categoría; arriba **⭐ Lo que suele pedir** (sus productos más pedidos) y **↺ Repetir su último pedido**. Al tocar un recuadro se agrega con cantidad 1 y se agranda: − y + grandes, la cantidad para escribir (con coma), en qué se pide (por kilo o por envase), cantidades rápidas (1, 2, 5, 10, 20 o 1, 2, 3, 5 envases) y una nota para ese producto.
+4. **El pedido** (al costado en la PC, abajo en el celular con una barra fija "Revisar y guardar"): lo elegido, **¿Es urgente?** (Urgente, Normal, Sin apuro), **¿Tiene un horario?** (Sin horario, Antes de las 8, 10 o 12, u Otro con desde y hasta), la nota del pedido (sale en el remito) y **✓ Guardar y confirmar** o **Guardar sin confirmar**.
+
+Se guarda todo junto en una sola operación (`cargarPedido` / `cambiarProductosDePedido`): **nunca queda un pedido vacío** a medias. Antes de guardar la pantalla revisa y marca en rojo lo que falta, con la explicación ("Lechuga criolla se pide en unidades enteras: poné una cantidad sin coma."). Al terminar muestra ✅ con el número, el total estimado y **＋ Cargar otro pedido** (para cargar varios seguidos), **Ver en el tablero** o **Cambiar algo de este pedido**. Al cambiar un pedido confirmado o en la lista de compra, lo que se saca queda cancelado con el motivo y la lista de compra se marca para actualizar.
+
+Plan original:
+
 Proceso en `04-procesos-y-flujos.md` §5.b.1. Meta: 5 líneas en menos de un minuto; 10 líneas en menos de 2 minutos (RNF-05).
 
 ```text
@@ -542,7 +564,7 @@ Editar un pedido existente usa la misma pantalla; si el pedido está `EN_COMPRA`
 
 #### P-42 Detalle de pedido
 
-Cabecera (número, cliente, punto, jornada, canal, referencia, estado, tardío, quién lo tomó y cuándo). Líneas con cantidad pedida, unidad base, observación y, según permisos, precio estimado con origen, costo y recargo (02 §7.2). Pestañas **Entrega** (a qué entrega pertenecen sus líneas y su estado) e **Historial** (auditoría).
+**Agregado (29/09/2026):** botones **✏️ Cambiar productos** (abre la carga visual) y **Ver en el tablero**. Plan original: Cabecera (número, cliente, punto, jornada, canal, referencia, estado, tardío, quién lo tomó y cuándo). Líneas con cantidad pedida, unidad base, observación y, según permisos, precio estimado con origen, costo y recargo (02 §7.2). Pestañas **Entrega** (a qué entrega pertenecen sus líneas y su estado) e **Historial** (auditoría).
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -1048,6 +1070,14 @@ Acceso con los permisos **por defecto** de cada rol (02 §5). **Sí** = acceso c
 ## 7. Mensajes de error y advertencia
 
 El servidor responde con un código (01 §10.2, convención 3); la interfaz lo traduce. Los mensajes dicen qué pasó, por qué y qué se puede hacer.
+
+**Regla del 29/09/2026 (pedido del usuario: "si pasa algo, que explique bien cómo solucionarlo"):**
+
+- Todo mensaje nombra **qué** (el pedido, el cliente o el producto) y dice **cómo seguir** en palabras ("Restaurante La Esquina (PED-000009): este pedido todavía no tiene productos: agregale al menos uno y después confirmalo.").
+- Cuando hay una pantalla donde se arregla, el aviso trae **el botón** para ir ("Agregar productos →", "Cargar la dirección →", "Abrir la ficha del cliente →"): el error de negocio lo manda en `detalle.enlace` y los formularios, los botones y los avisos del tablero lo muestran.
+- Los códigos internos de reglas y referencias al plan ("(RN-018)", "(04 §5.b.4)") **no se muestran**: se sacan al pasar el mensaje a la pantalla (`textoParaPersona`).
+- Si algo falla por un problema del sistema (la base no responde, un error de programación), no aparece el error técnico: "No se pudo completar por un problema del sistema (no es un error tuyo). Probá de nuevo en un momento; si vuelve a pasar, avisale a Facundo qué estabas haciendo." Si falla una pantalla entera, una página con **Probar de nuevo** e **Ir al tablero**.
+- Mejor que avisar es no dejar que pase: la carga visual no permite guardar un pedido sin productos, el tablero no deja confirmar ni mandar a la lista una tarjeta vacía (la abre para cargarle los productos) y "Elegir todo lo que falta comprar" deja afuera las vacías diciendo cuáles son.
 
 | Código | Mensaje al usuario (ejemplo) | Acción ofrecida |
 |---|---|---|

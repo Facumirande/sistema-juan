@@ -24,7 +24,7 @@ export function Modal({ cerrar, titulo, children }: { cerrar: string; titulo: st
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 sm:px-4 sm:py-10" role="dialog" aria-modal="true" aria-label={titulo}>
       <Link href={cerrar} scroll={false} tabIndex={-1} aria-hidden className="fixed inset-0 cursor-default" />
-      <div ref={panel} tabIndex={-1} className="relative mx-auto min-h-full w-full max-w-3xl bg-modal text-tarjeta-texto shadow-2xl outline-none sm:min-h-0 sm:rounded-xl">
+      <div ref={panel} tabIndex={-1} className="relative mx-auto min-h-full w-full max-w-5xl bg-modal text-tarjeta-texto shadow-2xl outline-none sm:min-h-0 sm:rounded-xl">
         <Link
           href={cerrar}
           scroll={false}

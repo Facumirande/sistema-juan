@@ -2,18 +2,22 @@
 
 import { redirect } from "next/navigation";
 
+import type { LineaElegida } from "@/dominio/pedidos/carga";
+import type { PrioridadPedido } from "@/dominio/pedidos/tablero";
 import {
   agregarLinea,
   cambiarDatosPedido,
+  cambiarProductosDePedido,
+  cargarPedido,
   cambiarLinea,
   cancelarPedido,
   confirmarPedido,
-  crearPedido,
   duplicarPedido,
   fijarPrecioManual,
   quitarLinea,
   recalcularPreciosPedido,
   type CanalPedido,
+  type PedidoCargado,
 } from "@/modulos/pedidos/pedidos";
 import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
@@ -21,17 +25,6 @@ import { campo, type EstadoAccion } from "@/ui/estado-accion";
 // Acciones de P-40, P-41 y P-42. Los permisos los verifica cada caso de uso.
 
 const canal = (datos: FormData) => (campo(datos, "canal") || null) as CanalPedido | null;
-
-export async function crearPedidoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  let id = "";
-  const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
-    const r = await crearPedido(db, authUserId, { fecha: campo(datos, "fecha"), clienteId: campo(datos, "clienteId"), canal: canal(datos) });
-    id = r.pedidoId;
-    return { ok: true, mensaje: null };
-  });
-  if (resultado.ok) redirect(`/pedidos/${id}`);
-  return resultado;
-}
 
 export async function agregarLineaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
@@ -115,4 +108,39 @@ export async function duplicarPedidoAccion(_estado: EstadoAccion, datos: FormDat
   });
   if (resultado.ok) redirect(`/pedidos/${id}`);
   return resultado;
+}
+
+/** Lo que manda la pantalla de carga visual ("Nuevo pedido" o "Cambiar productos"). */
+export interface PedidoVisual {
+  pedidoId: string | null;
+  fecha: string;
+  clienteId: string;
+  puntoEntregaId: string | null;
+  lineas: LineaElegida[];
+  prioridad: PrioridadPedido;
+  entregaDesde: string;
+  entregaHasta: string;
+  observaciones: string;
+  confirmar: boolean;
+}
+
+/** Guarda el pedido completo de una vez: nuevo o con sus productos cambiados. */
+export async function guardarPedidoVisualAccion(datos: PedidoVisual): Promise<EstadoAccion & { pedido?: PedidoCargado }> {
+  let pedido: PedidoCargado | undefined;
+  const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
+    const comun = {
+      puntoEntregaId: datos.puntoEntregaId,
+      lineas: datos.lineas,
+      prioridad: datos.prioridad,
+      entregaDesde: datos.entregaDesde,
+      entregaHasta: datos.entregaHasta,
+      observaciones: datos.observaciones,
+      confirmar: datos.confirmar,
+    };
+    pedido = datos.pedidoId
+      ? await cambiarProductosDePedido(db, authUserId, { pedidoId: datos.pedidoId, fecha: datos.fecha, ...comun })
+      : await cargarPedido(db, authUserId, { fecha: datos.fecha, clienteId: datos.clienteId, ...comun });
+    return { ok: true, mensaje: null };
+  });
+  return pedido ? { ...resultado, pedido } : resultado;
 }

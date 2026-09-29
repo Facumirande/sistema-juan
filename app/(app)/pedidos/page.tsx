@@ -5,15 +5,11 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { sumar } from "@/dominio/dinero/decimal";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { sumarDias } from "@/dominio/fechas/fechas";
-import { listarClientes } from "@/modulos/clientes/clientes";
 import { listarPedidos } from "@/modulos/pedidos/pedidos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { CANALES, ESTADOS_PEDIDO, fechaConDia, opciones } from "@/ui/etiquetas";
-import { FormularioAccion } from "@/ui/formulario-accion";
-import { Aviso, Campo, Desplegable, Encabezado, Selector, Tabla, clasesBoton } from "@/ui/formularios";
+import { ESTADOS_PEDIDO, fechaConDia } from "@/ui/etiquetas";
+import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
-
-import { crearPedidoAccion } from "./acciones";
 
 export const metadata: Metadata = { title: "Pedidos · Sistema Juan" };
 
@@ -26,10 +22,7 @@ export default async function PaginaPedidos({ searchParams }: PageProps<"/pedido
   const pedida = parametro(f.fecha);
   const clienteElegido = parametro(f.cliente);
   const db = obtenerBaseDatos();
-  const [{ pedidos, fecha }, clientes] = await Promise.all([
-    listarPedidos(db, sesion.authUserId, { fecha: pedida && PATRON_FECHA.test(pedida) ? pedida : undefined }),
-    sesion.permisos.includes("pedidos.crear") ? listarClientes(db, sesion.authUserId) : Promise.resolve([]),
-  ]);
+  const { pedidos, fecha } = await listarPedidos(db, sesion.authUserId, { fecha: pedida && PATRON_FECHA.test(pedida) ? pedida : undefined });
   const activos = pedidos.filter((p) => p.estado !== "CANCELADO");
   const total = sumar(activos.map((p) => p.totalEstimado ?? "0"));
   const verVenta = sesion.permisos.includes("precios.ver_venta");
@@ -54,26 +47,11 @@ export default async function PaginaPedidos({ searchParams }: PageProps<"/pedido
         <p className="text-lg font-semibold">Entrega del {fechaConDia(fecha)}</p>
       </nav>
 
-      {sesion.permisos.includes("pedidos.crear") &&
-        (clientes.length === 0 ? (
-          <Aviso>
-            Para cargar pedidos primero cargá los clientes en{" "}
-            <Link href="/clientes" className="underline">
-              Clientes
-            </Link>
-            .
-          </Aviso>
-        ) : (
-          <Desplegable titulo="+ Nuevo pedido" abierto={pedidos.length === 0 || Boolean(clienteElegido)}>
-            <FormularioAccion accion={crearPedidoAccion} boton="Empezar el pedido">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Selector etiqueta="Cliente" name="clienteId" opciones={clientes.map((c) => ({ valor: c.id, etiqueta: c.nombre }))} defaultValue={clienteElegido} />
-                <Campo etiqueta="Para el día" name="fecha" type="date" defaultValue={fecha} />
-                <Selector etiqueta="Cómo llegó" name="canal" opciones={opciones(CANALES)} vacia="—" defaultValue="WHATSAPP" />
-              </div>
-            </FormularioAccion>
-          </Desplegable>
-        ))}
+      {sesion.permisos.includes("pedidos.crear") && (
+        <Link href={`/pedidos/nuevo?fecha=${fecha}${clienteElegido ? `&cliente=${clienteElegido}` : ""}`} className={`${clasesBoton("principal")} self-start`}>
+          ＋ Nuevo pedido
+        </Link>
+      )}
 
       {pedidos.length === 0 ? (
         <p className="text-texto-suave">No hay pedidos para este día.</p>

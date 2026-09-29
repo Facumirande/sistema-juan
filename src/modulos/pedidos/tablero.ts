@@ -2,7 +2,7 @@ import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 
-import { cliente, entregaItem, jornada, listaCompra, listaCompraItem, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
+import { categoria, cliente, entregaItem, jornada, listaCompra, listaCompraItem, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
@@ -44,7 +44,8 @@ export interface TarjetaPedido {
   plazo: string | null;
   estadoPlazo: EstadoDelPlazo;
   lineas: number;
-  productos: string[];
+  /** Lo que lleva, para verlo en la tarjeta sin abrirla. */
+  productos: { nombre: string; cantidad: string; grupo: string | null }[];
   avance: AvanceDePedido | null;
   /** Solo con `precios.ver_venta`. */
   totalEstimado: string | null;
@@ -78,6 +79,8 @@ export interface TableroDePedidos {
 export interface LineaConAvance {
   id: string;
   producto: string;
+  /** Grupo de su categoría (FRUTA, VERDURA…), para el dibujo. */
+  grupo: string | null;
   cantidad: string;
   hecha: boolean;
 }
@@ -96,6 +99,7 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
       pedidoId: pedidoItem.pedidoId,
       productoId: pedidoItem.productoId,
       producto: producto.nombre,
+      grupo: categoria.grupo,
       unidad: producto.unidadBase,
       cantidad: pedidoItem.cantidad,
       cantidadBase: pedidoItem.cantidadBase,
@@ -103,6 +107,7 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
     })
     .from(pedidoItem)
     .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
+    .leftJoin(categoria, eq(categoria.id, producto.categoriaId))
     .leftJoin(presentacion, eq(presentacion.id, pedidoItem.presentacionId))
     .where(and(inArray(pedidoItem.pedidoId, ids), eq(pedidoItem.cancelado, false)))
     .orderBy(asc(pedidoItem.linea));
@@ -131,6 +136,7 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
         .map((i) => ({
           id: i.id,
           producto: i.producto,
+          grupo: i.grupo,
           cantidad: i.presentacion
             ? `${formatearNumero(i.cantidad, { decimales: 3, recortarCeros: true })} × ${i.presentacion}`
             : formatearCantidad(i.cantidadBase, i.unidad as UnidadMedida),
@@ -213,7 +219,7 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
         plazo: textoPlazo(f.entregaDesde, f.entregaHasta),
         estadoPlazo: estadoDelPlazo({ fecha, hasta: hora(f.entregaHasta), estado: f.estado, ...ahora }),
         lineas: a.lineas.length,
-        productos: a.lineas.map((l) => l.producto),
+        productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo })),
         avance: a.que ? { que: a.que, hechos: a.lineas.filter((l) => l.hecha).length, total: a.lineas.length } : null,
         totalEstimado: verVenta ? f.total : null,
         notas: notas.get(f.id) ?? { total: 0, sinLeer: 0 },
@@ -261,14 +267,21 @@ export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoI
 }
 
 /** Qué pedidos se eligieron y en qué estado están (para las acciones del tablero). */
-export async function estadosDePedidos(db: BaseDatos, authUserId: string, ids: readonly string[]): Promise<{ id: string; estado: EstadoPedido; fecha: FechaISO }[]> {
+export async function estadosDePedidos(
+  db: BaseDatos,
+  authUserId: string,
+  ids: readonly string[],
+): Promise<{ id: string; estado: EstadoPedido; fecha: FechaISO; numero: string; cliente: string }[]> {
   if (ids.length === 0) return [];
   return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx) =>
-    tx
-      .select({ id: pedido.id, estado: pedido.estado, fecha: jornada.fecha })
-      .from(pedido)
-      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
-      .where(inArray(pedido.id, [...ids]))
-      .orderBy(asc(pedido.numero)),
+    (
+      await tx
+        .select({ id: pedido.id, estado: pedido.estado, fecha: jornada.fecha, numero: pedido.numero, cliente: cliente.nombre })
+        .from(pedido)
+        .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+        .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+        .where(inArray(pedido.id, [...ids]))
+        .orderBy(asc(pedido.numero))
+    ).map((p) => ({ ...p, numero: numeroPedido(p.numero) })),
   );
 }

@@ -280,7 +280,7 @@ describe("pedidos (04 §5.b, RN-017 a RN-035)", () => {
     expect(await mensajeDeError(cancelarPedido(base.db, vendedor, { pedidoId: ids.pedidoHospital! }))).toMatch(/por qué/);
     await cancelarPedido(base.db, vendedor, { pedidoId: ids.pedidoHospital!, motivo: "El hospital suspendió la entrega" });
     expect((await obtenerPedido(base.db, vendedor, ids.pedidoHospital!)).estado).toBe("CANCELADO");
-    expect(await mensajeDeError(confirmarPedido(base.db, vendedor, ids.pedidoHospital!))).toMatch(/no se modifica/);
+    expect(await mensajeDeError(confirmarPedido(base.db, vendedor, ids.pedidoHospital!))).toMatch(/no se puede cambiar/);
   });
 
   it("lista los pedidos de la jornada y las jornadas con sus totales", async () => {

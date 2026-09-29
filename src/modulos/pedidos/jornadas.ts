@@ -37,7 +37,7 @@ export async function hoyYSugerida(tx: Transaccion): Promise<{ hoy: FechaISO; su
 export async function jornadaParaPedidos(tx: Transaccion, c: ContextoUsuario, fecha: string) {
   if (!PATRON_FECHA.test(fecha)) throw new ErrorDeNegocio("VALIDACION", "Elegí la fecha de entrega.");
   const { hoy } = await hoyYSugerida(tx);
-  if (fecha < hoy) throw new ErrorDeNegocio("VALIDACION", "No se cargan pedidos para fechas pasadas: elegí hoy o un día siguiente (RN-031).");
+  if (fecha < hoy) throw new ErrorDeNegocio("VALIDACION", "Ese día ya pasó: los pedidos se cargan para hoy o para un día siguiente (RN-031).");
 
   await tx
     .insert(jornada)
@@ -45,7 +45,9 @@ export async function jornadaParaPedidos(tx: Transaccion, c: ContextoUsuario, fe
     .onConflictDoNothing({ target: [jornada.empresaId, jornada.fecha] });
   const [j] = await tx.select().from(jornada).where(eq(jornada.fecha, fecha));
   if (!j) throw new Error("No se pudo crear la jornada.");
-  if (j.estado === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "La jornada de esa fecha ya está cerrada (RN-031).");
+  if (j.estado === "CERRADA") {
+    throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: elegí otro día. Si de verdad hace falta agregarle algo, primero reabrilo desde “Cierre del día” (RN-031).");
+  }
   if (j.estado === "PREPARANDO" || j.estado === "REPARTIENDO") c.permisos.exigir("pedidos.editar_en_curso");
   return j;
 }

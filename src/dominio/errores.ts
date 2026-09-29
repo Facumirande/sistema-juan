@@ -27,3 +27,18 @@ export class ErrorDeNegocio extends Error {
 export function esErrorDeNegocio(error: unknown, codigo?: CodigoError): error is ErrorDeNegocio {
   return error instanceof ErrorDeNegocio && (codigo === undefined || error.codigo === codigo);
 }
+
+/** Referencias internas del plan que no le sirven a quien usa el sistema: "(RN-018)", "(RN-063, RN-064)", "(04 §5.b.4)". */
+const REFERENCIAS_INTERNAS = /\s*\((?:\s*(?:ver\s+)?(?:RN-\d+[a-z]?|\d{2}\s*§\s*[\d.]+[a-z]?(?:\.\d+)*)\s*(?:,|\by\b)?)+\)/giu;
+
+/**
+ * El mensaje como lo lee la persona: sin los códigos de reglas ni las referencias al plan, que
+ * quedan para el código y las pruebas.
+ */
+export function textoParaPersona(mensaje: string): string {
+  return mensaje
+    .replace(REFERENCIAS_INTERNAS, "")
+    .replace(/\s+([.,:;])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}

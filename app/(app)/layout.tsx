@@ -5,6 +5,7 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { contarNotasSinLeer } from "@/modulos/colaboracion/notas";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { Avatar } from "@/ui/avatar";
+import { EnlaceDeMenu } from "@/ui/enlace-menu";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
 function Items({ grupo }: { grupo: GrupoMenu }) {
@@ -15,9 +16,7 @@ function Items({ grupo }: { grupo: GrupoMenu }) {
         <span className="text-xs">próximamente</span>
       </span>
     ) : (
-      <Link key={item.pantalla} href={item.ruta} className="flex min-h-11 items-center rounded-lg px-3 font-medium hover:bg-fondo">
-        {item.etiqueta}
-      </Link>
+      <EnlaceDeMenu key={item.pantalla} href={item.ruta} icono={item.icono} etiqueta={item.etiqueta} destacado={item.destacado} />
     ),
   );
 }
@@ -70,11 +69,15 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
   if (sesion.debeCambiarClave) redirect("/crear-clave");
 
   const grupos = menuDisponible(sesion.permisos);
-  const notasNuevas = await contarNotasSinLeer(obtenerBaseDatos(), authUserId);
+  // Si el contador de notas falla, la pantalla se muestra igual (sin el número en la campanita).
+  const notasNuevas = await contarNotasSinLeer(obtenerBaseDatos(), authUserId).catch((error: unknown) => {
+    console.error("No se pudieron contar las notas sin leer:", error);
+    return 0;
+  });
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
-      <aside className="border-b border-borde bg-superficie md:w-64 md:border-b-0 md:border-r print:hidden">
+      <aside className="border-b border-borde bg-superficie md:w-60 md:shrink-0 md:border-b-0 md:border-r print:hidden">
         <details className="md:hidden">
           <summary className="flex min-h-12 cursor-pointer items-center px-4 font-semibold">Menú</summary>
           <div className="px-2 pb-4">

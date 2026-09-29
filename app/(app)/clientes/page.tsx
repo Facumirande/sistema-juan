@@ -6,7 +6,7 @@ import { listarClientes, type ClienteListado } from "@/modulos/clientes/clientes
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
 import { PERIODICIDADES, TIPOS_CLIENTE, fechaConDia } from "@/ui/etiquetas";
-import { etiquetaDeTipo } from "@/ui/etiquetas-tablero";
+import { dibujoDeCliente, etiquetaDeTipo } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, Desplegable, Encabezado, Estado, Filtros, Selector, Tabla } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
@@ -16,7 +16,6 @@ import { CamposCliente, CamposPunto } from "./campos-cliente";
 
 export const metadata: Metadata = { title: "Clientes · Sistema Juan" };
 
-const DIBUJO: Readonly<Record<string, string>> = { HOSPITAL: "🏥", RESTAURANTE: "🍽️", COMERCIO: "🏪", INSTITUCION: "🏫", OTRO: "👤" };
 const ORDEN_TIPOS = ["HOSPITAL", "RESTAURANTE", "COMERCIO", "INSTITUCION", "OTRO"];
 
 function TarjetaCliente({ c }: { c: ClienteListado }) {
@@ -25,7 +24,7 @@ function TarjetaCliente({ c }: { c: ClienteListado }) {
     <TarjetaRegistro
       href={`/clientes/${c.id}`}
       franja={`var(--etiqueta-${etiqueta.color})`}
-      dibujo={DIBUJO[c.tipoCliente] ?? "👤"}
+      dibujo={dibujoDeCliente(c.tipoCliente)}
       titulo={c.nombre}
       subtitulo={`${TIPOS_CLIENTE[c.tipoCliente]} · factura ${PERIODICIDADES[c.periodicidadFacturacion]?.toLowerCase()}`}
       inactivo={!c.activo}
@@ -104,7 +103,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<"/clien
         <p className="text-texto-suave">No hay clientes {texto ? "con ese nombre" : "cargados todavía"}.</p>
       ) : vista === "tarjetas" ? (
         porTipo.map(([tipo, lista]) => (
-          <Grupo key={tipo} titulo={TIPOS_CLIENTE[tipo] ?? tipo} icono={DIBUJO[tipo]} cantidad={lista.length}>
+          <Grupo key={tipo} titulo={TIPOS_CLIENTE[tipo] ?? tipo} icono={dibujoDeCliente(tipo)} cantidad={lista.length}>
             {lista.map((c) => (
               <TarjetaCliente key={c.id} c={c} />
             ))}

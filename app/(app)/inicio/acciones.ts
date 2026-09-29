@@ -1,33 +1,48 @@
 "use server";
 
 import { accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/dominio/pedidos/tablero";
-import { esErrorDeNegocio } from "@/dominio/errores";
+import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
 import { generarListaCompra, sacarPedidoDeLista } from "@/modulos/compras/lista-compra";
 import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido } from "@/modulos/pedidos/pedidos";
 import { estadosDePedidos } from "@/modulos/pedidos/tablero";
 import { ejecutarAccion } from "@/ui/accion-servidor";
-import { campo, type EstadoAccion } from "@/ui/estado-accion";
+import { campo, esEnlace, type EstadoAccion } from "@/ui/estado-accion";
 
 // Acciones del tablero de pedidos (estilo Trello). Los permisos los verifica cada caso de uso.
 
 const elegidos = (datos: FormData) => datos.getAll("pedido").filter((v): v is string => typeof v === "string" && v !== "");
 const cuantos = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
-/** Confirma los borradores de la lista; devuelve los que quedaron confirmados y los problemas. */
-async function confirmarBorradores(db: Parameters<typeof confirmarPedido>[0], authUserId: string, ids: readonly string[]) {
+interface Problema {
+  texto: string;
+  enlace?: { href: string; texto: string };
+}
+
+/**
+ * Confirma los borradores elegidos; devuelve los que quedaron confirmados y, de los que no, qué
+ * pedido es, qué le falta y (si hay) el botón para arreglarlo.
+ */
+async function confirmarBorradores(db: Parameters<typeof confirmarPedido>[0], authUserId: string, pedidos: readonly { id: string; numero: string; cliente: string }[]) {
   const confirmados: string[] = [];
-  const problemas: string[] = [];
-  for (const id of ids) {
+  const problemas: Problema[] = [];
+  for (const p of pedidos) {
     try {
-      await confirmarPedido(db, authUserId, id);
-      confirmados.push(id);
+      await confirmarPedido(db, authUserId, p.id);
+      confirmados.push(p.id);
     } catch (error) {
       if (!esErrorDeNegocio(error)) throw error;
-      problemas.push(error.message);
+      const enlace = error.detalle?.enlace;
+      problemas.push({ texto: `${p.cliente} (${p.numero}): ${textoParaPersona(error.message)}`, ...(esEnlace(enlace) ? { enlace } : {}) });
     }
   }
   return { confirmados, problemas };
 }
+
+const textos = (problemas: readonly Problema[]) => problemas.map((p) => p.texto).join(" ");
+const primerEnlace = (problemas: readonly Problema[]) => {
+  const enlace = problemas.find((p) => p.enlace)?.enlace;
+  return enlace ? { enlace } : {};
+};
 
 /** "Armar la lista de compra" con los pedidos elegidos (los borradores se confirman antes). */
 export async function armarListaConElegidosAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
@@ -36,23 +51,27 @@ export async function armarListaConElegidosAccion(_estado: EstadoAccion, datos: 
     if (pedidos.length === 0) return { ok: false, mensaje: "Elegí al menos un pedido." };
     const fechas = new Set(pedidos.map((p) => p.fecha));
     if (fechas.size > 1) return { ok: false, mensaje: "Elegí pedidos de un mismo día: la lista de compra es por día." };
-    const { confirmados, problemas } = await confirmarBorradores(db, authUserId, pedidos.filter((p) => p.estado === "BORRADOR").map((p) => p.id));
+    const { confirmados, problemas } = await confirmarBorradores(db, authUserId, pedidos.filter((p) => p.estado === "BORRADOR"));
     const paraLista = [...pedidos.filter((p) => p.estado === "CONFIRMADO").map((p) => p.id), ...confirmados];
-    if (paraLista.length === 0) return { ok: false, mensaje: problemas.join(" ") || "Esos pedidos ya están en la lista." };
+    if (paraLista.length === 0) return { ok: false, mensaje: textos(problemas) || "Esos pedidos ya están en la lista de compra.", ...primerEnlace(problemas) };
     const r = await generarListaCompra(db, authUserId, [...fechas][0]!, { pedidoIds: paraLista });
     const partes = [`Listo: ${cuantos(r.agregados, "pedido entró", "pedidos entraron")} en la lista de compra ${r.numero}.`];
     if (r.fueraDeLista > 0) partes.push(`Quedan ${cuantos(r.fueraDeLista, "confirmado afuera", "confirmados afuera")}.`);
-    if (problemas.length) partes.push(`No se pudieron confirmar: ${problemas.join(" ")}`);
-    return { ok: problemas.length === 0, mensaje: partes.join(" ") };
+    if (problemas.length) partes.push(`Quedaron afuera porque no se pudieron confirmar: ${textos(problemas)}`);
+    return { ok: problemas.length === 0, mensaje: partes.join(" "), ...primerEnlace(problemas) };
   });
 }
 
 export async function confirmarElegidosAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const pedidos = await estadosDePedidos(db, authUserId, elegidos(datos));
-    const { confirmados, problemas } = await confirmarBorradores(db, authUserId, pedidos.filter((p) => p.estado === "BORRADOR").map((p) => p.id));
-    if (confirmados.length === 0 && problemas.length === 0) return { ok: false, mensaje: "Elegí pedidos por confirmar." };
-    return { ok: problemas.length === 0, mensaje: [confirmados.length ? `${cuantos(confirmados.length, "pedido confirmado", "pedidos confirmados")}.` : "", ...problemas].filter(Boolean).join(" ") };
+    const { confirmados, problemas } = await confirmarBorradores(db, authUserId, pedidos.filter((p) => p.estado === "BORRADOR"));
+    if (confirmados.length === 0 && problemas.length === 0) return { ok: false, mensaje: "Elegí pedidos de la columna “Por confirmar”." };
+    return {
+      ok: problemas.length === 0,
+      mensaje: [confirmados.length ? `${cuantos(confirmados.length, "pedido confirmado", "pedidos confirmados")}.` : "", textos(problemas)].filter(Boolean).join(" "),
+      ...primerEnlace(problemas),
+    };
   });
 }
 
@@ -92,7 +111,7 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
     if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: esa etapa avanza sola (preparación, reparto y entrega)." };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
-    if (!p) return { ok: false, mensaje: "No se encontró el pedido." };
+    if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
     if (accion === "CONFIRMAR") {
       await confirmarPedido(db, authUserId, id);
       return { ok: true, mensaje: "Pedido confirmado." };

@@ -6,9 +6,10 @@ import { canalPedido, cliente, jornada, pedido, pedidoItem, presentacion, priori
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { aNumeric, dec, sumar } from "@/dominio/dinero/decimal";
-import { ErrorDeNegocio } from "@/dominio/errores";
+import { ErrorDeNegocio, esErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
+import { diferenciasDeLineas, juntarLineas, type LineaElegida } from "@/dominio/pedidos/carga";
 import { textoPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import { subtotalLinea, transicionPedidoPermitida, type AlertaPrecio, type EstadoPedido, type OrigenPrecioVenta } from "@/dominio/precios/venta";
 import { aUnidadBase } from "@/dominio/unidades/unidades";
@@ -378,14 +379,20 @@ const esquemaNuevoPedido = z.object({
 async function clienteParaPedido(tx: Transaccion, clienteId: string, puntoEntregaId: string | null | undefined) {
   const [cli] = await tx.select({ nombre: cliente.nombre, activo: cliente.activo }).from(cliente).where(eq(cliente.id, clienteId));
   if (!cli) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el cliente.");
-  if (!cli.activo) throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} está desactivado: no admite pedidos nuevos (RN-012).`);
+  if (!cli.activo) {
+    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} está dado de baja: para cargarle pedidos, reactivalo en su ficha.`, {
+      enlace: { href: `/clientes/${clienteId}`, texto: "Abrir la ficha del cliente" },
+    });
+  }
   const puntos = await tx
     .select({ id: puntoEntrega.id, esPrincipal: puntoEntrega.esPrincipal })
     .from(puntoEntrega)
     .where(and(eq(puntoEntrega.clienteId, clienteId), eq(puntoEntrega.activo, true)));
   const punto = puntoEntregaId ? puntos.find((x) => x.id === puntoEntregaId) : (puntos.find((x) => x.esPrincipal) ?? puntos[0]);
   if (!punto) {
-    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} no tiene un punto de entrega activo: cargale dónde se entrega (RN-010).`);
+    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} no tiene cargado dónde se le entrega: agregale una dirección en su ficha y volvé a intentar (RN-010).`, {
+      enlace: { href: `/clientes/${clienteId}`, texto: "Cargar la dirección" },
+    });
   }
   return { nombre: cli.nombre, puntoId: punto.id };
 }
@@ -397,47 +404,67 @@ export async function crearPedido(
   datos: z.input<typeof esquemaNuevoPedido>,
 ): Promise<{ pedidoId: string; numero: string; duplicadoDe: string | null }> {
   const d = validar(esquemaNuevoPedido, datos);
-  return ejecutarComoUsuario(db, authUserId, "pedidos.crear", async (tx, c) => {
-    const j = await jornadaParaPedidos(tx, c, d.fecha);
-    const cli = await clienteParaPedido(tx, d.clienteId, d.puntoEntregaId);
-    const [existente] = await tx
-      .select({ numero: pedido.numero })
-      .from(pedido)
-      .where(and(eq(pedido.jornadaId, j.id), eq(pedido.clienteId, d.clienteId), eq(pedido.puntoEntregaId, cli.puntoId), ne(pedido.estado, "CANCELADO")))
-      .limit(1);
-    const { numero, visible } = await siguienteNumero(tx, "PEDIDO");
-    const [nuevo] = await tx
-      .insert(pedido)
-      .values({
-        empresaId: c.empresaId,
-        numero,
-        jornadaId: j.id,
-        clienteId: d.clienteId,
-        puntoEntregaId: cli.puntoId,
-        canal: d.canal ?? null,
-        referenciaCliente: d.referenciaCliente,
-        observaciones: d.observaciones,
-        creadoPor: c.usuarioId,
-        actualizadoPor: c.usuarioId,
-      })
-      .returning({ id: pedido.id });
-    await auditar(tx, {
+  return ejecutarComoUsuario(db, authUserId, "pedidos.crear", (tx, c) => crearEnTransaccion(tx, c, d));
+}
+
+async function crearEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.output<typeof esquemaNuevoPedido>): Promise<{ pedidoId: string; numero: string; duplicadoDe: string | null }> {
+  const j = await jornadaParaPedidos(tx, c, d.fecha);
+  const cli = await clienteParaPedido(tx, d.clienteId, d.puntoEntregaId);
+  const [existente] = await tx
+    .select({ numero: pedido.numero })
+    .from(pedido)
+    .where(and(eq(pedido.jornadaId, j.id), eq(pedido.clienteId, d.clienteId), eq(pedido.puntoEntregaId, cli.puntoId), ne(pedido.estado, "CANCELADO")))
+    .limit(1);
+  const { numero, visible } = await siguienteNumero(tx, "PEDIDO");
+  const [nuevo] = await tx
+    .insert(pedido)
+    .values({
       empresaId: c.empresaId,
-      usuarioId: c.usuarioId,
-      accion: "CREAR",
-      entidad: "pedido",
-      entidadId: nuevo!.id,
-      resumen: `${visible} de ${cli.nombre} para el ${d.fecha}.`,
-    });
-    await registrarActividad(tx, c, {
-      accion: "CREAR",
-      entidadTipo: "PEDIDO",
-      entidadId: nuevo!.id,
+      numero,
       jornadaId: j.id,
-      resumen: `cargó el pedido ${visible} de ${cli.nombre} para el ${diaCorto(d.fecha)}`,
-    });
-    return { pedidoId: nuevo!.id, numero: visible, duplicadoDe: existente ? numeroPedido(existente.numero) : null };
+      clienteId: d.clienteId,
+      puntoEntregaId: cli.puntoId,
+      canal: d.canal ?? null,
+      referenciaCliente: d.referenciaCliente,
+      observaciones: d.observaciones,
+      creadoPor: c.usuarioId,
+      actualizadoPor: c.usuarioId,
+    })
+    .returning({ id: pedido.id });
+  await auditar(tx, {
+    empresaId: c.empresaId,
+    usuarioId: c.usuarioId,
+    accion: "CREAR",
+    entidad: "pedido",
+    entidadId: nuevo!.id,
+    resumen: `${visible} de ${cli.nombre} para el ${d.fecha}.`,
   });
+  await registrarActividad(tx, c, {
+    accion: "CREAR",
+    entidadTipo: "PEDIDO",
+    entidadId: nuevo!.id,
+    jornadaId: j.id,
+    resumen: `cargó el pedido ${visible} de ${cli.nombre} para el ${diaCorto(d.fecha)}`,
+  });
+  return { pedidoId: nuevo!.id, numero: visible, duplicadoDe: existente ? numeroPedido(existente.numero) : null };
+}
+
+const ETAPA_EN_PALABRAS: Partial<Record<EstadoPedido, string>> = {
+  EN_PREPARACION: "preparándose",
+  PREPARADO: "preparado",
+  EN_REPARTO: "en camino",
+  ENTREGADO: "entregado",
+  CANCELADO: "cancelado",
+};
+
+/** Cantidad en unidad base, con un mensaje que nombra el producto si no admite fracción (RN-009). */
+function cantidadBaseDe(cantidad: Parameters<typeof aUnidadBase>[0], prod: { nombre: string; factor: string; admiteFraccion: boolean }) {
+  try {
+    return aUnidadBase(cantidad, prod.factor, prod.admiteFraccion);
+  } catch (error) {
+    if (!esErrorDeNegocio(error, "VALIDACION")) throw error;
+    throw new ErrorDeNegocio("VALIDACION", `${prod.nombre} se pide en unidades enteras: poné una cantidad sin coma, por ejemplo 2 o 3 (RN-009).`);
+  }
 }
 
 /** Pedido que se va a modificar, bloqueado hasta el final de la transacción (RN-025, RN-026). */
@@ -452,7 +479,12 @@ async function pedidoParaModificar(tx: Transaccion, c: ContextoUsuario, pedidoId
   const estado = p.pedido.estado;
   if (estado === "EN_COMPRA") c.permisos.exigir("pedidos.editar_en_curso");
   else if (estado === "BORRADOR" || estado === "CONFIRMADO") c.permisos.exigir("pedidos.editar");
-  else throw new ErrorDeNegocio("TRANSICION_INVALIDA", `Un pedido ${estado.toLowerCase().replace("_", " ")} ya no se modifica (RN-027).`);
+  else {
+    throw new ErrorDeNegocio(
+      "TRANSICION_INVALIDA",
+      `Este pedido ya está ${ETAPA_EN_PALABRAS[estado] ?? "cerrado"} y no se puede cambiar. Si hace falta mandar algo más, cargá un pedido nuevo para el cliente (RN-027).`,
+    );
+  }
   return p;
 }
 
@@ -468,17 +500,17 @@ const esquemaLinea = z.object({
 
 async function productoParaLinea(tx: Transaccion, productoId: string, presentacionId: string | null | undefined) {
   const [prod] = await tx
-    .select({ nombre: producto.nombre, activo: producto.activo, admiteFraccion: producto.admiteFraccion })
+    .select({ nombre: producto.nombre, activo: producto.activo, admiteFraccion: producto.admiteFraccion, unidadBase: producto.unidadBase })
     .from(producto)
     .where(eq(producto.id, productoId));
   if (!prod) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el producto.");
-  if (!prod.activo) throw new ErrorDeNegocio("VALIDACION", `${prod.nombre} está desactivado: no se usa en pedidos nuevos (RN-007).`);
+  if (!prod.activo) throw new ErrorDeNegocio("VALIDACION", `${prod.nombre} está dado de baja: sacalo del pedido o reactivalo en Productos.`);
   if (!presentacionId) return { ...prod, factor: "1" };
   const [pr] = await tx
     .select({ factor: presentacion.factorABase, activo: presentacion.activo, venta: presentacion.usableEnVenta, nombre: presentacion.nombre })
     .from(presentacion)
     .where(and(eq(presentacion.id, presentacionId), eq(presentacion.productoId, productoId)));
-  if (!pr?.activo || !pr.venta) throw new ErrorDeNegocio("VALIDACION", "Esa presentación no se usa para vender este producto (RN-019).");
+  if (!pr?.activo || !pr.venta) throw new ErrorDeNegocio("VALIDACION", `${prod.nombre}: ese envase ya no se usa para vender. Elegí otro, por ejemplo por ${prod.unidadBase === "KG" ? "kilo" : "unidad"} (RN-019).`);
   return { ...prod, factor: pr.factor };
 }
 
@@ -510,7 +542,7 @@ export async function agregarLinea(db: BaseDatos, authUserId: string, datos: z.i
         .update(pedidoItem)
         .set({
           cantidad: aNumeric(cantidad, 3),
-          cantidadBase: aNumeric(aUnidadBase(cantidad, prod.factor, prod.admiteFraccion), 3),
+          cantidadBase: aNumeric(cantidadBaseDe(cantidad, prod), 3),
           observaciones: [igual.observaciones, d.observaciones].filter(Boolean).join(" / ") || null,
           actualizadoPor: c.usuarioId,
         })
@@ -524,7 +556,7 @@ export async function agregarLinea(db: BaseDatos, authUserId: string, datos: z.i
         productoId: d.productoId,
         presentacionId,
         cantidad: aNumeric(d.cantidad, 3),
-        cantidadBase: aNumeric(aUnidadBase(d.cantidad, prod.factor, prod.admiteFraccion), 3),
+        cantidadBase: aNumeric(cantidadBaseDe(d.cantidad, prod), 3),
         observaciones: d.observaciones,
         creadoPor: c.usuarioId,
         actualizadoPor: c.usuarioId,
@@ -570,7 +602,7 @@ export async function cambiarLinea(db: BaseDatos, authUserId: string, datos: z.i
       .update(pedidoItem)
       .set({
         cantidad: aNumeric(d.cantidad, 3),
-        cantidadBase: aNumeric(aUnidadBase(d.cantidad, prod.factor, prod.admiteFraccion), 3),
+        cantidadBase: aNumeric(cantidadBaseDe(d.cantidad, prod), 3),
         observaciones: d.observaciones,
         actualizadoPor: c.usuarioId,
       })
@@ -648,52 +680,68 @@ export async function cambiarDatosPedido(db: BaseDatos, authUserId: string, dato
 
 /** BORRADOR → CONFIRMADO (RN-017, RN-018, RN-029). Recalcula los precios estimados. */
 export async function confirmarPedido(db: BaseDatos, authUserId: string, pedidoId: string): Promise<void> {
-  await ejecutarComoUsuario(db, authUserId, "pedidos.confirmar", async (tx, c) => {
-    const p = await pedidoParaModificar(tx, c, pedidoId);
-    if (!transicionPedidoPermitida(p.pedido.estado, "CONFIRMADO")) throw new ErrorDeNegocio("TRANSICION_INVALIDA", "El pedido ya está confirmado.");
-    const [lineas] = await tx
-      .select({ n: count() })
-      .from(pedidoItem)
-      .where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false)));
-    if (Number(lineas?.n ?? 0) === 0) throw new ErrorDeNegocio("VALIDACION", "El pedido no tiene productos (RN-018).");
-    const [cli] = await tx.select({ nombre: cliente.nombre, requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId));
-    if (!cli?.activo) throw new ErrorDeNegocio("VALIDACION", "El cliente está desactivado (RN-012).");
-    if (cli.requiereOC && !p.pedido.referenciaCliente) {
-      throw new ErrorDeNegocio("VALIDACION", "Este cliente trabaja con orden de compra: cargá el número antes de confirmar (RN-017).");
-    }
-    const [punto] = await tx.select({ activo: puntoEntrega.activo }).from(puntoEntrega).where(eq(puntoEntrega.id, p.pedido.puntoEntregaId));
-    if (!punto?.activo) throw new ErrorDeNegocio("VALIDACION", "El punto de entrega del pedido está desactivado: elegí otro (RN-010).");
-    if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "La jornada ya está cerrada.");
-    if (p.estadoJornada === "PREPARANDO" || p.estadoJornada === "REPARTIENDO") c.permisos.exigir("pedidos.editar_en_curso");
+  await ejecutarComoUsuario(db, authUserId, "pedidos.confirmar", (tx, c) => confirmarEnTransaccion(tx, c, pedidoId));
+}
 
-    await tx
-      .update(pedido)
-      .set({
-        estado: "CONFIRMADO",
-        esTardio: p.estadoJornada !== "ABIERTA",
-        confirmadoEn: sql`now()`,
-        confirmadoPor: c.usuarioId,
-        actualizadoPor: c.usuarioId,
-      })
-      .where(eq(pedido.id, pedidoId));
-    await recalcularPedido(tx, pedidoId);
-    await auditar(tx, {
-      empresaId: c.empresaId,
-      usuarioId: c.usuarioId,
-      accion: "CAMBIO_ESTADO",
-      entidad: "pedido",
-      entidadId: pedidoId,
-      resumen: `${numeroPedido(p.pedido.numero)} confirmado.`,
-      datosAntes: { estado: p.pedido.estado },
-      datosDespues: { estado: "CONFIRMADO" },
+async function confirmarEnTransaccion(tx: Transaccion, c: ContextoUsuario, pedidoId: string): Promise<void> {
+  const p = await pedidoParaModificar(tx, c, pedidoId);
+  if (!transicionPedidoPermitida(p.pedido.estado, "CONFIRMADO")) throw new ErrorDeNegocio("TRANSICION_INVALIDA", "El pedido ya está confirmado.");
+  const [lineas] = await tx
+    .select({ n: count() })
+    .from(pedidoItem)
+    .where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false)));
+  if (Number(lineas?.n ?? 0) === 0) {
+    throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no tiene productos: agregale al menos uno y después confirmalo (RN-018).", {
+      enlace: { href: `/pedidos/${pedidoId}/cambiar`, texto: "Agregar productos" },
     });
-    await registrarActividad(tx, c, {
-      accion: "CONFIRMAR",
-      entidadTipo: "PEDIDO",
-      entidadId: pedidoId,
-      jornadaId: p.pedido.jornadaId,
-      resumen: `confirmó el pedido ${numeroPedido(p.pedido.numero)} de ${cli.nombre}`,
+  }
+  const [cli] = await tx.select({ nombre: cliente.nombre, requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId));
+  if (!cli?.activo) {
+    throw new ErrorDeNegocio("VALIDACION", "Este cliente está dado de baja: reactivalo en su ficha para poder confirmar el pedido (RN-012).", {
+      enlace: { href: `/clientes/${p.pedido.clienteId}`, texto: "Abrir la ficha del cliente" },
     });
+  }
+  if (cli.requiereOC && !p.pedido.referenciaCliente) {
+    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} trabaja con orden de compra: cargá el número de la orden en el pedido y después confirmalo (RN-017).`, {
+      enlace: { href: `/pedidos/${pedidoId}`, texto: "Cargar el número de orden" },
+    });
+  }
+  const [punto] = await tx.select({ activo: puntoEntrega.activo }).from(puntoEntrega).where(eq(puntoEntrega.id, p.pedido.puntoEntregaId));
+  if (!punto?.activo) {
+    throw new ErrorDeNegocio("VALIDACION", "El lugar de entrega de este pedido fue dado de baja: elegí otro en el pedido (RN-010).", {
+      enlace: { href: `/pedidos/${pedidoId}`, texto: "Elegir otro lugar" },
+    });
+  }
+  if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para confirmar pedidos, primero reabrilo desde “Cierre del día”.");
+  if (p.estadoJornada === "PREPARANDO" || p.estadoJornada === "REPARTIENDO") c.permisos.exigir("pedidos.editar_en_curso");
+
+  await tx
+    .update(pedido)
+    .set({
+      estado: "CONFIRMADO",
+      esTardio: p.estadoJornada !== "ABIERTA",
+      confirmadoEn: sql`now()`,
+      confirmadoPor: c.usuarioId,
+      actualizadoPor: c.usuarioId,
+    })
+    .where(eq(pedido.id, pedidoId));
+  await recalcularPedido(tx, pedidoId);
+  await auditar(tx, {
+    empresaId: c.empresaId,
+    usuarioId: c.usuarioId,
+    accion: "CAMBIO_ESTADO",
+    entidad: "pedido",
+    entidadId: pedidoId,
+    resumen: `${numeroPedido(p.pedido.numero)} confirmado.`,
+    datosAntes: { estado: p.pedido.estado },
+    datosDespues: { estado: "CONFIRMADO" },
+  });
+  await registrarActividad(tx, c, {
+    accion: "CONFIRMAR",
+    entidadTipo: "PEDIDO",
+    entidadId: pedidoId,
+    jornadaId: p.pedido.jornadaId,
+    resumen: `confirmó el pedido ${numeroPedido(p.pedido.numero)} de ${cli.nombre}`,
   });
 }
 
@@ -703,7 +751,7 @@ export async function cancelarPedido(db: BaseDatos, authUserId: string, datos: {
     const [p] = await tx.select().from(pedido).where(eq(pedido.id, datos.pedidoId)).for("update");
     if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
     if (!transicionPedidoPermitida(p.estado, "CANCELADO")) {
-      throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Este pedido ya no se puede cancelar: su entrega está en preparación o después (RN-028).");
+      throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Este pedido ya no se puede cancelar porque ya se está preparando o entregando. Si el cliente no lo quiere, anotalo al confirmar la entrega (RN-028).");
     }
     const motivo = datos.motivo?.trim() || null;
     if (p.estado !== "BORRADOR" && (!motivo || motivo.length < 5)) {
@@ -971,5 +1019,216 @@ export async function asignarResponsable(db: BaseDatos, authUserId: string, dato
       });
     }
     return cambian.length;
+  });
+}
+
+// ——— Carga visual de pedidos: "Nuevo pedido" y "Cambiar productos" (28/09/2026) ———
+
+const esquemaLineaElegida = z.object({
+  productoId: z.uuid("Elegí el producto."),
+  presentacionId: z.uuid().nullish(),
+  cantidad: numeroObligatorio(MENSAJE_CANTIDAD).refine((v) => dec(v).gt(0), { message: "La cantidad tiene que ser mayor que 0." }),
+  observaciones: textoOpcional(200),
+});
+
+const lineasElegidas = z.array(esquemaLineaElegida).min(1, "Elegí al menos un producto: tocá los recuadros de lo que lleva.");
+
+const organizacionDelPedido = {
+  prioridad: z.enum(prioridadPedido.enumValues).default("NORMAL"),
+  entregaDesde: horaDePlazo,
+  entregaHasta: horaDePlazo,
+  observaciones: textoOpcional(500),
+  confirmar: z.boolean().default(false),
+};
+
+const plazoOrdenado = (d: { entregaDesde: string | null; entregaHasta: string | null }) => !d.entregaDesde || !d.entregaHasta || d.entregaDesde < d.entregaHasta;
+const MENSAJE_PLAZO = "El plazo termina antes de empezar: revisá las horas (por ejemplo, entre 07:00 y 09:00).";
+
+const esquemaCargaPedido = z
+  .object({ fecha: z.string(), clienteId: z.uuid("Elegí el cliente."), puntoEntregaId: z.uuid().nullish(), lineas: lineasElegidas, ...organizacionDelPedido })
+  .refine(plazoOrdenado, { message: MENSAJE_PLAZO });
+
+const esquemaCambioProductos = z
+  .object({ pedidoId: z.uuid(), fecha: z.string().optional(), puntoEntregaId: z.uuid().nullish(), lineas: lineasElegidas, ...organizacionDelPedido })
+  .refine(plazoOrdenado, { message: MENSAJE_PLAZO });
+
+/** Lo que muestra la pantalla después de guardar. */
+export interface PedidoCargado {
+  pedidoId: string;
+  numero: string;
+  fecha: FechaISO;
+  cliente: string;
+  estado: EstadoPedido;
+  /** El cliente ya tenía otro pedido para ese día y lugar (RN-022). */
+  duplicadoDe: string | null;
+  /** Solo con `precios.ver_venta`. */
+  totalEstimado: string | null;
+}
+
+const lineaElegida = (l: z.output<typeof esquemaLineaElegida>): LineaElegida => ({
+  productoId: l.productoId,
+  presentacionId: l.presentacionId ?? null,
+  cantidad: String(l.cantidad),
+  observaciones: l.observaciones ?? null,
+});
+
+async function insertarLineas(tx: Transaccion, c: ContextoUsuario, pedidoId: string, lineas: readonly LineaElegida[]): Promise<void> {
+  const [ultima] = await tx.select({ n: max(pedidoItem.linea) }).from(pedidoItem).where(eq(pedidoItem.pedidoId, pedidoId));
+  let numero = ultima?.n ?? 0;
+  for (const l of lineas) {
+    const prod = await productoParaLinea(tx, l.productoId, l.presentacionId);
+    await tx.insert(pedidoItem).values({
+      empresaId: c.empresaId,
+      pedidoId,
+      linea: ++numero,
+      productoId: l.productoId,
+      presentacionId: l.presentacionId,
+      cantidad: aNumeric(l.cantidad, 3),
+      cantidadBase: aNumeric(cantidadBaseDe(l.cantidad, prod), 3),
+      observaciones: l.observaciones,
+      creadoPor: c.usuarioId,
+      actualizadoPor: c.usuarioId,
+    });
+  }
+}
+
+async function resumenDeCarga(tx: Transaccion, c: ContextoUsuario, pedidoId: string, duplicadoDe: string | null): Promise<PedidoCargado> {
+  const [p] = await tx
+    .select({ numero: pedido.numero, estado: pedido.estado, total: pedido.totalEstimado, fecha: jornada.fecha, cliente: cliente.nombre })
+    .from(pedido)
+    .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+    .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+    .where(eq(pedido.id, pedidoId));
+  return {
+    pedidoId,
+    numero: numeroPedido(p!.numero),
+    fecha: p!.fecha,
+    cliente: p!.cliente,
+    estado: p!.estado,
+    duplicadoDe,
+    totalEstimado: c.permisos.tiene("precios.ver_venta") ? p!.total : null,
+  };
+}
+
+/**
+ * "Nuevo pedido": crea el pedido con todos sus productos, la prioridad y el plazo en una sola
+ * transacción y, si se pide, lo confirma. Si algo falla no queda nada a medias (nunca un pedido
+ * vacío). Un producto repetido se suma (RN-021).
+ */
+export async function cargarPedido(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaCargaPedido>): Promise<PedidoCargado> {
+  const d = validar(esquemaCargaPedido, datos);
+  return ejecutarComoUsuario(db, authUserId, "pedidos.crear", async (tx, c) => {
+    if (d.confirmar) c.permisos.exigir("pedidos.confirmar");
+    const nuevo = await crearEnTransaccion(tx, c, {
+      fecha: d.fecha,
+      clienteId: d.clienteId,
+      puntoEntregaId: d.puntoEntregaId,
+      canal: null,
+      referenciaCliente: null,
+      observaciones: d.observaciones,
+    });
+    await insertarLineas(tx, c, nuevo.pedidoId, juntarLineas(d.lineas.map(lineaElegida)));
+    await tx.update(pedido).set({ prioridad: d.prioridad, entregaDesde: d.entregaDesde, entregaHasta: d.entregaHasta }).where(eq(pedido.id, nuevo.pedidoId));
+    await recalcularPedido(tx, nuevo.pedidoId);
+    if (d.confirmar) await confirmarEnTransaccion(tx, c, nuevo.pedidoId);
+    return resumenDeCarga(tx, c, nuevo.pedidoId, nuevo.duplicadoDe);
+  });
+}
+
+/**
+ * "Cambiar productos": guarda de una vez lo que lleva el pedido (agrega, cambia cantidades y saca
+ * lo que ya no va), su día, lugar, prioridad, plazo y nota. En borrador lo que se saca se borra;
+ * desde confirmado queda cancelado con el motivo (RN-028). Con la compra en curso, la lista queda
+ * desactualizada (RN-026, RN-052).
+ */
+export async function cambiarProductosDePedido(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaCambioProductos>): Promise<PedidoCargado> {
+  const d = validar(esquemaCambioProductos, datos);
+  return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
+    const p = await pedidoParaModificar(tx, c, d.pedidoId);
+    const estado = p.pedido.estado;
+    const numero = numeroPedido(p.pedido.numero);
+    let jornadaId = p.pedido.jornadaId;
+    if (d.fecha && d.fecha !== p.fecha) {
+      if (estado === "EN_COMPRA") {
+        throw new ErrorDeNegocio("VALIDACION", "Este pedido ya está en la lista de compra de su día: para pasarlo a otro día, primero sacalo de la lista desde el tablero.");
+      }
+      jornadaId = (await jornadaParaPedidos(tx, c, d.fecha)).id;
+    }
+    const cli = await clienteParaPedido(tx, p.pedido.clienteId, d.puntoEntregaId ?? p.pedido.puntoEntregaId);
+    const actuales = await tx
+      .select({ itemId: pedidoItem.id, productoId: pedidoItem.productoId, presentacionId: pedidoItem.presentacionId, cantidad: pedidoItem.cantidad, observaciones: pedidoItem.observaciones, linea: pedidoItem.linea })
+      .from(pedidoItem)
+      .where(and(eq(pedidoItem.pedidoId, d.pedidoId), eq(pedidoItem.cancelado, false)));
+    const cambios = diferenciasDeLineas(actuales, d.lineas.map(lineaElegida));
+
+    if (cambios.quitar.length > 0) {
+      if (estado === "BORRADOR") {
+        await tx.delete(pedidoItem).where(inArray(pedidoItem.id, cambios.quitar));
+      } else {
+        c.permisos.exigir("pedidos.cancelar");
+        const motivo = "Se sacó al cambiar los productos del pedido.";
+        await tx.update(pedidoItem).set({ cancelado: true, motivoCancelacion: motivo, actualizadoPor: c.usuarioId }).where(inArray(pedidoItem.id, cambios.quitar));
+        for (const id of cambios.quitar) {
+          await auditar(tx, {
+            empresaId: c.empresaId,
+            usuarioId: c.usuarioId,
+            accion: "CANCELAR",
+            entidad: "pedido_item",
+            entidadId: id,
+            resumen: `Línea ${actuales.find((a) => a.itemId === id)!.linea} de ${numero} cancelada.`,
+            motivo,
+          });
+        }
+      }
+    }
+    for (const cambio of cambios.cambiar) {
+      const item = actuales.find((a) => a.itemId === cambio.itemId)!;
+      const prod = await productoParaLinea(tx, item.productoId, item.presentacionId);
+      await tx
+        .update(pedidoItem)
+        .set({ cantidad: aNumeric(cambio.cantidad, 3), cantidadBase: aNumeric(cantidadBaseDe(cambio.cantidad, prod), 3), observaciones: cambio.observaciones, actualizadoPor: c.usuarioId })
+        .where(eq(pedidoItem.id, cambio.itemId));
+    }
+    await insertarLineas(tx, c, d.pedidoId, cambios.agregar);
+    await tx
+      .update(pedido)
+      .set({
+        jornadaId,
+        puntoEntregaId: cli.puntoId,
+        prioridad: d.prioridad,
+        entregaDesde: d.entregaDesde,
+        entregaHasta: d.entregaHasta,
+        observaciones: d.observaciones,
+        actualizadoPor: c.usuarioId,
+      })
+      .where(eq(pedido.id, d.pedidoId));
+    await recalcularPedido(tx, d.pedidoId);
+
+    const cambiaron = cambios.agregar.length + cambios.cambiar.length + cambios.quitar.length;
+    if (cambiaron > 0) {
+      if (estado === "EN_COMPRA") {
+        await marcarListaDesactualizada(tx, p.pedido.jornadaId);
+        await auditar(tx, {
+          empresaId: c.empresaId,
+          usuarioId: c.usuarioId,
+          accion: "MODIFICAR",
+          entidad: "pedido",
+          entidadId: d.pedidoId,
+          resumen: `Se cambiaron los productos de ${numero} con la compra en curso (RN-026).`,
+        });
+      }
+      await registrarActividad(tx, c, {
+        accion: "CAMBIAR_PRODUCTOS",
+        entidadTipo: "PEDIDO",
+        entidadId: d.pedidoId,
+        jornadaId,
+        resumen: `cambió los productos del pedido ${numero} de ${cli.nombre}`,
+      });
+    }
+    if (d.confirmar && estado === "BORRADOR") {
+      c.permisos.exigir("pedidos.confirmar");
+      await confirmarEnTransaccion(tx, c, d.pedidoId);
+    }
+    return resumenDeCarga(tx, c, d.pedidoId, null);
   });
 }

@@ -2,14 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { tiempoRelativo } from "@/dominio/colaboracion/tiempo";
-import { dec } from "@/dominio/dinero/decimal";
+import { dec, sumar } from "@/dominio/dinero/decimal";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { esErrorDeNegocio } from "@/dominio/errores";
-import { formatearFecha } from "@/dominio/fechas/fechas";
 import { listarActividad } from "@/modulos/colaboracion/actividad";
 import { bandejaDeNotas, notasDe } from "@/modulos/colaboracion/notas";
-import { listarClientes } from "@/modulos/clientes/clientes";
 import { listarCuentasProveedores } from "@/modulos/compras/cuenta-corriente";
 import { diaDeTrabajo, type DiaDeTrabajo } from "@/modulos/jornadas/dia";
 import { obtenerPedido } from "@/modulos/pedidos/pedidos";
@@ -17,26 +14,23 @@ import { avanceDeTarjeta, tableroDePedidos } from "@/modulos/pedidos/tablero";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { contarPedidosPendientes } from "@/modulos/usuarios/acceso";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
-import { Avatar } from "@/ui/avatar";
-import { BotonAccion } from "@/ui/boton-accion";
 import { enlaceDeEntidad } from "@/ui/enlaces";
 import { ESTADOS_JORNADA } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 
-import { marcarTodasLeidasAccion } from "../actividad/acciones";
 import { Modal } from "./modal";
 import { DiaPasoAPaso, nombreDelDia, plural, tituloDelDia } from "./paso-a-paso";
 import { TableroTrello } from "./tablero";
 import { TarjetaAbierta } from "./tarjeta-abierta";
 
-export const metadata: Metadata = { title: "Hoy · Sistema Juan" };
+export const metadata: Metadata = { title: "Tablero de pedidos · Sistema Juan" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Los días para cambiar de tablero (como el selector de tableros de Trello). */
 function SelectorDeDia({ dia, vista, sobreTablero }: { dia: DiaDeTrabajo; vista: "tablero" | "pasos"; sobreTablero: boolean }) {
   return (
-    <nav aria-label="Elegir el día" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+    <nav aria-label="Elegir el día" className="sin-barra -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
       {dia.dias.map((x) => {
         const elegido = x.fecha === dia.fecha;
         const clases = sobreTablero
@@ -51,12 +45,12 @@ function SelectorDeDia({ dia, vista, sobreTablero }: { dia: DiaDeTrabajo; vista:
             key={x.fecha}
             href={`/inicio?fecha=${x.fecha}${vista === "pasos" ? "&vista=pasos" : ""}`}
             aria-current={elegido ? "date" : undefined}
-            className={`flex min-h-12 min-w-20 shrink-0 flex-col items-center justify-center rounded-lg px-3 py-1 text-center ${clases}`}
+            className={`flex min-h-14 min-w-24 shrink-0 flex-col items-center justify-center rounded-xl px-3 py-1 text-center ${clases}`}
           >
-            <span className="text-sm font-semibold capitalize">
+            <span className="font-semibold capitalize">
               {nombreDelDia(x.fecha, dia.hoy)} {x.fecha.slice(8, 10)}/{x.fecha.slice(5, 7)}
             </span>
-            <span className={`text-xs ${elegido || sobreTablero ? "opacity-90" : "text-texto-suave"}`}>
+            <span className={`text-sm ${elegido || sobreTablero ? "opacity-90" : "text-texto-suave"}`}>
               {x.estado === "CERRADA" ? "Cerrado" : x.pedidos > 0 ? plural(x.pedidos, "pedido", "pedidos") : "Sin pedidos"}
             </span>
           </Link>
@@ -66,7 +60,7 @@ function SelectorDeDia({ dia, vista, sobreTablero }: { dia: DiaDeTrabajo; vista:
   );
 }
 
-/** P-02 "Hoy": el tablero de pedidos del día (estilo Trello) o el día paso a paso. */
+/** P-02: el tablero de pedidos del día (estilo Trello) o el día paso a paso. */
 export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
   const sesion = await sesionParaPantalla(null);
   const puede = (p: Permiso) => sesion.permisos.includes(p);
@@ -84,10 +78,8 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
   const vencidas = cuentas.filter((c) => dec(c.vencimientos.vencida).gt(0));
   const porVencer = cuentas.filter((c) => dec(c.vencimientos.vencida).isZero() && dec(c.vencimientos.porVencer).gt(0));
   const enTablero = vista === "tablero" && dia !== null;
-  const [tablero, clientes] = await Promise.all([
-    enTablero ? tableroDePedidos(db, sesion.authUserId, dia.fecha) : Promise.resolve(null),
-    dia && puede("pedidos.crear") ? listarClientes(db, sesion.authUserId).then((cs) => cs.map((c) => ({ id: c.id, nombre: c.nombre }))) : Promise.resolve([]),
-  ]);
+  const tablero = enTablero ? await tableroDePedidos(db, sesion.authUserId, dia.fecha) : null;
+  const puedeCargar = dia !== null && puede("pedidos.crear") && dia.fecha >= dia.hoy && dia.panel.estado !== "CERRADA";
 
   const base = dia ? `/inicio?fecha=${dia.fecha}${vista === "pasos" ? "&vista=pasos" : ""}` : "/inicio";
   let tarjeta: {
@@ -111,91 +103,78 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
   }
 
   const sobre = enTablero;
-  const tarjetaBlanca = "rounded-lg bg-superficie p-3 shadow-sm";
-  const ahora = new Date();
+  const aviso = sobre
+    ? "flex min-h-11 items-center gap-2 rounded-full bg-white/95 px-4 text-sm font-semibold text-[#172b4d] shadow-sm hover:bg-white"
+    : "flex min-h-11 items-center gap-2 rounded-full border border-borde bg-superficie px-4 text-sm font-semibold";
+  const unaNota = bandeja.sinLeer.length === 1 ? bandeja.sinLeer[0]! : null;
 
   return (
-    <div className={sobre ? "-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col gap-3 p-3 [background:var(--tablero-fondo)] sm:px-4" : "flex max-w-3xl flex-col gap-5"}>
-      <header className={`flex flex-wrap items-end justify-between gap-3 ${sobre ? "text-white" : ""}`}>
+    <div className={sobre ? "-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col gap-4 p-4 [background:var(--tablero-fondo)] sm:px-5" : "flex max-w-3xl flex-col gap-5"}>
+      <header className={`flex flex-wrap items-center justify-between gap-3 ${sobre ? "text-white" : ""}`}>
         <div>
-          <h1 className="text-2xl font-semibold">{dia ? (sobre ? `Pedidos · ${tituloDelDia(dia.fecha, dia.hoy)}` : tituloDelDia(dia.fecha, dia.hoy)) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
+          <h1 className="text-2xl font-semibold sm:text-3xl">{dia ? (sobre ? `Pedidos · ${tituloDelDia(dia.fecha, dia.hoy)}` : tituloDelDia(dia.fecha, dia.hoy)) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
           {dia && (
-            <p className={`text-sm ${sobre ? "text-white/85" : "text-texto-suave"}`}>
+            <p className={`hidden sm:block ${sobre ? "text-white/85" : "text-texto-suave"}`}>
               {dia.panel.estado ? `Jornada ${ESTADOS_JORNADA[dia.panel.estado]?.toLowerCase()}` : "Todavía sin pedidos"} ·{" "}
               {dia.pasos.actual ? `${dia.pasos.hechos} de ${dia.pasos.pasos.length} pasos listos` : "día terminado"}
               {tablero?.lista.numero && ` · lista de compra ${tablero.lista.numero}`}
             </p>
           )}
         </div>
-        {dia && puede("pedidos.ver") && (
-          <div role="tablist" aria-label="Cómo ver el día" className={`flex rounded-lg p-1 ${sobre ? "bg-black/25" : "bg-fondo"}`}>
-            <Link href={`/inicio?fecha=${dia.fecha}`} role="tab" aria-selected={vista === "tablero"} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-semibold ${vista === "tablero" ? "bg-white text-[#172b4d]" : sobre ? "text-white" : ""}`}>
-              ▦ Tablero
+        <div className="flex flex-wrap items-center gap-2">
+          {dia && puede("pedidos.ver") && (
+            <div role="tablist" aria-label="Cómo ver el día" className={`flex rounded-xl p-1 ${sobre ? "bg-black/25" : "bg-fondo"}`}>
+              <Link href={`/inicio?fecha=${dia.fecha}`} role="tab" aria-selected={vista === "tablero"} className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold ${vista === "tablero" ? "bg-white text-[#172b4d]" : sobre ? "text-white" : ""}`}>
+                ▦ Tablero
+              </Link>
+              <Link href={`/inicio?fecha=${dia.fecha}&vista=pasos`} role="tab" aria-selected={vista === "pasos"} className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold ${vista === "pasos" ? "bg-marca text-marca-texto" : sobre ? "text-white" : ""}`}>
+                ☰ Paso a paso
+              </Link>
+            </div>
+          )}
+          {puedeCargar && (
+            <Link
+              href={`/pedidos/nuevo?fecha=${dia.fecha}`}
+              className={`${sobre ? "hidden bg-white text-[#172b4d] hover:bg-white/90 sm:flex" : "flex bg-marca text-marca-texto"} min-h-12 items-center gap-2 rounded-xl px-5 text-lg font-semibold shadow-sm`}
+            >
+              <span aria-hidden className="text-xl leading-none">
+                ＋
+              </span>
+              Nuevo pedido
             </Link>
-            <Link href={`/inicio?fecha=${dia.fecha}&vista=pasos`} role="tab" aria-selected={vista === "pasos"} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-semibold ${vista === "pasos" ? "bg-marca text-marca-texto" : sobre ? "text-white" : ""}`}>
-              ☰ Paso a paso
-            </Link>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {dia && <SelectorDeDia dia={dia} vista={vista} sobreTablero={sobre} />}
 
       {(pedidosDeAcceso > 0 || vencidas.length > 0 || porVencer.length > 0 || bandeja.sinLeer.length > 0) && (
-        <div className={`grid grid-cols-1 gap-3 ${sobre ? "md:grid-cols-2 xl:grid-cols-3" : ""}`}>
-          {bandeja.sinLeer.length > 0 && (
-            <div className={`${tarjetaBlanca} flex flex-col gap-2`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold">💬 {plural(bandeja.sinLeer.length, "nota nueva para vos", "notas nuevas para vos")}</p>
-                <BotonAccion accion={marcarTodasLeidasAccion} datos={{}} className="text-sm text-texto-suave underline underline-offset-2">
-                  Marcar leídas
-                </BotonAccion>
-              </div>
-              <ul className="flex flex-col gap-2">
-                {bandeja.sinLeer.slice(0, 3).map((n) => (
-                  <li key={n.id}>
-                    <Link href={enlaceDeEntidad(n.entidad.tipo, n.entidad.id, n.entidad.fecha)} scroll={false} className="flex gap-2 rounded-md p-1 hover:bg-fondo">
-                      <Avatar persona={n.autor} tamano="chico" />
-                      <span className="min-w-0 text-sm">
-                        <b>{n.autor.nombre.split(" ")[0]}</b> en {n.entidad.etiqueta} · <span className="text-texto-suave">{tiempoRelativo(n.en, ahora, sesion.zonaHoraria)}</span>
-                        <span className="block truncate">“{n.texto}”</span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              {bandeja.sinLeer.length > 3 && (
-                <Link href="/actividad?ver=notas" className="text-sm underline underline-offset-2">
-                  Ver todas
-                </Link>
-              )}
-            </div>
+        <div className="flex flex-wrap gap-2" aria-label="Avisos">
+          {unaNota ? (
+            <Link href={enlaceDeEntidad(unaNota.entidad.tipo, unaNota.entidad.id, unaNota.entidad.fecha)} scroll={false} className={aviso}>
+              💬 {unaNota.autor.nombre.split(" ")[0]} te dejó una nota en {unaNota.entidad.etiqueta}
+            </Link>
+          ) : (
+            bandeja.sinLeer.length > 1 && (
+              <Link href="/actividad?ver=notas" className={aviso}>
+                💬 {plural(bandeja.sinLeer.length, "nota nueva para vos", "notas nuevas para vos")}
+              </Link>
+            )
           )}
           {pedidosDeAcceso > 0 && (
-            <Link href="/usuarios" className={`${tarjetaBlanca} font-semibold`}>
-              {pedidosDeAcceso === 1 ? "Hay 1 persona esperando que la habilites" : `Hay ${pedidosDeAcceso} personas esperando que las habilites`} →
+            <Link href="/usuarios" className={aviso}>
+              👤 {pedidosDeAcceso === 1 ? "1 persona espera que la habilites" : `${pedidosDeAcceso} personas esperan que las habilites`}
             </Link>
           )}
           {vencidas.length > 0 && (
-            <div role="alert" className={`${tarjetaBlanca} flex flex-col gap-1 border-l-4 border-error`}>
-              <p className="font-semibold text-error">⏰ Deuda vencida con proveedores</p>
-              {vencidas.map((c) => (
-                <Link key={c.proveedorId} href={`/cuentas-proveedores/${c.proveedorId}`} className="underline-offset-4 hover:underline">
-                  {c.proveedor}: {formatearMoneda(c.vencimientos.vencida)} ({c.vencimientos.maxDiasAtraso} {c.vencimientos.maxDiasAtraso === 1 ? "día" : "días"} de atraso)
-                </Link>
-              ))}
-            </div>
+            <Link href="/cuentas-proveedores" className={`${aviso} ring-2 ring-error`}>
+              ⏰ Deuda vencida: {formatearMoneda(sumar(vencidas.map((c) => c.vencimientos.vencida)))} con {plural(vencidas.length, "proveedor", "proveedores")}
+            </Link>
           )}
           {porVencer.length > 0 && (
-            <div className={`${tarjetaBlanca} flex flex-col gap-1 border-l-4 border-amber-500`}>
-              <p className="font-semibold text-amber-700 dark:text-amber-400">Vence en los próximos días</p>
-              {porVencer.map((c) => (
-                <Link key={c.proveedorId} href={`/cuentas-proveedores/${c.proveedorId}`} className="underline-offset-4 hover:underline">
-                  {c.proveedor}: {formatearMoneda(c.vencimientos.porVencer)}
-                  {c.vencimientos.proximo && ` (el ${formatearFecha(c.vencimientos.proximo.fecha).slice(0, 5)})`}
-                </Link>
-              ))}
-            </div>
+            <Link href="/cuentas-proveedores" className={aviso}>
+              📅 Vence en los próximos días: {formatearMoneda(sumar(porVencer.map((c) => c.vencimientos.porVencer)))}
+            </Link>
           )}
         </div>
       )}
@@ -208,8 +187,7 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           personas={tablero.personas}
           yo={tablero.yo}
           base={base}
-          clientes={clientes}
-          puede={{ crear: puede("pedidos.crear") && dia.fecha >= dia.hoy && dia.panel.estado !== "CERRADA", armar: puede("lista_compra.generar"), editar: puede("pedidos.editar") }}
+          puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar") }}
           enlaces={{
             confirmados: { href: `/pedidos?fecha=${dia.fecha}`, texto: "Ver los pedidos" },
             en_lista: { href: `/lista-compra?fecha=${dia.fecha}`, texto: "Ver la lista de compra" },
@@ -219,7 +197,7 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           }}
         />
       ) : (
-        dia && <DiaPasoAPaso dia={dia} puede={puede} clientes={clientes} />
+        dia && <DiaPasoAPaso dia={dia} puede={puede} />
       )}
 
       {tarjeta && (

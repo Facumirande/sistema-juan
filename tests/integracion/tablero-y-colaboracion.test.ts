@@ -86,7 +86,10 @@ describe("el tablero", () => {
     expect(columna("en_lista").sort()).toEqual(["Hospital San Martín", "Verdulería Don Pepe"]);
     const hospital = t.columnas.find((c) => c.clave === "en_lista")!.tarjetas.find((x) => x.cliente === "Hospital San Martín")!;
     expect(hospital.avance).toEqual({ que: "comprado", hechos: 0, total: 2 });
-    expect(hospital.productos).toEqual(["Tomate redondo", "Papa"]);
+    expect(hospital.productos).toEqual([
+      { nombre: "Tomate redondo", cantidad: "30 kg", grupo: "VERDURA" },
+      { nombre: "Papa", cantidad: "50 kg", grupo: "VERDURA" },
+    ]);
     expect(t.lista.armada).toBe(true);
   });
 

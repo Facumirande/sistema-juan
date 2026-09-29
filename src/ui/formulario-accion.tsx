@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { startTransition, useActionState, useEffect, useRef, type ReactNode } from "react";
 
 import { ESTADO_INICIAL, type EstadoAccion } from "./estado-accion";
@@ -42,6 +43,11 @@ export function FormularioAccion({ accion, boton, variante = "principal", confir
           {linea}
         </p>
       ))}
+      {estado.enlace && (
+        <Link href={estado.enlace.href} className="mt-2 inline-flex min-h-10 items-center rounded-lg bg-marca px-3 font-semibold text-marca-texto">
+          {estado.enlace.texto} →
+        </Link>
+      )}
     </div>
   );
   const botonEnviar = (

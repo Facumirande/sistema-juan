@@ -72,6 +72,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 |---|---|---|---|
 | RN-017 | Un pedido requiere cliente activo, punto de entrega activo de ese cliente y jornada (fecha de entrega) no `CERRADA` y con fecha ≥ hoy. Si el cliente tiene `requiere_orden_compra`, la referencia del cliente (orden de compra) es obligatoria para confirmar. | Crear y confirmar pedido | BLOQUEA |
 | RN-018 | Para confirmar (`pedidos.confirmar`), el pedido debe tener al menos una línea no cancelada con cantidad > 0. | Confirmar | BLOQUEA |
+| RN-018b | **Nunca un pedido vacío (29/09/2026):** la carga visual guarda el pedido con todos sus productos, la prioridad, el horario y la nota en una sola operación, o no guarda nada. Un pedido sin productos no se confirma ni pasa a la lista de compra, y el aviso ofrece el botón para agregarle productos. | Cargar, confirmar o armar la lista | BLOQUEA + explica cómo seguir |
 | RN-019 | La presentación elegida en una línea debe pertenecer al producto y ser `usable_en_venta`. | Carga de línea | BLOQUEA |
 | RN-020 | La `cantidad_base` de cada línea se calcula al guardar (RN-008). | Carga de línea | CALCULA |
 | RN-021 | Si un producto se repite en el mismo pedido, se ofrece sumar las cantidades en una sola línea. | Carga de línea | ADVIERTE |

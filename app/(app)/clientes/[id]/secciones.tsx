@@ -45,8 +45,8 @@ export function PedidosDelCliente({
       )}
       {puedeCrear && (
         <div>
-          <Link href={`/pedidos?cliente=${clienteId}`} className={clasesBoton("principal")}>
-            Nuevo pedido
+          <Link href={`/pedidos/nuevo?cliente=${clienteId}`} className={clasesBoton("principal")}>
+            ＋ Nuevo pedido para este cliente
           </Link>
         </div>
       )}

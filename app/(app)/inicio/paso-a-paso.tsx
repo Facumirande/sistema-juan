@@ -13,7 +13,6 @@ import { clasesBoton } from "@/ui/formularios";
 
 import { emitirRemitosDelDiaAccion } from "../entregas/acciones";
 import { generarListaAccion } from "../lista-compra/acciones";
-import { crearPedidoAccion } from "../pedidos/acciones";
 import { iniciarPreparacionAccion } from "../preparacion/acciones";
 
 // Vista "Paso a paso" de la pantalla Hoy: los siete pasos del día en orden, con el que toca abierto.
@@ -59,7 +58,7 @@ function Enlace({ href, children, principal }: { href: string; children: ReactNo
 }
 
 /** Resumen de una línea y acciones de cada paso. */
-function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permiso) => boolean, clientes: { id: string; nombre: string }[], actual: boolean): { resumen: ReactNode; acciones: ReactNode } {
+function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permiso) => boolean, actual: boolean): { resumen: ReactNode; acciones: ReactNode } {
   const { fecha, panel, plata, hoy } = dia;
   const d = datosDelPanel(panel);
   const e = d.entregas;
@@ -68,7 +67,7 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
 
   switch (clave) {
     case "pedidos": {
-      const puedeCargar = abierta && fecha >= hoy && puede("pedidos.crear") && clientes.length > 0;
+      const puedeCargar = abierta && fecha >= hoy && puede("pedidos.crear");
       return {
         resumen:
           d.pedidos.confirmados + d.pedidos.borradores === 0 ? (
@@ -83,29 +82,9 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
         acciones: (
           <>
             {puedeCargar && (
-              <FormularioAccion accion={crearPedidoAccion} boton="Cargar pedido" variante={actual ? "principal" : "secundario"} enLinea>
-                <input type="hidden" name="fecha" value={fecha} />
-                <input type="hidden" name="canal" value="WHATSAPP" />
-                <select name="clienteId" aria-label="Cliente" required defaultValue="" className="h-11 min-w-0 flex-1 rounded-lg border border-borde bg-superficie px-3">
-                  <option value="" disabled>
-                    Elegí el cliente…
-                  </option>
-                  {clientes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
-              </FormularioAccion>
-            )}
-            {puede("pedidos.crear") && clientes.length === 0 && (
-              <p className="text-sm">
-                Primero cargá los clientes en{" "}
-                <Link href="/clientes" className="underline">
-                  Registros → Clientes
-                </Link>
-                .
-              </p>
+              <Link href={`/pedidos/nuevo?fecha=${fecha}`} className={clasesBoton(actual ? "principal" : "secundario")}>
+                ＋ Cargar un pedido
+              </Link>
             )}
             <div className="flex flex-wrap gap-2">
               <Enlace href={`/pedidos?fecha=${fecha}`}>Ver los pedidos</Enlace>
@@ -262,7 +241,7 @@ export function tituloDelDia(fecha: string, hoy: string): string {
   return conDia.charAt(0).toUpperCase() + conDia.slice(1);
 }
 
-export function DiaPasoAPaso({ dia, puede, clientes }: { dia: DiaDeTrabajo; puede: (p: Permiso) => boolean; clientes: { id: string; nombre: string }[] }) {
+export function DiaPasoAPaso({ dia, puede }: { dia: DiaDeTrabajo; puede: (p: Permiso) => boolean }) {
   const { fecha, hoy, pasos, panel } = dia;
   const avance = Math.round((pasos.hechos / pasos.pasos.length) * 100);
 
@@ -287,7 +266,7 @@ export function DiaPasoAPaso({ dia, puede, clientes }: { dia: DiaDeTrabajo; pued
       <ol className="flex flex-col">
         {pasos.pasos.map((p, i) => {
           const actual = p.clave === pasos.actual;
-          const { resumen, acciones } = contenidoDelPaso(p.clave, dia, puede, clientes, actual);
+          const { resumen, acciones } = contenidoDelPaso(p.clave, dia, puede, actual);
           const ultimo = i === pasos.pasos.length - 1;
           return (
             <li key={p.clave} className="relative flex gap-3 pb-3">
