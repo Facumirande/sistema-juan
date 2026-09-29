@@ -13,7 +13,7 @@ import { fechaConDia } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
-export const metadata: Metadata = { title: "DOC-01 Lista de compra · Sistema Juan" };
+export const metadata: Metadata = { title: "Lista de compras para imprimir · Sistema Juan" };
 
 const ALERTAS: Readonly<Record<string, string>> = {
   SIN_PROVEEDOR: "sin precio de ningún proveedor",
@@ -58,7 +58,7 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
     <article className="mx-auto flex max-w-5xl flex-col gap-4 bg-superficie p-4 print:max-w-none print:p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link href={`/lista-compra?fecha=${fecha}`} className="text-texto-suave hover:underline">
-          ← Lista de compra
+          ← Lista de compras
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           {sesion.permisos.includes("precios.ver_costos") && (

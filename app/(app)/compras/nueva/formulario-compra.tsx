@@ -119,7 +119,7 @@ export function FormularioCompra({
                   <span className="block text-lg font-semibold">{r.producto}</span>
                   <span className="text-texto-suave">
                     {r.presentacion}
-                    {r.delPlan && " · de la lista de compra"}
+                    {r.delPlan && " · de la lista de compras"}
                   </span>
                 </p>
                 <button type="button" onClick={() => quitar(r.clave)} aria-label={`Sacar ${r.producto}`} className="flex size-10 shrink-0 items-center justify-center rounded-full text-xl hover:bg-fondo">

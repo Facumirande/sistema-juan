@@ -39,7 +39,7 @@ export default async function CambiarPedido({ params }: PageProps<"/pedidos/[id]
         <p className="text-lg text-texto-suave">
           {etapa
             ? `Ya está ${etapa}. Si hace falta mandarle algo más al cliente, cargá un pedido nuevo.`
-            : "Ya está en la lista de compra y tu usuario no puede cambiar pedidos con la compra en curso. Pedile a un administrador que lo cambie."}
+            : "Ya está en la lista de compras y tu usuario no puede cambiar pedidos con la compra en curso. Pedile a un administrador que lo cambie."}
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           {pedido.estado !== "CANCELADO" && etapa && (

@@ -1,6 +1,6 @@
 # 06 · Créditos y pagos
 
-> **Propósito:** especificar cómo el sistema administra las compras a crédito, lo adeudado a cada proveedor, los pagos, el límite de crédito y su semáforo, de modo que siempre se sepa con claridad qué está pagado, qué está pendiente, qué está vencido y cuánto crédito queda. Incluye, como PROPUESTO, la cuenta corriente de clientes y las cobranzas.
+> **Propósito:** especificar cómo el sistema administra las compras a crédito, lo adeudado a cada proveedor, los pagos, el límite de crédito y su semáforo, de modo que siempre se sepa con claridad qué está pagado, qué está pendiente, qué está vencido y cuánto crédito queda.
 
 ## Contenido
 
@@ -16,7 +16,6 @@
 10. [Pagado vs. pendiente en cada vista](#10-pagado-vs-pendiente-en-cada-vista)
 11. [Historial y estado de cuenta (DOC-05)](#11-historial-y-estado-de-cuenta-doc-05)
 12. [Ejemplo numérico completo](#12-ejemplo-numérico-completo)
-13. [PROPUESTO: cuenta corriente de clientes y cobranzas](#13-propuesto-cuenta-corriente-de-clientes-y-cobranzas)
 
 Reglas citadas: `07-reglas-de-negocio.md` (RN-092 a RN-110 y relacionadas). Proceso de compra: `04-procesos-y-flujos.md` §5.d.
 
@@ -128,14 +127,13 @@ Quién: ADMINISTRATIVO o ADMIN (`pagos.registrar`); el COMPRADOR registra solo l
 | Fecha | Sí | No futura (RN-095). |
 | Monto | Sí | > 0. |
 | Medio | Sí | `EFECTIVO`, `TRANSFERENCIA`, `CHEQUE`, `TARJETA`, `OTRO` (con descripción: billetera virtual, compensación, etc.). |
-| Referencia | No (uso interno, 2026-09-27) | `TRANSFERENCIA`: número de operación o comprobante. `CHEQUE`: número, banco y fecha de cobro. `OTRO`: descripción. Se recomienda cargarla, pero no se exige. (En el modelo: `referencia`, más `cheque_banco` y `cheque_fecha_cobro` para cheques; la cartera de cheques con vencimientos es PROPUESTO.) |
+| Referencia | No (uso interno, 2026-09-27) | `TRANSFERENCIA`: número de operación o comprobante. `CHEQUE`: número, banco y fecha de cobro. `OTRO`: descripción. Se recomienda cargarla, pero no se exige. (En el modelo: `referencia`, más `cheque_banco` y `cheque_fecha_cobro` para cheques.) |
 | Imputación | Sí | Automática FIFO (por defecto) o manual. |
-| Comprobante | No | Foto o PDF del recibo o de la transferencia (Storage). |
 | Observaciones | No | Texto libre. |
 
 Número `PAG-xxxxxx` desde `secuencia`. El pago genera un movimiento `PAGO` por el monto total, sin importar cómo se impute.
 
-**Cheque diferido:** el pago se registra en la fecha en que se entrega el cheque (desde ese día el proveedor considera cancelada la deuda). La fecha de cobro queda como dato informativo. Si el cheque es rechazado se anula el pago con motivo "cheque rechazado" (§6.2). Una cartera de cheques con vencimientos es **PROPUESTO**.
+**Cheque diferido:** el pago se registra en la fecha en que se entrega el cheque (desde ese día el proveedor considera cancelada la deuda). La fecha de cobro queda como dato informativo. Si el cheque es rechazado se anula el pago con motivo "cheque rechazado" (§6.2).
 
 ### 4.2 Imputación automática FIFO (por defecto)
 
@@ -230,7 +228,7 @@ por_vencer(proveedor, N)  = Σ pendiente(compra) con hoy ≤ fecha_vencimiento �
 ```
 
 - El vencimiento se congela en la compra: si después cambia el plazo del proveedor, afecta solo a compras nuevas.
-- Alertas (RN-107): tablero del ADMIN y del ADMINISTRATIVO con "Deuda vencida" (rojo, días de atraso) y "Vence en los próximos N días" (ámbar; `empresa.dias_aviso_vencimiento`, por defecto 3). El semáforo de límite y la deuda vencida son indicadores distintos: un proveedor puede estar en `VERDE` y tener una compra vencida.
+- Alertas (RN-107): aviso en el tablero con "Deuda vencida" (rojo, días de atraso) y "Vence en los próximos N días" (ámbar; `empresa.dias_aviso_vencimiento`, por defecto 3). El semáforo de límite y la deuda vencida son indicadores distintos: un proveedor puede estar en `VERDE` y tener una compra vencida.
 
 ---
 
@@ -314,7 +312,6 @@ El semáforo siempre se muestra con **color + ícono + texto + porcentaje** (no 
 | Al anular un pago | ADVIERTE si el saldo pasa a superar el límite (RN-100). |
 | Al registrar un ajuste de débito | ADVIERTE si supera el límite. |
 | Al bajar el límite de un proveedor | ADVIERTE si queda por debajo del saldo actual (§9.5). |
-| Al sincronizar compras hechas sin conexión (fase 2) | No bloquea (la compra ya ocurrió): marca "excedió límite sin autorización" para revisión del ADMIN. |
 
 ### 9.2 Cálculo al registrar una compra
 
@@ -365,8 +362,8 @@ flowchart TD
 ```
 
 - El botón "Pagar $30.000 ahora (MIXTA)" calcula exactamente el pago mínimo en el momento para no superar el límite.
-- Un COMPRADOR sin el permiso no puede confirmar: la compra la registra un usuario con permiso (en el MVP, el ADMIN desde su propio celular). Una solicitud de autorización remota (el comprador pide, el ADMIN aprueba con una notificación) es **PROPUESTO**.
-- Cada exceso autorizado queda en `auditoria` con límite, saldo anterior, monto, exceso, motivo y usuario, y aparece en el tablero del ADMIN hasta que el proveedor vuelve a estar dentro del límite.
+- Un COMPRADOR sin el permiso no puede confirmar: la compra la registra un usuario con permiso (el ADMIN).
+- Cada exceso autorizado queda en `auditoria` con límite, saldo anterior, monto, exceso, motivo y usuario.
 
 ### 9.4 Influencia en la sugerencia de proveedor de la lista de compra
 
@@ -471,55 +468,4 @@ Proveedor **A · Hnos. García**: límite $500.000, plazo de pago 7 días, umbra
 - Usos: 180/500 = 36 %; 280/500 = 56 %; 390/500 = 78 %; 190/500 = 38 %; 470/500 = 94 %; 530/500 = 106 %; 170/500 = 34 %; 15/500 = 3 %. ✔
 
 Este proveedor llega al escenario de `04-procesos-y-flujos.md` §2 con saldo $15.000; después de la compra del 24/09 (COM-000301, $162.000 a crédito) queda en $177.000 (35,4 %, VERDE).
-
----
-
-## 13. PROPUESTO: cuenta corriente de clientes y cobranzas
-
-> **PROPUESTO** — no fue pedido explícitamente; se recomienda para la fase siguiente al MVP (ver `10-plan-de-implementacion.md`). El MVP ya deja preparada la base: ventas registradas por entrega con precios congelados y facturas internas que agrupan entregas.
-
-Mismo modelo que la cuenta de proveedores, en espejo:
-
-| Elemento | Proveedores (MVP) | Clientes (PROPUESTO) |
-|---|---|---|
-| Libro | `movimiento_cuenta_proveedor` | `movimiento_cuenta_cliente` |
-| Cargo | `CARGO_COMPRA` al registrar la compra | `CARGO_FACTURA` al emitir la factura |
-| Cancelación | `PAGO` (`pago_proveedor`) | `COBRO` (`cobro_cliente`: fecha, medio, referencia, monto, comprobante) |
-| Imputación | `imputacion_pago_proveedor`, FIFO o manual | `imputacion_cobro_cliente`, FIFO por vencimiento o manual |
-| Compensaciones | `ANULACION_COMPRA`, `ANULACION_PAGO`, ajustes | `ANULACION_FACTURA`, `ANULACION_COBRO`, ajustes (bonificaciones, notas de crédito) |
-| Estado calculado | Estado de pago de la compra | Estado de cobro de la factura: `COBRADA`, `PARCIAL`, `PENDIENTE` |
-| Vencimiento | `proveedor.plazo_pago_dias` | `cliente.plazo_cobro_dias` (ej.: hospital 60 días, restaurante 15, verdulería 7) |
-| Límite | `proveedor.limite_credito` | `cliente.limite_credito` (opcional) |
-
-**Reglas propuestas**
-
-1. El cargo se genera al emitir la factura (no al entregar), para no contar dos veces. Las entregas `ENTREGADA` y `SIN_FACTURAR` se muestran aparte como "a facturar": deuda total del cliente = facturas pendientes + entregas sin facturar.
-2. Límite de crédito del cliente (opcional): al confirmar un pedido, si deuda total + total estimado del pedido > límite → ADVIERTE; la empresa puede configurarlo como bloqueo, confirmable solo con un permiso específico y motivo (auditado).
-3. Cobro en la entrega (clientes que pagan contra entrega): el REPARTIDOR ve solo el **total a cobrar** de la entrega (nunca precios unitarios) y registra monto y medio; el ADMINISTRATIVO lo concilia. Requiere un permiso específico a definir en `02-usuarios-roles-y-permisos.md`, porque hoy el REPARTIDOR no ve ningún importe.
-4. Anulación de factura con cobros imputados: los cobros quedan como saldo a favor del cliente y se reimputan.
-5. Permisos: `cobranzas.ver`, `cobranzas.registrar`, `cobranzas.anular` (ya previstos como PROPUESTO en `02-usuarios-roles-y-permisos.md`).
-
-**Antigüedad de deuda** (días desde el vencimiento de cada factura). Ejemplo al 30/09:
-
-| Cliente | No vencido | 1–30 días | 31–60 días | 61–90 días | Más de 90 | Total |
-|---|---|---|---|---|---|---|
-| Hospital San Martín | $9.850.000 (agosto, vence 30/10) | — | — | — | — | $9.850.000 |
-| Restaurante La Esquina | $540.200 | $498.600 | — | — | — | $1.038.800 |
-| Verdulería Don Pepe | — | $222.770 | — | — | — | $222.770 |
-| **Total** | **$10.390.200** | **$721.370** | — | — | — | **$11.111.570** |
-
-**Flujo de cobranza**
-
-```mermaid
-flowchart LR
-    A["Entrega ENTREGADA, SIN_FACTURAR"] --> B["Factura EMITIDA: CARGO_FACTURA"]
-    B --> C["Cobro registrado: COBRO"]
-    C --> D["Imputación FIFO o manual"]
-    D --> E{"¿Factura cubierta?"}
-    E -->|Sí| F["COBRADA"]
-    E -->|En parte| G["PARCIAL"]
-    E -->|No| H["PENDIENTE, antigüedad y alertas"]
-```
-
-Documentos asociados (reservados como PROPUESTO en `09-documentos-imprimibles.md` §9): `DOC-09` Estado de cuenta de cliente y `DOC-10` Recibo de cobro.
 

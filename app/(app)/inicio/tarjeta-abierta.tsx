@@ -5,7 +5,7 @@ import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { tiempoRelativo } from "@/dominio/colaboracion/tiempo";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
-import { COLUMNAS, columnaDePedido, textoPlazo } from "@/dominio/pedidos/tablero";
+import { COLUMNAS, columnaDeTarjeta, textoPlazo } from "@/dominio/pedidos/tablero";
 import type { EntradaActividad } from "@/modulos/colaboracion/actividad";
 import type { NotaVisible } from "@/modulos/colaboracion/notas";
 import type { PersonaVisible } from "@/modulos/colaboracion/personas";
@@ -22,7 +22,6 @@ import { HiloDeNotas } from "../actividad/notas";
 import {
   armarListaConElegidosAccion,
   asignarElegidosAccion,
-  confirmarElegidosAccion,
   plazoAccion,
   prioridadElegidosAccion,
   sacarDeListaAccion,
@@ -87,7 +86,7 @@ export function TarjetaAbierta({
   puede: (permiso: Permiso) => boolean;
 }) {
   const ahora = new Date();
-  const columna = COLUMNAS.find((c) => c.clave === columnaDePedido(p.estado));
+  const columna = COLUMNAS.find((c) => c.clave === columnaDeTarjeta(p.estado, avance.que === "comprado" && avance.lineas.length > 0 && avance.lineas.every((l) => l.hecha), avance.entregaId !== null));
   const etiquetas = etiquetasDePedido({ tipoCliente: p.tipoCliente, prioridad: p.prioridad, esTardio: p.esTardio });
   const plazo = textoPlazo(p.entregaDesde, p.entregaHasta);
   const abierto = p.estado !== "CANCELADO" && p.estado !== "ENTREGADO";
@@ -167,7 +166,7 @@ export function TarjetaAbierta({
             {vacio ? (
               <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-black/20 p-6 text-center dark:border-white/25">
                 <p className="text-lg font-semibold">Este pedido todavía no tiene productos.</p>
-                <p className="text-tarjeta-suave">Cargale lo que lleva; después se puede confirmar y pasar a la lista de compra.</p>
+                <p className="text-tarjeta-suave">Cargale lo que lleva; después se manda a la lista de compras.</p>
                 {cambiable && (
                   <Link href={`/pedidos/${p.id}/cambiar`} className="flex min-h-12 items-center rounded-xl bg-marca px-5 text-lg font-semibold text-marca-texto">
                     ＋ Agregar productos
@@ -184,6 +183,7 @@ export function TarjetaAbierta({
                     <span className="min-w-0 flex-1">
                       <span className={`block text-lg leading-tight font-medium ${l.hecha && avance.que ? "line-through opacity-70" : ""}`}>{l.producto}</span>
                       <span className="block font-semibold tabular-nums">{l.cantidad}</span>
+                      {l.aviso && <span className="mt-1 block w-fit rounded-md bg-[var(--pastel-naranja)] px-2 text-sm font-semibold text-[var(--pastel-naranja-texto)]">⚠ {l.aviso}</span>}
                     </span>
                     {avance.que && (
                       <span aria-hidden className="text-xl">
@@ -247,29 +247,25 @@ export function TarjetaAbierta({
         <aside className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <p className="text-sm font-semibold text-tarjeta-suave">Acciones</p>
-            {p.estado === "BORRADOR" &&
-              puede("pedidos.confirmar") &&
-              (vacio ? (
-                <p className="rounded-xl bg-[var(--pronto-fondo)] p-3 text-sm font-medium text-[var(--pronto-texto)]">Para confirmarlo, primero agregale productos.</p>
-              ) : (
-                <BotonAccion accion={confirmarElegidosAccion} datos={{ pedido: p.id }} className={`${botonLateral} bg-marca font-semibold text-marca-texto hover:bg-marca`}>
-                  ✓ Confirmar el pedido
-                </BotonAccion>
-              ))}
             {cambiable && (
               <Link href={`/pedidos/${p.id}/cambiar`} className={botonLateral}>
                 ✏️ {vacio ? "Agregar productos" : "Cambiar productos"}
               </Link>
             )}
-            {(p.estado === "BORRADOR" || p.estado === "CONFIRMADO") && !vacio && puede("lista_compra.generar") && (
+            {columna?.clave === "pedidos" && !vacio && puede("lista_compra.generar") && (
               <BotonAccion accion={armarListaConElegidosAccion} datos={{ pedido: p.id }} className={botonLateral}>
-                🛒 Agregar a la lista de compra
+                🛒 Mandar a la lista de compras
               </BotonAccion>
             )}
-            {p.estado === "EN_COMPRA" && puede("lista_compra.generar") && (
-              <BotonAccion accion={sacarDeListaAccion} datos={{ pedido: p.id }} className={botonLateral} confirmar="¿Sacar este pedido de la lista de compra? Lo ya comprado queda.">
-                ↩ Sacar de la lista
+            {(columna?.clave === "en_lista" || columna?.clave === "comprados") && puede("lista_compra.generar") && (
+              <BotonAccion accion={sacarDeListaAccion} datos={{ pedido: p.id }} className={botonLateral} confirmar="¿Sacar este pedido de la lista de compras? Vuelve a la columna Pedidos; lo ya comprado queda.">
+                ↩ Volver a Pedidos
               </BotonAccion>
+            )}
+            {(columna?.clave === "preparando" || columna?.clave === "comprados") && puede("preparacion.ver") && (
+              <Link href={avance.entregaId ? `/preparacion/${p.fecha}/entrega/${avance.entregaId}` : `/preparacion/${p.fecha}`} className="flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--pastel-amarillo)] px-4 text-left text-base font-semibold text-[var(--pastel-amarillo-texto)] hover:brightness-95">
+                📦 {p.estado === "PREPARADO" ? "Ver lo que se separó" : "Preparar su pedido"}
+              </Link>
             )}
             <Link href={`/pedidos/${p.id}`} className={botonLateral}>
               🗒️ Ver el pedido completo

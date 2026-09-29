@@ -51,7 +51,7 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
         <Estado activo={c.activo} />
       </Encabezado>
 
-      {activos.length === 0 && <Aviso>Este cliente no tiene dónde entregarle: cargá un punto de entrega para poder confirmarle pedidos.</Aviso>}
+      {activos.length === 0 && <Aviso>Este cliente no tiene dónde entregarle: cargale una dirección de entrega para poder cargarle pedidos.</Aviso>}
 
       {pedidos && (
         <PedidosDelCliente clienteId={c.id} pedidos={pedidos} puedeCrear={sesion.permisos.includes("pedidos.crear") && c.activo && activos.length > 0} />

@@ -1,10 +1,10 @@
 import type { EstadoPedido } from "../precios/venta";
 
 // Tablero de pedidos del día (uso interno, 28/09/2026): una columna por etapa, como un tablero de
-// tarjetas. Los pedidos por confirmar y los confirmados se eligen para armar la lista de compra.
+// tarjetas. Los pedidos cargados se eligen para mandarlos a la lista de compras.
 
 export type PrioridadPedido = "ALTA" | "NORMAL" | "BAJA";
-export type ClaveColumna = "por_confirmar" | "confirmados" | "en_lista" | "preparando" | "en_camino" | "entregados";
+export type ClaveColumna = "pedidos" | "en_lista" | "comprados" | "preparando" | "en_camino" | "entregados";
 
 export interface Columna {
   clave: ClaveColumna;
@@ -16,13 +16,25 @@ export interface Columna {
 }
 
 export const COLUMNAS: readonly Columna[] = [
-  { clave: "por_confirmar", titulo: "Por confirmar", ayuda: "Borradores: todavía no entran en la compra.", estados: ["BORRADOR"], seleccionable: true },
-  { clave: "confirmados", titulo: "Confirmados", ayuda: "Listos para agregar a la lista de compra.", estados: ["CONFIRMADO"], seleccionable: true },
-  { clave: "en_lista", titulo: "En la lista de compra", ayuda: "Lo que se compra para este día.", estados: ["EN_COMPRA"], seleccionable: true },
+  // No hay confirmación: un pedido cargado ya está listo para mandarse a la lista de compras.
+  { clave: "pedidos", titulo: "Pedidos", ayuda: "Cargados: mandalos a la lista de compras cuando quieras.", estados: ["BORRADOR", "CONFIRMADO"], seleccionable: true },
+  { clave: "en_lista", titulo: "Lista de compras", ayuda: "Se están comprando: falta algo de lo suyo.", estados: ["EN_COMPRA"], seleccionable: true },
+  // Pedidos en la lista con todo lo suyo ya comprado (la columna se decide con columnaDeTarjeta).
+  { clave: "comprados", titulo: "Comprado", ayuda: "Ya está todo lo suyo: listo para preparar.", estados: [], seleccionable: false },
   { clave: "preparando", titulo: "Preparando", ayuda: "Armándose con lo que se compró.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: false },
   { clave: "en_camino", titulo: "En camino", ayuda: "Salieron en un reparto.", estados: ["EN_REPARTO"], seleccionable: false },
   { clave: "entregados", titulo: "Entregados", ayuda: "Ya los recibió el cliente.", estados: ["ENTREGADO"], seleccionable: false },
 ];
+
+/**
+ * La columna de una tarjeta: la de su etapa, salvo un pedido en la lista de compras con todo lo
+ * suyo comprado, que pasa a "Comprado" (listo para preparar), y uno que ya tiene armada su
+ * preparación aunque todavía no se separó nada, que va a "Preparando".
+ */
+export function columnaDeTarjeta(estado: EstadoPedido, todoComprado: boolean, enPreparacion = false): ClaveColumna | null {
+  if (enPreparacion && (estado === "CONFIRMADO" || estado === "EN_COMPRA")) return "preparando";
+  return estado === "EN_COMPRA" && todoComprado ? "comprados" : columnaDePedido(estado);
+}
 
 /** La columna de un pedido; los cancelados no van en ninguna. */
 export function columnaDePedido(estado: EstadoPedido): ClaveColumna | null {
@@ -73,22 +85,20 @@ export function textoPlazo(desde: string | null, hasta: string | null): string |
   return null;
 }
 
-export type AccionAlMover = "CONFIRMAR" | "AGREGAR_A_LISTA" | "SACAR_DE_LISTA";
+export type AccionAlMover = "AGREGAR_A_LISTA" | "SACAR_DE_LISTA";
 
 /** Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). */
 export function accionAlMover(desde: ClaveColumna, hacia: ClaveColumna): AccionAlMover | null {
-  if (desde === "por_confirmar" && hacia === "confirmados") return "CONFIRMAR";
-  if ((desde === "por_confirmar" || desde === "confirmados") && hacia === "en_lista") return "AGREGAR_A_LISTA";
-  if (desde === "en_lista" && hacia === "confirmados") return "SACAR_DE_LISTA";
+  if (desde === "pedidos" && hacia === "en_lista") return "AGREGAR_A_LISTA";
+  if (desde === "en_lista" && hacia === "pedidos") return "SACAR_DE_LISTA";
   return null;
 }
 
 /** Qué se puede hacer con las tarjetas elegidas. */
-export function resumenDeSeleccion(estados: readonly EstadoPedido[]): { total: number; paraLista: number; paraConfirmar: number; paraSacar: number } {
+export function resumenDeSeleccion(estados: readonly EstadoPedido[]): { total: number; paraLista: number; paraSacar: number } {
   return {
     total: estados.length,
     paraLista: estados.filter((e) => e === "BORRADOR" || e === "CONFIRMADO").length,
-    paraConfirmar: estados.filter((e) => e === "BORRADOR").length,
     paraSacar: estados.filter((e) => e === "EN_COMPRA").length,
   };
 }

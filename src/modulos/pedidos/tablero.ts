@@ -1,13 +1,14 @@
 import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 
-import { categoria, cliente, entregaItem, jornada, listaCompra, listaCompraItem, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
+import { categoria, cliente, entrega, entregaItem, jornada, listaCompra, listaCompraItem, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
+import { avisoDeFaltante } from "@/dominio/entregas/entregas";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
-import { COLUMNAS, columnaDePedido, estadoDelPlazo, ordenarTarjetas, textoPlazo, type ClaveColumna, type EstadoDelPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
+import { COLUMNAS, columnaDeTarjeta, estadoDelPlazo, ordenarTarjetas, textoPlazo, type ClaveColumna, type EstadoDelPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import type { EstadoPedido } from "@/dominio/precios/venta";
 import { contarNotasDe } from "@/modulos/colaboracion/notas";
 import { personasDelNegocio, soloVisible, type PersonaVisible } from "@/modulos/colaboracion/personas";
@@ -45,7 +46,7 @@ export interface TarjetaPedido {
   estadoPlazo: EstadoDelPlazo;
   lineas: number;
   /** Lo que lleva, para verlo en la tarjeta sin abrirla. */
-  productos: { nombre: string; cantidad: string; grupo: string | null }[];
+  productos: { nombre: string; cantidad: string; grupo: string | null; hecha: boolean; aviso: string | null }[];
   avance: AvanceDePedido | null;
   /** Solo con `precios.ver_venta`. */
   totalEstimado: string | null;
@@ -79,6 +80,8 @@ export interface TableroDePedidos {
 export interface LineaConAvance {
   id: string;
   producto: string;
+  /** Lo que faltó y por qué ("Va 30 kg de 36 kg · no se consiguió"), o que no se consiguió en el mercado. */
+  aviso: string | null;
   /** Grupo de su categoría (FRUTA, VERDURA…), para el dibujo. */
   grupo: string | null;
   cantidad: string;
@@ -89,9 +92,9 @@ const hora = (t: string | null) => t?.slice(0, 5) ?? null;
 const RESUELTAS = ["COMPRADO", "NO_CONSEGUIDO"];
 
 /** Las líneas de cada pedido y si ya se compraron (en la lista) o se prepararon, según su etapa. */
-async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: readonly { id: string; estado: EstadoPedido }[]): Promise<Map<string, { que: AvanceDePedido["que"] | null; lineas: LineaConAvance[] }>> {
+async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: readonly { id: string; estado: EstadoPedido }[]): Promise<Map<string, { que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; entregaId: string | null }>> {
   const ids = pedidos.map((p) => p.id);
-  const resultado = new Map<string, { que: AvanceDePedido["que"] | null; lineas: LineaConAvance[] }>();
+  const resultado = new Map<string, { que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; entregaId: string | null }>();
   if (ids.length === 0) return resultado;
   const items = await tx
     .select({
@@ -117,20 +120,30 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
     .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
     .where(eq(listaCompra.jornadaId, jornadaId));
   const comprado = new Set(enLista.filter((l) => RESUELTAS.includes(l.estado)).map((l) => l.productoId));
-  const preparadas = items.length
-    ? new Set(
-        (
-          await tx
-            .select({ pedidoItemId: entregaItem.pedidoItemId })
-            .from(entregaItem)
-            .where(and(inArray(entregaItem.pedidoItemId, items.map((i) => i.id)), isNotNull(entregaItem.cantidadPreparada)))
-        ).map((e) => e.pedidoItemId),
-      )
-    : new Set<string | null>();
+  const noConseguido = new Set(enLista.filter((l) => l.estado === "NO_CONSEGUIDO").map((l) => l.productoId));
+  // Lo que se separó para cada línea (y lo que faltó y por qué), para la columna "Preparando".
+  const separado = new Map(
+    (items.length
+      ? await tx
+          .select({ pedidoItemId: entregaItem.pedidoItemId, entregaId: entregaItem.entregaId, pedida: entregaItem.cantidadPedida, propuesta: entregaItem.cantidadPropuesta, preparada: entregaItem.cantidadPreparada, motivo: entregaItem.motivoFaltante })
+          .from(entregaItem)
+          .innerJoin(entrega, eq(entrega.id, entregaItem.entregaId))
+          .where(and(inArray(entregaItem.pedidoItemId, items.map((i) => i.id)), eq(entregaItem.esSustitucion, false), ne(entrega.estado, "ANULADA")))
+      : []
+    ).map((e) => [e.pedidoItemId, e]),
+  );
+  const aviso = (i: (typeof items)[number], que: AvanceDePedido["que"] | null): string | null => {
+    const e = separado.get(i.id);
+    if (e) return avisoDeFaltante({ ...e, unidad: i.unidad as UnidadMedida });
+    return que === "comprado" && noConseguido.has(i.productoId) ? "No se consiguió en el mercado" : null;
+  };
   for (const p of pedidos) {
-    const que = p.estado === "EN_COMPRA" ? "comprado" : p.estado === "EN_PREPARACION" || p.estado === "PREPARADO" ? "preparado" : null;
+    const propias = items.filter((i) => i.pedidoId === p.id);
+    const conEntrega = propias.some((i) => separado.has(i.id));
+    const que = p.estado === "EN_PREPARACION" || p.estado === "PREPARADO" || (conEntrega && (p.estado === "CONFIRMADO" || p.estado === "EN_COMPRA")) ? "preparado" : p.estado === "EN_COMPRA" ? "comprado" : null;
     resultado.set(p.id, {
       que,
+      entregaId: propias.map((i) => separado.get(i.id)?.entregaId).find(Boolean) ?? null,
       lineas: items
         .filter((i) => i.pedidoId === p.id)
         .map((i) => ({
@@ -140,7 +153,8 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
           cantidad: i.presentacion
             ? `${formatearNumero(i.cantidad, { decimales: 3, recortarCeros: true })} × ${i.presentacion}`
             : formatearCantidad(i.cantidadBase, i.unidad as UnidadMedida),
-          hecha: que === "comprado" ? comprado.has(i.productoId) : que === "preparado" ? preparadas.has(i.id) : p.estado === "EN_REPARTO" || p.estado === "ENTREGADO",
+          hecha: que === "comprado" ? comprado.has(i.productoId) : que === "preparado" ? separado.get(i.id)?.preparada != null : p.estado === "EN_REPARTO" || p.estado === "ENTREGADO",
+          aviso: aviso(i, que),
         })),
     });
   }
@@ -206,7 +220,7 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
         id: f.id,
         numero: numeroPedido(f.numero),
         estado: f.estado,
-        columna: columnaDePedido(f.estado),
+        columna: columnaDeTarjeta(f.estado, a.que === "comprado" && a.lineas.length > 0 && a.lineas.every((l) => l.hecha), a.entregaId !== null),
         clienteId: f.clienteId,
         cliente: f.cliente,
         tipoCliente: f.tipoCliente,
@@ -219,7 +233,7 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
         plazo: textoPlazo(f.entregaDesde, f.entregaHasta),
         estadoPlazo: estadoDelPlazo({ fecha, hasta: hora(f.entregaHasta), estado: f.estado, ...ahora }),
         lineas: a.lineas.length,
-        productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo })),
+        productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo, hecha: l.hecha, aviso: l.aviso })),
         avance: a.que ? { que: a.que, hechos: a.lineas.filter((l) => l.hecha).length, total: a.lineas.length } : null,
         totalEstimado: verVenta ? f.total : null,
         notas: notas.get(f.id) ?? { total: 0, sinLeer: 0 },
@@ -243,20 +257,21 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
 }
 
 /** Lo que se ve al abrir una tarjeta: el pedido con sus líneas marcadas (compradas o preparadas). */
-export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoId: string): Promise<{ que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; responsable: PersonaVisible | null; cargadoPor: PersonaVisible | null; confirmadoPor: PersonaVisible | null; estadoPlazo: EstadoDelPlazo; personas: PersonaVisible[] }> {
+export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoId: string): Promise<{ que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; entregaId: string | null; responsable: PersonaVisible | null; cargadoPor: PersonaVisible | null; confirmadoPor: PersonaVisible | null; estadoPlazo: EstadoDelPlazo; personas: PersonaVisible[] }> {
   return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx, c) => {
     const [p] = await tx
       .select({ id: pedido.id, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha, hasta: pedido.entregaHasta, responsableId: pedido.responsableId, creadoPor: pedido.creadoPor, confirmadoPor: pedido.confirmadoPor })
       .from(pedido)
       .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
       .where(eq(pedido.id, pedidoId));
-    if (!p) return { que: null, lineas: [], responsable: null, cargadoPor: null, confirmadoPor: null, estadoPlazo: "a_tiempo", personas: [] };
+    if (!p) return { que: null, lineas: [], entregaId: null, responsable: null, cargadoPor: null, confirmadoPor: null, estadoPlazo: "a_tiempo", personas: [] };
     const personas = await personasDelNegocio(tx);
     const persona = new Map(personas.map((x) => [x.id, soloVisible(x)]));
     const a = (await lineasConAvance(tx, p.jornadaId, [p])).get(p.id)!;
     return {
       que: a.que,
       lineas: a.lineas,
+      entregaId: a.entregaId,
       responsable: persona.get(p.responsableId ?? p.creadoPor ?? "") ?? null,
       cargadoPor: p.creadoPor ? (persona.get(p.creadoPor) ?? null) : null,
       confirmadoPor: p.confirmadoPor ? (persona.get(p.confirmadoPor) ?? null) : null,

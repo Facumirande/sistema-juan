@@ -69,7 +69,7 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
       <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende. Tocá un producto para ver qué puestos lo venden y a qué precio.">
         {puedeEditar && categorias.some((c) => c.activo) && (
           <Link href="/productos/nuevo" className={clasesBoton("principal")}>
-            + Nuevo producto
+            ＋ Nuevo producto
           </Link>
         )}
         <Link href="/productos/categorias" className={clasesBoton("secundario")}>
@@ -78,6 +78,11 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
         {sesion.permisos.includes("precios.ver_costos") && (
           <Link href="/precios/compra" className={clasesBoton("secundario")}>
             Precios de compra
+          </Link>
+        )}
+        {sesion.permisos.includes("precios.ver_margenes") && (
+          <Link href="/precios/venta" className={clasesBoton("secundario")}>
+            Precios de venta
           </Link>
         )}
       </Encabezado>

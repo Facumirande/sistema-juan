@@ -20,7 +20,7 @@ import { iniciarPreparacionAccion } from "../preparacion/acciones";
 
 export const TITULOS: Record<ClavePaso, string> = {
   pedidos: "Pedidos",
-  lista: "Lista de compra",
+  lista: "Lista de compras",
   compras: "Compras en el mercado",
   preparacion: "Preparación y remitos",
   entregas: "Reparto y entrega",
@@ -41,10 +41,10 @@ const COLOR: Record<ClavePaso, string> = {
 
 /** Qué hay que hacer en cada paso, dicho como una indicación. */
 const QUE_HACER: Record<ClavePaso, string> = {
-  pedidos: "Cargá lo que pidió cada cliente para este día y confirmalo. Un pedido confirmado entra en la compra; uno sin confirmar, no.",
-  lista: "Juntá todos los pedidos confirmados en una sola lista: el sistema calcula cuánto comprar de cada producto y en qué puesto conviene.",
-  compras: "En el mercado, registrá cada compra en el puesto donde la hiciste (qué, cuánto, a qué precio y cómo pagaste). La lista se va tachando sola.",
-  preparacion: "Armá el pedido de cada cliente con lo que se compró y marcalo como preparado: su remito se hace solo. Si algo no alcanza, el sistema propone cómo repartirlo.",
+  pedidos: "Cargá lo que pidió cada cliente para este día. Cada pedido guardado queda en la columna “Pedidos” del tablero.",
+  lista: "Mandá los pedidos a la lista de compras (desde el tablero o con el botón de acá): el sistema suma cuánto comprar de cada producto y en qué puesto conviene.",
+  compras: "En el mercado, abrí la lista de compras y tocá “✓ Lo compré” en cada producto: queda anotado en ese puesto y se tacha de la lista.",
+  preparacion: "Separá lo de cada cliente: en cada producto tocá “Está todo” o anotá lo que faltó y por qué. Al marcarlo preparado, su remito se hace solo.",
   entregas: "Imprimí los remitos, armá el reparto con el mejor orden (el viaje calcula el recorrido) y, al entregar, confirmá cada entrega: completa, con diferencias o no recibida.",
   cierre: "Cuando esté todo entregado, revisá el resumen y cerrá el día: queda guardado lo vendido, lo comprado y la ganancia.",
 };
@@ -81,8 +81,8 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
             "Sin pedidos todavía"
           ) : (
             <>
-              {plural(d.pedidos.confirmados, "confirmado", "confirmados")}
-              {d.pedidos.borradores > 0 && <b> · {plural(d.pedidos.borradores, "sin confirmar", "sin confirmar")}</b>}
+              {plural(d.pedidos.confirmados + d.pedidos.borradores, "pedido cargado", "pedidos cargados")}
+              {d.pedidos.borradores > 0 && <b> · {plural(d.pedidos.borradores, "sin terminar", "sin terminar")}</b>}
               {plata.pedido && dec(plata.pedido).gt(0) && ` · ${formatearMoneda(plata.pedido)}`}
             </>
           ),
@@ -93,7 +93,7 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
                 ＋ Cargar un pedido
               </Enlace>
             )}
-            {d.pedidos.borradores > 0 && <Enlace href={`/inicio?fecha=${fecha}`}>Confirmar los que faltan (en el tablero)</Enlace>}
+            <Enlace href={`/inicio?fecha=${fecha}`}>Ver en el tablero</Enlace>
           </>
         ),
       };
@@ -104,16 +104,16 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
         ) : d.lista.desactualizada ? (
           <b>Cambió un pedido: hay que actualizarla</b>
         ) : d.lista.fueraDeLista > 0 ? (
-          <b>{plural(d.lista.fueraDeLista, "pedido confirmado quedó afuera", "pedidos confirmados quedaron afuera")}</b>
+          <b>{plural(d.lista.fueraDeLista, "pedido quedó afuera", "pedidos quedaron afuera")}</b>
         ) : (
           plural(d.lista.lineas, "producto para comprar", "productos para comprar")
         ),
         acciones: (
           <>
-            {abierta && puede("lista_compra.generar") && d.pedidos.confirmados > 0 && (!d.lista.armada || d.lista.desactualizada || d.lista.fueraDeLista > 0) && (
+            {abierta && puede("lista_compra.generar") && d.pedidos.confirmados + d.pedidos.borradores > 0 && (!d.lista.armada || d.lista.desactualizada || d.lista.fueraDeLista > 0) && (
               <FormularioAccion
                 accion={generarListaAccion}
-                boton={d.lista.armada ? (d.lista.fueraDeLista > 0 && !d.lista.desactualizada ? "Agregar los que faltan a la lista" : "Actualizar la lista") : "Armar la lista con todos los confirmados"}
+                boton={d.lista.armada ? (d.lista.fueraDeLista > 0 && !d.lista.desactualizada ? "Agregar los que faltan a la lista" : "Actualizar la lista") : "Armar la lista con todos los pedidos"}
                 variante={actual ? "principal" : "secundario"}
               >
                 <input type="hidden" name="fecha" value={fecha} />
@@ -140,11 +140,11 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
         acciones: (
           <>
             {abierta && puede("compras.registrar") && (
-              <Enlace href={`/compras/nueva?fecha=${fecha}`} destacado={actual}>
-                🧺 Registrar una compra
+              <Enlace href={`/lista-compra?fecha=${fecha}`} destacado={actual}>
+                🛒 Abrir la lista de compras
               </Enlace>
             )}
-            {d.lista.armada && <Enlace href={`/lista-compra?fecha=${fecha}`}>Qué falta comprar</Enlace>}
+            {abierta && puede("compras.registrar") && <Enlace href={`/compras/nueva?fecha=${fecha}`}>Anotar otra compra</Enlace>}
           </>
         ),
       };
@@ -223,10 +223,10 @@ function pendienteDeAtras(clave: ClavePaso, dia: DiaDeTrabajo): { texto: string;
   const d = datosDelPanel(dia.panel);
   switch (clave) {
     case "pedidos":
-      return { texto: `${plural(d.pedidos.borradores, "pedido quedó sin confirmar", "pedidos quedaron sin confirmar")}: no entra${d.pedidos.borradores === 1 ? "" : "n"} en la compra hasta que lo confirmes.`, href: `/inicio?fecha=${dia.fecha}`, boton: "Ver en el tablero" };
+      return { texto: `${plural(d.pedidos.borradores, "pedido quedó sin terminar de cargar", "pedidos quedaron sin terminar de cargar")}: revisalos y mandalos a la lista.`, href: `/inicio?fecha=${dia.fecha}`, boton: "Ver en el tablero" };
     case "lista":
       return {
-        texto: d.lista.desactualizada ? "Cambió un pedido después de armar la lista: actualizala para comprar lo justo." : `${plural(d.lista.fueraDeLista, "pedido confirmado quedó afuera de la lista", "pedidos confirmados quedaron afuera de la lista")}.`,
+        texto: d.lista.desactualizada ? "Cambió un pedido después de armar la lista: actualizala para comprar lo justo." : `${plural(d.lista.fueraDeLista, "pedido quedó afuera de la lista de compras", "pedidos quedaron afuera de la lista de compras")}.`,
         href: `/lista-compra?fecha=${dia.fecha}`,
         boton: "Ir a la lista",
       };

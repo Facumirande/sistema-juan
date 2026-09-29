@@ -88,7 +88,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-031 | No se cargan pedidos para una jornada `CERRADA` ni para fechas pasadas; se propone la próxima jornada. | Crear pedido | BLOQUEA |
 | RN-032 | Cada línea tiene precio estimado (`05-precios-y-margenes.md` §5.8), visible solo con `precios.ver_venta`; el costo, con `precios.ver_costos`; recargo y margen, con `precios.ver_margenes`. No es vinculante hasta la emisión de documentos. | Carga y confirmación | CALCULA |
 | RN-033 | Duplicar un pedido crea un `BORRADOR` en la jornada elegida con las líneas de productos activos; omite los desactivados con aviso; los precios se recalculan. | Duplicar | CALCULA + ADVIERTE |
-| RN-034 | Al generar la lista de compra, los pedidos `BORRADOR` de la jornada no se incluyen y se listan para confirmarlos o dejarlos fuera. | Generar lista | ADVIERTE |
+| RN-034 | Al mandar pedidos a la lista de compras (o al empezar a preparar), los que quedaron `BORRADOR` con productos se completan solos; los que no se pueden completar quedan afuera con el motivo. | Generar lista; iniciar preparación | CALCULA + ADVIERTE |
 
 ### 2.4 Jornada
 
@@ -109,7 +109,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 |---|---|---|---|
 | RN-043 | La lista incluye solo líneas de pedidos `CONFIRMADO` y `EN_COMPRA` de la jornada. | Generar y regenerar | CALCULA |
 | RN-044 | Necesidad por producto = Σ `cantidad_base` de esas líneas. | Generar y regenerar | CALCULA |
-| RN-045 | (Fase 2) Necesidad neta = necesidad − stock disponible de sobrantes. | Generar y regenerar | CALCULA |
+| RN-045 | Sin uso: no hay stock de sobrantes (la necesidad neta es la necesidad menos lo ya comprado). | — | — |
 | RN-046 | Presentaciones a comprar = techo(pendiente ÷ `factor_a_base`); sobrante previsto = presentaciones × factor − pendiente. | Generar y regenerar | CALCULA |
 | RN-047 | El proveedor sugerido se elige según la estrategia de costo de la empresa y el crédito disponible proyectado (`04-procesos-y-flujos.md` §5.c.2). | Generar y regenerar | CALCULA |
 | RN-048 | Un producto sin oferta vigente queda en la lista como "sin proveedor / sin precio". | Generar; lista general de precios | ADVIERTE |
@@ -205,7 +205,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-111 | Al iniciar la preparación se crea una entrega por cliente + punto de entrega + jornada con pedidos `EN_COMPRA`; cada línea referencia su `pedido_item`. | Iniciar preparación; pedidos tardíos | CALCULA |
 | RN-112 | La cantidad preparada se registra en unidad base (peso real o unidades contadas). | Preparación | CALCULA |
 | RN-113 | Una diferencia entre preparado y pedido dentro de la tolerancia (3 % por defecto) no se considera diferencia; fuera de ella pide confirmación y marca la línea. | Preparación | ADVIERTE |
-| RN-114 | Si lo preparado de un producto supera lo comprado (más stock en fase 2), se pide confirmación con motivo. | Preparación | ADVIERTE |
+| RN-114 | Si lo preparado de un producto supera lo comprado se pide confirmación con motivo. | Preparación | ADVIERTE |
 | RN-115 | Si lo disponible no alcanza, se reparte según `empresa.politica_faltantes`: `PRIORIDAD_CLIENTE` (por defecto: por prioridad del cliente y, dentro del primer grupo que no alcanza, prorrateo proporcional), `PROPORCIONAL` o `MANUAL` (`04-procesos-y-flujos.md` §5.e.1). **Ampliada (28/09/2026):** con `PRIORIDAD_CLIENTE` manda primero la prioridad del pedido que se elige en el tablero (Urgente, Normal, Sin apuro) y, dentro de cada una, la del cliente. | Preparación | CALCULA |
 | RN-116 | El reparto propuesto de faltantes se puede ajustar a mano con `preparacion.asignar_faltantes`; queda registrado quién lo ajustó. | Preparación | CALCULA + AUDITA |
 | RN-117 | Una sustitución requiere producto sustituto, cantidad y motivo; si el cliente no acepta sustituciones, se debe registrar quién la autorizó. El precio del sustituto se calcula con sus propias reglas. | Preparación | BLOQUEA (sin datos) + ADVIERTE |
@@ -221,12 +221,12 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-122 | Una entrega no pasa a `EN_REPARTO` sin documentos emitidos de su versión vigente. | Salida del reparto | BLOQUEA |
 | RN-123 | Una entrega pertenece a un solo reparto a la vez, de su misma jornada. | Armado de repartos | BLOQUEA |
 | RN-124 | Las rutas y consultas de documentos y vistas sin precios no leen campos de precio ni costo (control en el servidor, no solo en la interfaz). | `DOC-02`, `DOC-04`, `DOC-07`, vistas de preparación y reparto | BLOQUEA |
-| RN-125 | La confirmación exige nombre de quien recibe; la hora la registra el servidor; firma o foto son opcionales salvo que el cliente las requiera. | Confirmar entrega | BLOQUEA |
+| RN-125 | La confirmación exige nombre de quien recibe; la hora la registra el servidor. | Confirmar entrega | BLOQUEA |
 | RN-126 | La cantidad entregada no puede superar la preparada; toda diferencia requiere `motivo_diferencia` por línea (`RECHAZO_CALIDAD`, `FALTANTE`, `NO_CONSEGUIDO`, `ERROR_PREPARACION`, `CAMBIO_CLIENTE`, `OTRO`) y detalle si es `OTRO`. | Confirmar entrega | BLOQUEA |
 | RN-127 | `con_diferencias` = verdadero si alguna línea entregada difiere de la pedida fuera de la tolerancia de peso (RN-113), hubo sustitución o rechazo. | Confirmar entrega | CALCULA |
 | RN-128 | Todo cambio posterior a la emisión incrementa `entrega.version` y reemite ambos documentos; las versiones anteriores quedan `REEMPLAZADO`. Las correcciones administrativas requieren `entregas.corregir`. | Corrección, sustitución, tardío, diferencias | CALCULA + AUDITA |
 | RN-129 | La lista contable definitiva usa `cantidad_entregada`. | Confirmación; reemisión | CALCULA |
-| RN-130 | La mercadería rechazada vuelve como devolución y se suma al sobrante de la jornada (fase 2: `ajuste_stock`). | Confirmar entrega | CALCULA |
+| RN-130 | La mercadería rechazada vuelve como devolución y se suma al sobrante de la jornada. | Confirmar entrega | CALCULA |
 | RN-131 | Un REPARTIDOR ve solo los repartos asignados a él (`repartos.ver_propios`). | Consultas de reparto | BLOQUEA |
 | RN-132 | Anular una entrega requiere `entregas.anular` y motivo; si está `FACTURADA`, antes se anula la factura; sus líneas se reasignan a una entrega nueva o correcta. | Anular entrega | BLOQUEA + AUDITA |
 | RN-133 | Reimprimir una versión ya emitida no genera versión nueva; queda registrada en `documento_emitido` con evento `REIMPRESION`. | Reimpresión | CALCULA |
@@ -296,7 +296,6 @@ Datos de los ejemplos: escenario de `04-procesos-y-flujos.md` §2.
 | 26 | **Error detectado en una entrega ya facturada.** | Factura con datos incorrectos. | La entrega no se modifica: se anula la factura con motivo, se corrige la entrega (nueva versión) y se vuelve a facturar. En la fase fiscal: nota de crédito. | RN-138, RN-139 |
 | 27 | **Precio fijo que vence sin renovarse.** La licitación vence el 28/02. | El precio salta sin aviso. | Alerta `PRECIO_FIJO_POR_VENCER` 15 días antes. Desde el 01/03 rige el siguiente nivel de la cascada (ej. recargo del cliente) y el origen lo muestra. | RN-077, RN-078 |
 | 28 | **Dos usuarios editan el mismo pedido a la vez.** | Un cambio pisa al otro. | Concurrencia optimista: el segundo en guardar recibe "el pedido cambió, recargá" y no pierde su pantalla hasta recargar. | RN-150 |
-| 29 | **Compra sin conexión que excede el límite** (fase 2). | La compra ya ocurrió. | Al sincronizar se registra igual, con marca "excedió límite sin autorización" y aviso al ADMIN. | RN-063 |
 | 30 | **Compra en una presentación distinta de la sugerida.** Cajón 18 kg en vez de bolsa 20 kg. | — | Sin problema: la conciliación y el costo real se calculan en unidad base. | RN-044, RN-057 |
 | 31 | **Cliente desactivado con pedidos futuros.** | Pedidos de un cliente que ya no se atiende. | Al desactivar se listan sus pedidos futuros para cancelarlos con motivo o mantenerlos; los que están en curso siguen. | RN-012 |
 | 32 | **Cheque rechazado.** | Deuda que parecía pagada. | Se anula el pago con motivo "cheque rechazado": las compras vuelven a pendientes y el saldo sube. Gastos bancarios que cobre el proveedor: ajuste de débito. | RN-100, RN-102 |

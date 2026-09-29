@@ -68,12 +68,13 @@ export function haceDias(dias: number): string {
 }
 
 export const ESTADOS_PEDIDO: Readonly<Record<string, string>> = {
-  BORRADOR: "Borrador",
-  CONFIRMADO: "Confirmado",
-  EN_COMPRA: "En compra",
-  EN_PREPARACION: "En preparación",
+  // Sin confirmación a la vista: un pedido cargado es "Pedido", esté o no confirmado por dentro.
+  BORRADOR: "Sin terminar",
+  CONFIRMADO: "Pedido",
+  EN_COMPRA: "En la lista de compras",
+  EN_PREPARACION: "Preparando",
   PREPARADO: "Preparado",
-  EN_REPARTO: "En reparto",
+  EN_REPARTO: "En camino",
   ENTREGADO: "Entregado",
   CANCELADO: "Cancelado",
 };
@@ -155,8 +156,9 @@ export const MOTIVOS_DIFERENCIA: Readonly<Record<string, string>> = {
 /** Motivos de un faltante al preparar. */
 export const MOTIVOS_FALTANTE: Readonly<Record<string, string>> = {
   NO_CONSEGUIDO: "No se consiguió",
-  FALTANTE: "Faltó mercadería",
+  FALTANTE: "No alcanzó lo comprado",
+  RECHAZO_CALIDAD: "Estaba en mal estado",
   ERROR_PREPARACION: "Error al preparar",
-  CAMBIO_CLIENTE: "El cliente canceló",
-  OTRO: "Otro",
+  CAMBIO_CLIENTE: "El cliente lo sacó",
+  OTRO: "Otro motivo",
 };

@@ -33,7 +33,6 @@
 | Créditos y pagos | Cuenta corriente de proveedores en `06-creditos-y-pagos.md`. |
 | Pantallas y documentos | Pantallas en `08-pantallas-y-acciones.md`; documentos imprimibles `DOC-01`…`DOC-08` en `09-documentos-imprimibles.md`. |
 | Permisos | Claves `modulo.accion` (ej.: `compras.exceder_limite`). |
-| **PROPUESTO** | Funcionalidad sugerida por el diseño, no pedida explícitamente: va en fases posteriores (ver `10-plan-de-implementacion.md`). |
 
 Cada proceso de la sección 5 sigue el mismo formato: **objetivo, actores, disparador, precondiciones, pasos, estados, datos que se crean/modifican, resultados, excepciones y cómo se resuelven**.
 
@@ -89,7 +88,7 @@ Todos los ejemplos de los documentos 04 a 07 usan estos datos, para que los núm
 flowchart TD
     subgraph VEN["VENDEDOR"]
         S1["Paso 1: El cliente pide por teléfono, WhatsApp o email"]
-        S2["Paso 2: Carga rápida y confirmación del pedido"]
+        S2["Paso 2: Carga visual y guardado del pedido"]
     end
     subgraph COM["COMPRADOR"]
         S3["Paso 3: Generar lista de compra consolidada"]
@@ -122,16 +121,16 @@ flowchart TD
 
 | # | Paso del negocio | Acción del sistema | Rol | Entidades que cambian | Estado resultante |
 |---|---|---|---|---|---|
-| 1 | Un cliente hace un pedido | Pantalla de carga rápida: cliente, punto de entrega, fecha de entrega, productos y cantidades. Se crea o se reutiliza la `jornada` de esa fecha. | VENDEDOR | `pedido`, `pedido_item`, `jornada` (si no existía) | pedido `BORRADOR` · jornada `ABIERTA` |
-| 2 | El sistema lo registra | "Confirmar": valida (RN-017, RN-018), calcula `cantidad_base` y precio estimado, asigna número `PED-xxxxxx` desde `secuencia`. | VENDEDOR | `pedido`, `pedido_item`, `secuencia` | pedido `CONFIRMADO` |
-| 3 | Los pedidos generan las cantidades a comprar | "Cerrar pedidos y generar lista de compra": consolida por producto en unidad base y convierte a presentaciones de compra (algoritmo en 5.c). | COMPRADOR o ADMIN | `lista_compra`, `lista_compra_item`, `pedido` | ítems `PENDIENTE` · pedidos `EN_COMPRA` · jornada `COMPRANDO` |
+| 1 | Un cliente hace un pedido | **Nuevo pedido** (carga visual): cliente, día, productos y cantidades. Se crea o se reutiliza la `jornada` de esa fecha. | ADMIN (los dos operadores) | `pedido`, `pedido_item`, `jornada` (si no existía) | jornada `ABIERTA` |
+| 2 | El sistema lo registra | **✓ Guardar el pedido**: guarda todo junto, valida (RN-017, RN-018), calcula `cantidad_base` y precio estimado y asigna el número `PED-xxxxxx`. No hay un paso de "confirmar": el pedido queda en la columna **Pedidos** del tablero. | ADMIN | `pedido`, `pedido_item`, `secuencia` | pedido `CONFIRMADO` (internamente) |
+| 3 | Los pedidos generan las cantidades a comprar | **🛒 Mandar a la lista de compras** (desde el tablero, con los pedidos elegidos o todos): consolida por producto en unidad base y convierte a envases de compra (algoritmo en 5.c). | ADMIN | `lista_compra`, `lista_compra_item`, `pedido` | ítems `PENDIENTE` · pedidos `EN_COMPRA` · jornada `COMPRANDO` |
 | 4 | Se consulta qué proveedores tienen los productos y a qué precio | Plan de compra agrupado por proveedor con proveedor sugerido, costo estimado y crédito disponible; comparación de precios; impresión de `DOC-01` y `DOC-06`. | COMPRADOR | Ninguna (consulta). Puede reasignar el proveedor sugerido de una línea. | Sin cambio de estado |
-| 5 | Se registran las compras | Registro rápido en el celular por proveedor: productos, presentación, cantidad, precio. Actualiza la oferta vigente del proveedor y su historial. | COMPRADOR | `compra`, `compra_item`, `proveedor_producto`, `historial_precio_compra`, `lista_compra_item` | compra `REGISTRADA` · ítems `PARCIAL`/`COMPRADO` |
+| 5 | Se registran las compras | En la lista de compras, **✓ Lo compré** en cada producto: puesto, cuántos y a cuánto; o una compra suelta con varios productos de un puesto. Actualiza el precio del puesto y su historial; cuando está todo lo de un pedido, su tarjeta pasa a **Comprado**. | ADMIN | `compra`, `compra_item`, `proveedor_producto`, `historial_precio_compra`, `lista_compra_item` | compra `REGISTRADA` · ítems `PARCIAL`/`COMPRADO` |
 | 6 | Se pagan en el momento o a crédito | Condición de pago de la compra: `CONTADO` genera un pago automático por el total; `CREDITO` deja todo pendiente; `MIXTA` registra el pago parcial. Pagos posteriores desde la cuenta corriente. | COMPRADOR (en el momento) · ADMINISTRATIVO (pagos posteriores) | `pago_proveedor`, `imputacion_pago_proveedor` | estado de pago de la compra `PAGADA`, `PARCIAL` o `PENDIENTE` |
 | 7 | Se actualiza lo adeudado a cada proveedor | Cada compra genera un movimiento `CARGO_COMPRA`; cada pago un movimiento `PAGO`. Se recalculan saldo pendiente, crédito disponible y semáforo (ver `06-creditos-y-pagos.md`). | Sistema (automático) | `movimiento_cuenta_proveedor` | Semáforo `VERDE`/`AMARILLO`/`ROJO`/`EXCEDIDO` |
-| 8 | Se prepara la mercadería de cada cliente | "Iniciar preparación": se crea una `entrega` por cliente y punto de entrega. El preparador pesa y registra la cantidad real; el sistema reparte faltantes por prioridad y prorrateo. | PREPARADOR | `entrega`, `entrega_item` (`cantidad_preparada`), `pedido` | jornada `PREPARANDO` · entrega `EN_PREPARACION` → `PREPARADA` · pedidos `EN_PREPARACION` → `PREPARADO` |
+| 8 | Se prepara la mercadería de cada cliente | **Empezar a preparar**: se crea una `entrega` por cliente y punto de entrega con lo que hay que separarle; si lo comprado no alcanza, se reparte por prioridad. Por cada producto: **✓ Está todo** o **Falta algo** (cuánto se manda y por qué). | ADMIN | `entrega`, `entrega_item` (`cantidad_preparada`), `pedido` | jornada `PREPARANDO` · entrega `EN_PREPARACION` → `PREPARADA` · pedidos `EN_PREPARACION` → `PREPARADO` |
 | 9 | Se genera la lista de entrega sin precios | "Emitir documentos": congela precios en `entrega_item` y genera, de la misma entrega y versión, `DOC-02` Lista de entrega (sin precios) y `DOC-03` Lista contable. | PREPARADOR (ve e imprime solo `DOC-02`) o ADMIN | `entrega_item` (precios congelados), `documento_emitido` ×2 | Documentos versión 1 |
-| 10 | Se entrega | Reparto con hoja de ruta `DOC-04`. En el celular: quién recibió, hora, firma o foto, diferencias o rechazos. | REPARTIDOR | `reparto`, `entrega` (`cantidad_entregada`, receptor, firma), `pedido` | jornada `REPARTIENDO` · entrega `EN_REPARTO` → `ENTREGADA` · pedidos `ENTREGADO` |
+| 10 | Se entrega | Viaje de entrega con el mejor orden y GPS, hoja de ruta `DOC-04`. En el celular: quién recibió, hora, diferencias o rechazos. | ADMIN o REPARTIDOR | `reparto`, `entrega` (`cantidad_entregada`, receptor), `pedido` | jornada `REPARTIENDO` · entrega `EN_REPARTO` → `ENTREGADA` · pedidos `ENTREGADO` |
 | 11 | Se genera la lista contable con precios y totales | Si no hubo diferencias, la versión 1 de `DOC-03` es la definitiva. Si las hubo, el sistema incrementa `entrega.version` y reemite `DOC-02` y `DOC-03` con `cantidad_entregada`. | ADMINISTRATIVO (el sistema la reemite automáticamente) | `entrega.version`, `documento_emitido` | Lista contable definitiva |
 | 12 | Se actualiza la información de la venta | La entrega confirmada queda registrada como venta (`SIN_FACTURAR`). Según la periodicidad del cliente se agrupa en una `factura` (comprobante interno) y se exporta para el contador. | Sistema · ADMINISTRATIVO | `entrega` (estado de facturación), `factura`, `factura_entrega` | entrega `SIN_FACTURAR` → `FACTURADA` · factura `EMITIDA` · jornada `CERRADA` al terminar el día |
 
@@ -148,7 +147,7 @@ sequenceDiagram
     participant RE as Repartidor
     participant AD as Administrativo
     CL->>VE: Pedido por WhatsApp para mañana
-    VE->>SI: Carga rápida y confirma
+    VE->>SI: Carga el pedido y lo guarda
     SI-->>VE: PED-000246 CONFIRMADO con precio estimado
     CO->>SI: Cerrar pedidos y generar lista de compra
     SI-->>CO: Lista consolidada y plan por proveedor
@@ -161,7 +160,7 @@ sequenceDiagram
     SI-->>PR: DOC-02 sin precios
     SI-->>AD: DOC-03 valorizado de la misma entrega
     RE->>CL: Entrega con DOC-02
-    RE->>SI: Confirma receptor, firma y diferencias
+    RE->>SI: Confirma receptor y diferencias
     SI->>SI: Venta registrada, reemisión si hubo diferencias
     AD->>SI: Factura según periodicidad y exporta al contador
 ```
@@ -202,7 +201,7 @@ Las operaciones de fases anteriores siguen permitidas en fases posteriores cuand
 
 | Operación | ABIERTA | COMPRANDO | PREPARANDO | REPARTIENDO | CERRADA |
 |---|---|---|---|---|---|
-| Cargar y confirmar pedidos | Sí | Sí (pedido tardío, RN-029) | Con `pedidos.editar_en_curso` | Con `pedidos.editar_en_curso` | No |
+| Cargar pedidos | Sí | Sí (pedido tardío, RN-029) | Con `pedidos.editar_en_curso` | Con `pedidos.editar_en_curso` | No |
 | Modificar pedidos `CONFIRMADO` / `EN_COMPRA` / `EN_PREPARACION` | Sí | Con `pedidos.editar_en_curso` si está `EN_COMPRA` | Con `pedidos.editar_en_curso` si está `EN_COMPRA` o `EN_PREPARACION` | No | No |
 | Generar o regenerar la lista de compra | Sí (la primera vez) | Sí | Sí (para tardíos) | No | No |
 | Registrar compras | Sí (compra anticipada) | Sí | Sí | Sí | No |
@@ -218,13 +217,13 @@ Ejemplo con la jornada del jueves 24/09 (horarios configurables por empresa).
 | Momento | Qué pasa | Rol | Estado de la jornada 24/09 |
 |---|---|---|---|
 | Mié 23/09, 08:00–19:30 | Llegan pedidos por WhatsApp y teléfono; se cargan con la carga rápida o duplicando el pedido de la semana anterior. | VENDEDOR | `ABIERTA` |
-| Mié 23/09, 20:00 | Hora de corte de pedidos (`empresa.hora_corte_pedidos`). El sistema avisa si quedan `BORRADOR`. Se confirma lo pendiente y se genera la lista de compra. Se imprime `DOC-01`. | ADMIN / COMPRADOR | `COMPRANDO` |
+| Mié 23/09, 20:00 | Hora de corte de pedidos (`empresa.hora_corte_pedidos`). Desde el tablero se mandan los pedidos a la lista de compras (se puede imprimir, `DOC-01`). | ADMIN | `COMPRANDO` |
 | Mié 23/09, 21:30 | Pedido tardío: el restaurante agrega 10 kg de cebolla. La lista se marca "desactualizada" y se regenera mostrando la diferencia. | VENDEDOR / COMPRADOR | `COMPRANDO` |
 | Jue 24/09, 04:30–06:00 | Compra en el mercado. Por cada puesto se registra la compra en el celular; la lista va pasando a `PARCIAL`/`COMPRADO`; el semáforo de crédito se actualiza en el momento. | COMPRADOR | `COMPRANDO` |
 | Jue 24/09, 06:00 | "Terminar compras": conciliación comprado vs. necesario; lo que no se consiguió se marca `NO_CONSEGUIDO`. | COMPRADOR | `COMPRANDO` |
 | Jue 24/09, 06:00–07:30 | Preparación en el depósito: pesaje por cliente, faltantes, sustituciones. Al quedar `PREPARADA` cada entrega se emiten `DOC-02` y `DOC-03`. | PREPARADOR | `PREPARANDO` |
 | Jue 24/09, 07:00 | Se arman los repartos, se imprime la hoja de ruta `DOC-04` y sale el primer reparto. | ADMIN / REPARTIDOR | `REPARTIENDO` |
-| Jue 24/09, 07:15–11:00 | Entregas: confirmación en el celular con receptor, firma o foto y diferencias. Si hay diferencias se reemiten los documentos. | REPARTIDOR | `REPARTIENDO` |
+| Jue 24/09, 07:15–11:00 | Entregas: confirmación en el celular con receptor y diferencias. Si hay diferencias se reemiten los documentos. | REPARTIDOR | `REPARTIENDO` |
 | Jue 24/09, 14:00–16:00 | Revisión de diferencias, pagos a proveedores, facturación de clientes `POR_ENTREGA`, cierre de la jornada con su resumen. | ADMINISTRATIVO / ADMIN | `CERRADA` |
 
 ---
@@ -253,7 +252,7 @@ Ejemplo con la jornada del jueves 24/09 (horarios configurables por empresa).
 - Editar datos: cambios de recargo, prioridad y datos fiscales se registran en `auditoria` (RN-015).
 - Agregar, editar o desactivar puntos de entrega. Un punto con entregas en curso no se desactiva (RN-016).
 - Desactivar cliente (`activo = false`): no admite pedidos nuevos; los pedidos en curso siguen su circuito y el sistema lista los pedidos futuros para que se decida si se cancelan (RN-012). Nunca se borra.
-- Consulta: ficha del cliente con puntos de entrega, pedidos recientes, productos que compra habitualmente con cantidades promedio, reglas de precio vigentes y, en fase posterior, cuenta corriente (**PROPUESTO**, ver `06-creditos-y-pagos.md` §13).
+- Consulta: ficha del cliente con puntos de entrega, pedidos recientes, productos que compra habitualmente con cantidades promedio, reglas de precio vigentes.
 
 **Datos que se crean o modifican:** `cliente`, `punto_entrega`, `regla_precio`, `auditoria`.
 
@@ -264,7 +263,7 @@ Ejemplo con la jornada del jueves 24/09 (horarios configurables por empresa).
 | Excepción | Resolución |
 |---|---|
 | Ya existe un cliente con el mismo identificador fiscal | Bloquea (RN-011) y ofrece abrir el existente; si es otra sucursal, se agrega como `punto_entrega` del mismo cliente. |
-| Cliente sin punto de entrega | Se puede guardar como ficha, pero no se puede confirmar un pedido hasta cargar uno (RN-010). |
+| Cliente sin punto de entrega | Se puede guardar como ficha, pero no se le pueden cargar pedidos hasta cargar uno (RN-010). |
 | Desactivar un cliente con pedidos futuros | Advierte con la lista de pedidos `BORRADOR`/`CONFIRMADO`; el usuario decide cancelarlos (con motivo) o mantenerlos. |
 | Un mismo cliente con varias cocinas o locales | Un cliente, varios `punto_entrega`. Cada punto genera su propia entrega y sus propios documentos. |
 
@@ -277,13 +276,13 @@ Ejemplo con la jornada del jueves 24/09 (horarios configurables por empresa).
 | Objetivo | Registrar rápido y sin errores lo que cada cliente necesita, para qué fecha y dónde, de modo que alimente la compra y la entrega. |
 | Actores | VENDEDOR (principal), ADMIN. |
 | Disparador | Mensaje de WhatsApp, llamada, email o pedido en persona. |
-| Precondiciones | Cliente activo con punto de entrega activo; jornada de destino no `CERRADA` y con fecha ≥ hoy (RN-017, RN-031). Permisos `pedidos.crear` y `pedidos.confirmar`. |
+| Precondiciones | Cliente activo con punto de entrega activo; jornada de destino no `CERRADA` y con fecha ≥ hoy (RN-017, RN-031). Permiso `pedidos.crear` (guardar deja el pedido confirmado internamente, `pedidos.confirmar`). |
 
 **Qué registra un pedido**
 
 | Nivel | Datos |
 |---|---|
-| `pedido` | Número `PED-xxxxxx`, cliente, punto de entrega, jornada (fecha de entrega), canal (`TELEFONO`, `WHATSAPP`, `EMAIL`, `PRESENCIAL`; `PORTAL` es PROPUESTO), referencia del cliente (número de orden de compra, obligatoria si el cliente la requiere), franja especial de entrega (opcional), observaciones para preparación y entrega ("dejar en cámara de frío"), observaciones internas, estado, total estimado. "Pedido tardío" no se guarda: se deriva (confirmado después de `jornada.compra_iniciada_en`). |
+| `pedido` | Número `PED-xxxxxx`, cliente, punto de entrega, jornada (fecha de entrega), canal (`TELEFONO`, `WHATSAPP`, `EMAIL`, `PRESENCIAL`), referencia del cliente (número de orden de compra, obligatoria si el cliente la requiere), franja especial de entrega (opcional), observaciones para preparación y entrega ("dejar en cámara de frío"), observaciones internas, estado, total estimado. "Pedido tardío" no se guarda: se deriva (confirmado después de `jornada.compra_iniciada_en`). |
 | `pedido_item` | Producto, presentación elegida (opcional, debe ser `usable_en_venta`, RN-019), cantidad pedida, `cantidad_base` calculada (RN-008), observación de la línea ("si no hay redondo, perita"), precio estimado con su costo, recargo y origen de regla (visibles según `precios.ver_venta`, `precios.ver_costos` y `precios.ver_margenes`, RN-032), marca de línea cancelada. |
 
 **Estados del pedido**
@@ -291,7 +290,7 @@ Ejemplo con la jornada del jueves 24/09 (horarios configurables por empresa).
 ```mermaid
 stateDiagram-v2
     [*] --> BORRADOR : crear
-    BORRADOR --> CONFIRMADO : confirmar
+    BORRADOR --> CONFIRMADO : guardar (o completar solo)
     CONFIRMADO --> EN_COMPRA : incluido en la lista de compra
     EN_COMPRA --> EN_PREPARACION : su entrega empieza a prepararse
     EN_PREPARACION --> PREPARADO : su entrega queda PREPARADA
@@ -314,25 +313,23 @@ Meta de diseño: un pedido de 5 líneas en menos de un minuto desde el celular.
 2. Elegir cliente con búsqueda por nombre (primero los clientes con pedido reciente). Si tiene un solo punto de entrega se completa solo.
 3. Agregar líneas: buscar producto (por nombre o alias: "tomate", "tom"); primero aparecen los productos que ese cliente compra habitualmente. Elegir la unidad con botones (`kg` o las presentaciones de venta, ej. `Bolsa 25 kg`), escribir la cantidad y "Agregar". El sistema muestra al instante la cantidad en unidad base ("3 bolsas = 75 kg").
 4. Controles al agregar: producto repetido en el pedido → ofrece sumar (RN-021); cantidad atípica, más de 3 veces el promedio del cliente para ese producto → pide confirmar (RN-023, evita "500" en lugar de "50").
-5. "Confirmar" guarda el pedido directamente en `CONFIRMADO` (RN-018). "Guardar borrador" lo deja en `BORRADOR` si falta confirmar algo con el cliente.
+5. **✓ Guardar el pedido** guarda todo junto, directamente en `CONFIRMADO` (RN-018): nunca queda un pedido vacío. No hay borradores a mano; un pedido queda `BORRADOR` solo si algo impidió completarlo (por ejemplo, le falta la orden de compra), y se completa solo al mandarlo a la lista o al empezar a preparar si ya tiene productos.
 6. Si el cliente ya tiene otro pedido para esa jornada y punto de entrega, el sistema avisa (RN-022) y ofrece agregar las líneas al pedido existente. Si se mantienen separados, ambos van a la **misma entrega** y a los mismos documentos.
 
-Ejemplo: WhatsApp de Restaurante La Esquina a las 17:40 del 23/09: *"Para mañana: 2 cajones de tomate, 50 de papa, 20 lechugas y 15 kg de cebolla"*. El vendedor carga tomate `36 kg` (o 2 × `Cajón 18 kg` si esa presentación se vende), papa `50 kg`, lechuga `20 u`, cebolla `15 kg` y confirma: PED-000246 `CONFIRMADO`.
-
-**PROPUESTO (fase posterior):** pegar el texto del WhatsApp y que el sistema proponga las líneas; pedidos habituales programados (ej.: "todos los lunes lo mismo"); portal donde el cliente carga su propio pedido.
+Ejemplo: WhatsApp de Restaurante La Esquina a las 17:40 del 23/09: *"Para mañana: 2 cajones de tomate, 50 de papa, 20 lechugas y 15 kg de cebolla"*. El vendedor carga tomate `36 kg` (o 2 × `Cajón 18 kg` si esa presentación se vende), papa `50 kg`, lechuga `20 u`, cebolla `15 kg` y guarda: PED-000246.
 
 #### 5.b.2 Duplicar un pedido anterior
 
 1. Desde la ficha del cliente o desde un pedido: "Duplicar". Por defecto propone el último pedido del mismo día de la semana.
 2. Elegir la jornada de destino.
 3. El sistema crea un pedido `BORRADOR` con las mismas líneas y cantidades; omite productos desactivados y lo avisa (RN-033). Los precios **no** se copian: se recalculan para la nueva fecha.
-4. El vendedor ajusta cantidades y confirma.
+4. Se ajustan las cantidades y se guarda.
 
-#### 5.b.3 Confirmación y precio estimado
+#### 5.b.3 Validación y precio estimado
 
-- Al confirmar se valida el pedido completo, se asigna el número desde `secuencia` y se calcula para cada línea el **precio estimado** con `calcularPrecioVenta` (`05-precios-y-margenes.md` §5.8), usando el costo de referencia de la empresa porque todavía no hay compras.
+- Al guardar se valida el pedido completo, se asigna el número desde `secuencia` y se calcula para cada línea el **precio estimado** con `calcularPrecioVenta` (`05-precios-y-margenes.md` §5.8), usando el costo de referencia de la empresa porque todavía no hay compras.
 - El precio estimado y el total estimado solo se muestran a quien tiene `precios.ver_venta`; el costo requiere `precios.ver_costos` y el recargo, el origen detallado y el margen, `precios.ver_margenes`. Se rotula siempre "estimado": se recalcula con el costo real después de comprar y se congela recién al emitir los documentos de entrega.
-- Si una línea queda con alerta de margen (bajo o negativo) o sin precio, el pedido se confirma igual, pero la alerta queda visible para el ADMIN.
+- Si una línea queda con alerta de margen (bajo o negativo) o sin precio, el pedido se guarda igual, pero la alerta queda visible.
 
 #### 5.b.4 Modificación y cancelación según estado
 
@@ -368,7 +365,7 @@ Toda cancelación desde `CONFIRMADO` o `EN_COMPRA` y toda modificación en `EN_C
 | El cliente pide en una unidad que no existe como presentación de venta ("un cajón de lechuga") | Se carga en unidad base con la equivalencia que indique el cliente, o el ADMIN habilita la presentación (`usable_en_venta`). |
 | Dos vendedores editan el mismo pedido a la vez | Control optimista (RN-150): el segundo en guardar recibe "el pedido cambió, recargá" y no pisa los cambios. |
 | Pedido cargado en la jornada equivocada | Si está `BORRADOR` o `CONFIRMADO`, se cambia la jornada (equivale a sacarlo de una lista y agregarlo a otra). Si está `EN_COMPRA`, se cancela con motivo y se duplica en la jornada correcta. |
-| Pedido sin precio calculable (producto sin costo ni precio fijo) | Se confirma igual con alerta "sin precio"; debe resolverse antes de emitir `DOC-03` (RN-087). |
+| Pedido sin precio calculable (producto sin costo ni precio fijo) | Se guarda igual con alerta "sin precio"; debe resolverse antes de emitir `DOC-03` (RN-087). |
 
 ---
 
@@ -377,21 +374,21 @@ Toda cancelación desde `CONFIRMADO` o `EN_COMPRA` y toda modificación en `EN_C
 | Campo | Detalle |
 |---|---|
 | Objetivo | Convertir todos los pedidos de la jornada en **qué comprar, cuánto, en qué presentación, a quién y cuánto va a costar**, en una lista imprimible (`DOC-01`) y utilizable en el celular. |
-| Actores | COMPRADOR, ADMIN (`lista_compra.generar`). |
-| Disparador | "Cerrar pedidos y generar lista de compra" (primera vez) o "Regenerar" (cuando cambian los pedidos). |
+| Actores | ADMIN (`lista_compra.generar`). |
+| Disparador | **🛒 Mandar a la lista de compras** desde el tablero (con los pedidos elegidos o todos), "Armar la lista" en el paso a paso, o "Volver a calcular la lista con los pedidos de ahora" (cuando cambian los pedidos). |
 | Precondiciones | Jornada `ABIERTA`, `COMPRANDO` o `PREPARANDO`; al menos un pedido `CONFIRMADO` (RN-037). |
 
 **Pasos**
 
-1. El sistema advierte si hay pedidos `BORRADOR` en la jornada (RN-034) y permite confirmarlos o dejarlos fuera.
+1. Los pedidos que quedaron sin terminar pero tienen productos se completan solos; los que no se pueden completar (sin productos, sin orden de compra) quedan afuera con el motivo (RN-034).
 2. Consolida la necesidad por producto en unidad base (algoritmo 5.c.1).
-3. Descuenta lo ya comprado para la jornada y, en fase 2, el stock de sobrantes.
+3. Descuenta lo ya comprado para la jornada.
 4. Convierte lo pendiente a presentaciones de compra redondeando hacia arriba.
 5. Sugiere proveedor por línea según la estrategia de costo de la empresa y el crédito disponible.
 6. Calcula costo estimado por línea, por proveedor y total.
 7. Guarda la nueva versión de `lista_compra` con sus `lista_compra_item` y las diferencias contra la versión anterior.
 8. Pedidos `CONFIRMADO` incluidos → `EN_COMPRA`; si la jornada estaba `ABIERTA` → `COMPRANDO`.
-9. El usuario revisa el **plan de compra por proveedor**, reasigna proveedores si quiere e imprime `DOC-01`.
+9. La **Lista de compras** queda lista para el mercado: todo junto o por puesto, con el puesto que conviene para cada producto; se puede imprimir (`DOC-01`).
 
 #### 5.c.1 Algoritmo de consolidación (pseudocódigo)
 
@@ -553,22 +550,26 @@ Si la regeneración ocurre después de haber comprado (por ejemplo, ya se compra
 | Campo | Detalle |
 |---|---|
 | Objetivo | Registrar en el momento, desde el celular, cada compra hecha en el mercado (a quién, qué, cuánto, a qué precio y cómo se paga) para conocer el costo real, lo que se debe a cada proveedor y lo que falta comprar. |
-| Actores | COMPRADOR (principal), ADMIN. ADMINISTRATIVO puede registrar compras hechas por teléfono o corregirlas. |
+| Actores | ADMIN (quien va al mercado). |
 | Disparador | El comprador cierra el trato en un puesto. |
-| Precondiciones | Proveedor activo; jornada no `CERRADA` (RN-054). Permiso `compras.registrar`. MVP con conexión; en fase 2 las compras se encolan sin conexión. |
+| Precondiciones | Proveedor activo; jornada no `CERRADA` (RN-054). Permiso `compras.registrar`. Requiere conexión. |
 
 **Qué registra una compra**
 
 | Nivel | Datos |
 |---|---|
-| `compra` | Número `COM-xxxxxx`, proveedor, jornada, fecha y hora (`fecha_compra`), condición de pago (`CONTADO`, `CREDITO`, `MIXTA`; se propone la `condicion_pago_habitual` del proveedor), monto pagado en el acto y su medio, total, fecha de vencimiento (fecha + `plazo_pago_dias`), número de boleta del puestero y foto (opcionales), marca de exceso de límite autorizado, observaciones, estado (`REGISTRADA`/`ANULADA`). |
+| `compra` | Número `COM-xxxxxx`, proveedor, jornada, fecha y hora (`fecha_compra`), condición de pago (`CONTADO`, `CREDITO`, `MIXTA`; se propone la `condicion_pago_habitual` del proveedor), monto pagado en el acto y su medio, total, fecha de vencimiento (fecha + `plazo_pago_dias`), número de boleta del puestero (opcional), marca de exceso de límite autorizado, observaciones, estado (`REGISTRADA`/`ANULADA`). |
 | `compra_item` | Producto, presentación (`usable_en_compra`, RN-055), cantidad de presentaciones, `precio_unitario` por presentación, `cantidad_base` = cantidad × factor, `costo_base` = precio / factor, subtotal = cantidad × precio (RN-057), línea de la lista de compra a la que corresponde (nula si es compra sin pedido), marca `actualizo_precio_lista`. |
 
 **Estados:** `REGISTRADA` → `ANULADA` (sin otros estados). El **estado de pago** (`PAGADA`, `PARCIAL`, `PENDIENTE`) se calcula a partir de los pagos imputados (`06-creditos-y-pagos.md` §8).
 
 #### 5.d.1 Registro rápido en el mercado
 
-1. "Nueva compra" → elegir proveedor (búsqueda o recientes). El sistema muestra de inmediato el **semáforo de crédito**, el saldo, el disponible y las líneas del plan asignadas a ese proveedor.
+**Desde la lista de compras (lo habitual):** en cada producto, **✓ Lo compré** → el puesto (los que lo venden, u "Otro puesto…"), cuántos envases y a cuánto cada uno, y **📒 Queda a cuenta** o **💵 Le pagué en efectivo** → **Anotar la compra**. Es una compra de un producto (`CREDITO` o `CONTADO`) con todos los efectos de abajo (pasos 3, 5 y 6); la línea pasa a "Ya resuelto" y, cuando está todo lo de un pedido, su tarjeta pasa a **Comprado** en el tablero.
+
+**Compra suelta con varios productos de un puesto:**
+
+1. "Anotar otra compra" → elegir proveedor (búsqueda o recientes). El sistema muestra de inmediato el **semáforo de crédito**, el saldo, el disponible y las líneas del plan asignadas a ese proveedor.
 2. Las líneas del plan aparecen precargadas (producto, presentación, cantidad sugerida, último precio). El comprador corrige cantidad y precio si cambiaron, o agrega otros productos del proveedor.
 3. Si el precio cargado difiere del vigente, el sistema lo muestra ("vigente $17.100 → cargado $17.550, +2,63 %"). Si la variación supera el umbral de variación brusca (30 % por defecto), pide confirmación explícita para evitar errores de tipeo (RN-058).
 4. Condición de pago: `CONTADO` (por defecto el medio es efectivo), `CREDITO`, o `MIXTA` indicando cuánto se paga ahora (0 < pagado < total, RN-062). Si el proveedor tiene saldo a favor, el sistema ofrece usarlo.
@@ -619,7 +620,7 @@ La diferencia con el costo estimado de la lista ($646.300) es $6.750: tomate +$6
 
 #### 5.d.3 Compras sin pedido
 
-Compra de un producto que no está en la lista (oportunidad de precio, reposición de un cliente que suele pedir tarde, fase 2: stock). Se registra igual; el sistema la marca "sin pedido" (RN-060) y la agrega a la lista con necesidad 0: todo lo comprado aparece como sobrante previsto. En la preparación está disponible para pedidos tardíos.
+Compra de un producto que no está en la lista (oportunidad de precio, reposición de un cliente que suele pedir tarde). Se registra igual; el sistema la marca "sin pedido" (RN-060) y la agrega a la lista con necesidad 0: todo lo comprado aparece como sobrante previsto. En la preparación está disponible para pedidos tardíos.
 
 #### 5.d.4 Actualización automática del precio del proveedor
 
@@ -657,7 +658,7 @@ Las líneas con excedente mayor a un bulto de la presentación comprada se desta
 | Compra al proveedor equivocado | Anular y registrar con el proveedor correcto; ambas cuentas corrientes quedan bien por los movimientos compensatorios. |
 | Se compró en otra presentación que la sugerida (cajón 18 kg en vez de bolsa 20 kg) | Sin problema: la conciliación es en unidad base. |
 | Compra que supera el límite de crédito | Bloqueo; confirmación solo con `compras.exceder_limite` y motivo; alternativa: pasar a `MIXTA` o `CONTADO`. |
-| Sin conexión en el mercado | MVP: anotar en `DOC-01` y cargar al volver. Fase 2: la compra se guarda en el celular y se sincroniza; el control de límite se hace al sincronizar y, si se excedió, la compra queda registrada con marca "excedió límite sin autorización" para revisión del ADMIN. |
+| Sin conexión en el mercado | Anotar en la lista impresa (`DOC-01`) y cargar al volver. |
 | Bonificación del proveedor (regala un cajón) | Ítem con precio $0 (advierte, RN-056): suma cantidad y baja el costo promedio. |
 
 ---
@@ -691,14 +692,14 @@ stateDiagram-v2
 
 **Pasos**
 
-1. Al iniciar la preparación el sistema crea una `entrega` `BORRADOR` por cada combinación cliente + punto de entrega con pedidos `EN_COMPRA` en la jornada (RN-111). Cada `entrega_item` referencia su `pedido_item` y copia `cantidad_pedida` (en unidad base). Dos pedidos del mismo cliente y punto van a la misma entrega.
-2. Para cada producto el sistema calcula **disponible** = comprado en la jornada (+ stock de sobrantes en fase 2) y lo compara con la necesidad (si en la jornada no se registró ninguna compra, se propone lo pedido: no hay con qué comparar). Si alcanza, propone `cantidad_preparada` = `cantidad_pedida`; si no, aplica el algoritmo de faltantes (5.e.1).
-3. El preparador trabaja en una de dos vistas (sin precios):
-   - **Por cliente**: arma el pedido completo del hospital, luego el del restaurante, etc. Imprime `DOC-07` Hoja de preparación por cliente.
+1. Al tocar **Empezar a preparar** el sistema completa los pedidos sin terminar que tienen productos y crea una `entrega` `BORRADOR` por cada combinación cliente + punto de entrega con pedidos `CONFIRMADO` o `EN_COMPRA` en la jornada (RN-111); en el tablero esos pedidos pasan a **Preparando**. Cada `entrega_item` referencia su `pedido_item` y copia `cantidad_pedida` (en unidad base). Dos pedidos del mismo cliente y punto van a la misma entrega.
+2. Para cada producto el sistema calcula **disponible** = comprado en la jornada y lo compara con la necesidad (si en la jornada no se registró ninguna compra, se propone lo pedido: no hay con qué comparar). Si alcanza, propone `cantidad_preparada` = `cantidad_pedida`; si no, aplica el algoritmo de faltantes (5.e.1).
+3. Se trabaja en una de dos vistas (sin precios):
+   - **Por cliente**: cada cliente es una tarjeta con todo lo que hay que separarle (✓ separado, ⬜ por separar) y lo que no alcanzó. Se abre el pedido del hospital, luego el del restaurante, etc. Se puede imprimir `DOC-07` Hoja de preparación por cliente.
    - **Por producto**: pesa todo el tomate y lo reparte entre los clientes (más rápido con productos a granel).
-4. Registra la **cantidad real** de cada línea (peso de la balanza o unidades contadas, RN-112). Si la diferencia con lo pedido está dentro de la tolerancia (3 % por defecto) no se considera diferencia (RN-113); si está fuera, pide confirmación y la línea queda marcada.
+4. En cada producto: **✓ Está todo** (un toque, con lo propuesto) o **Falta algo o pesa distinto**: la **cantidad real** (peso de la balanza o unidades contadas, RN-112) y, si falta, **por qué** (no se consiguió, no alcanzó lo comprado, estaba en mal estado, error al preparar, el cliente lo sacó, otro). Lo que falta queda a la vista en la tarjeta del cliente y en el tablero ("Va 30 kg de 36 kg · no se consiguió") para avisarle. Si la diferencia con lo pedido está dentro de la tolerancia (3 % por defecto) no se considera diferencia (RN-113); si está fuera, pide confirmación y la línea queda marcada.
 5. Registra sustituciones si corresponde (5.e.2).
-6. Cuando todas las líneas tienen cantidad preparada (0 con motivo si no hay), marca la entrega `PREPARADA` (RN-118). Los pedidos pasan a `PREPARADO`. Si la empresa lo tiene configurado, en ese momento se **emiten los documentos** de la entrega (5.f.2); si no, los emite el ADMIN al armar el reparto.
+6. Cuando todas las líneas tienen cantidad preparada (0 con motivo si no hay), marca la entrega `PREPARADA` (RN-118). Los pedidos pasan a `PREPARADO`. En ese momento se **emiten los documentos** de la entrega (5.f.2); si falta un precio, quedan pendientes hasta completarlo.
 7. Al terminar todas las entregas, el sistema muestra los **sobrantes** por producto: comprado − Σ preparado.
 
 **Ejemplo de peso real:** el restaurante pidió 36 kg de tomate; si la balanza marca 36,4 kg, la diferencia es 1,1 % (< 3 %), se registra 36,4 kg y la lista contable cobra 36,4 kg.
@@ -753,7 +754,6 @@ función distribuirFaltante(producto, disponible, lineas):
 
 - Sobrante de la jornada por producto = comprado − Σ `cantidad_preparada` (+ devoluciones del reparto, 5.f.4).
 - MVP: el sobrante se informa en la preparación y en el resumen del cierre (cantidad y costo al costo real de la jornada). El costo de lo sobrante queda como costo del día.
-- **PROPUESTO (fase 2):** registrar el sobrante como stock (`ajuste_stock`) para descontarlo de la lista de compra del día siguiente, y registrar mermas (mercadería que se descarta) con motivo.
 
 **Datos que se crean o modifican:** `entrega`, `entrega_item` (`cantidad_preparada`, sustituciones, motivos), `pedido` (estado), `jornada` (estado).
 
@@ -776,7 +776,7 @@ función distribuirFaltante(producto, disponible, lineas):
 | Campo | Detalle |
 |---|---|
 | Objetivo | Llevar a cada cliente su mercadería con dos documentos de la misma entrega (uno sin precios para quien recibe y uno valorizado para su contabilidad), confirmar qué se entregó realmente y dejar la venta lista para facturar. |
-| Actores | ADMIN (arma repartos), PREPARADOR (emite documentos al terminar), REPARTIDOR (entrega y confirma; nunca ve precios), ADMINISTRATIVO (revisa diferencias y documentos contables). |
+| Actores | ADMIN (arma el viaje y los repartos, prepara y confirma); si algún día hay un REPARTIDOR, entrega y confirma sin ver precios. |
 | Disparador | Entregas `PREPARADA`. |
 | Precondiciones | Jornada `PREPARANDO` o `REPARTIENDO`; según el paso: `repartos.gestionar` (armar repartos), `entregas.gestionar` (armar entregas y pasarlas a `EN_REPARTO`), `entregas.emitir_documentos` (emitir y reemitir `DOC-02` y `DOC-03`), `documentos.imprimir_entrega` (`DOC-02`, `DOC-04`, `DOC-07`), `documentos.imprimir_contable` (`DOC-03`), `entregas.confirmar`, `entregas.corregir`, `entregas.anular`. |
 
@@ -852,7 +852,7 @@ sequenceDiagram
     R->>S: Abre la parada 2 Verdulería Don Pepe
     S-->>R: Productos y cantidades, sin precios
     R->>S: Con diferencias, tomate entregado 50 de 54 kg, motivo RECHAZO_CALIDAD
-    R->>S: Recibió Pepe, foto del remito firmado
+    R->>S: Recibió Pepe
     S->>S: Entrega ENTREGADA con_diferencias, pedido ENTREGADO
     S->>S: version 2, reemite DOC-02 y DOC-03 con cantidad entregada
     S-->>A: Aviso entrega con diferencias, DOC-03 v2 total 222.770
@@ -862,7 +862,7 @@ sequenceDiagram
 1. El repartidor abre su reparto (solo ve los suyos, RN-131) y la parada.
 2. "Entregado completo" (un toque: `cantidad_entregada` = `cantidad_preparada` en todas las líneas) o "Con diferencias".
 3. Con diferencias: por línea, cantidad entregada (≤ preparada, RN-126), motivo (`motivo_diferencia`: `RECHAZO_CALIDAD`, `FALTANTE`, `NO_CONSEGUIDO`, `ERROR_PREPARACION`, `CAMBIO_CLIENTE`, `OTRO`) y detalle en texto ("4 kg golpeados", "cliente cerrado").
-4. Datos de recepción: nombre y cargo de quien recibe (`recibido_por`, obligatorio), hora (`recibido_en`, la registra el servidor), firma en pantalla (`firma_path`) o foto del remito firmado (`foto_remito_path`), opcionales u obligatorias si el cliente lo requiere (RN-125), y observaciones de la recepción. Firma y foto se guardan en Storage.
+4. Datos de recepción: nombre y cargo de quien recibe (`recibido_por`, obligatorio), hora (`recibido_en`, la registra el servidor), y observaciones de la recepción.
 5. "Confirmar": entrega `ENTREGADA`; pedidos `ENTREGADO`; `con_diferencias` según RN-127; la venta queda registrada (5.g).
 6. Si hubo diferencias, el sistema incrementa la versión y reemite `DOC-02` y `DOC-03` con `cantidad_entregada` (RN-128, RN-129) y avisa al ADMINISTRATIVO.
 
@@ -881,7 +881,7 @@ sequenceDiagram
 - Cada emisión deja dos filas en `documento_emitido` (tipo `DOC-02`/`DOC-03`, versión, fecha, usuario, PDF). Las versiones anteriores quedan visibles como "reemplazadas", nunca se borran.
 - El documento vigente para facturar es siempre el `DOC-03` de la última versión.
 
-**Datos que se crean o modifican:** `reparto`, `entrega` (estado, versión, receptor, firma/foto, `con_diferencias`), `entrega_item` (precios congelados, `cantidad_entregada`, motivos), `documento_emitido`, `pedido` (estado), `jornada` (estado).
+**Datos que se crean o modifican:** `reparto`, `entrega` (estado, versión, receptor, `con_diferencias`), `entrega_item` (precios congelados, `cantidad_entregada`, motivos), `documento_emitido`, `pedido` (estado), `jornada` (estado).
 
 **Resultados:** mercadería entregada con constancia; `DOC-02` y `DOC-03` coherentes y versionados; venta registrada.
 
@@ -891,7 +891,7 @@ sequenceDiagram
 |---|---|
 | Intento de salir con una entrega sin documentos | Bloqueado (RN-122): emitir primero. |
 | Línea sin precio al emitir | Bloqueado (RN-087): cargar precio de compra, regla de precio u override con permiso. |
-| El repartidor pierde señal | MVP: confirma al recuperar señal (la hora registrada es la de confirmación; puede ajustarse con motivo). Fase 2: confirmación offline encolada con la hora del dispositivo. |
+| El repartidor pierde señal | MVP: confirma al recuperar señal (la hora registrada es la de confirmación; puede ajustarse con motivo). |
 | Entrega cargada al cliente equivocado | Anular la entrega con motivo (si no está `FACTURADA`, RN-132); sus líneas se reasignan a la entrega correcta, que se emite de nuevo. |
 
 ---
@@ -905,7 +905,7 @@ sequenceDiagram
 | Disparador | Entrega `ENTREGADA`; fin del período de facturación del cliente; pedido del contador. |
 | Precondiciones | Permisos `facturacion.emitir`, `facturacion.anular`, `facturacion.exportar`. |
 
-**Alcance MVP** (contrato, punto K): registro de la venta por entrega + comprobante interno no fiscal + exportación para el contador. Facturación fiscal electrónica y cobranzas son **PROPUESTO**.
+**Alcance MVP** (contrato, punto K): registro de la venta por entrega + comprobante interno no fiscal + exportación para el contador. No hay facturación fiscal ni cobranzas de clientes.
 
 #### 5.g.1 Registro de la venta (MVP)
 
@@ -924,7 +924,7 @@ stateDiagram-v2
 |---|---|---|
 | `POR_ENTREGA` | Automático al confirmar la entrega (configurable, RN-143): una `factura` por entrega. | Verdulería Don Pepe: FAC-000512 del 24/09 por $222.770 (versión 2 de la entrega). |
 | `SEMANAL` | El ADMINISTRATIVO ejecuta "Facturar período": el sistema propone una factura por cliente con todas sus entregas `SIN_FACTURAR` de la semana (RN-141). | Restaurante La Esquina: el lunes 28/09 se agrupan sus 5 entregas del 21/09 al 26/09. |
-| `QUINCENAL` / `MENSUAL` | Igual que semanal, con el período correspondiente. | Hospital San Martín: el 30/09 una factura con sus 22 entregas de septiembre; se adjuntan los `DOC-03` firmados como respaldo. |
+| `QUINCENAL` / `MENSUAL` | Igual que semanal, con el período correspondiente. | Hospital San Martín: el 30/09 una factura con sus 22 entregas de septiembre. |
 
 Pasos de "Facturar período":
 
@@ -936,7 +936,6 @@ Pasos de "Facturar período":
 
 Una entrega `FACTURADA` ya no se puede modificar ni reemitir (RN-138). Para corregirla: anular la factura con motivo (`facturacion.anular`, RN-139), corregir la entrega (nueva versión) y volver a facturar. En la fase fiscal, la corrección se hará con nota de crédito.
 
-El estado de cobro de la factura (`COBRADA`, `PARCIAL`, `PENDIENTE`) se calcula cuando existan cobros (fase de cobranzas, **PROPUESTO**); en el MVP no se muestra.
 
 #### 5.g.3 Exportación para el contador (MVP)
 
@@ -951,30 +950,7 @@ El estado de cobro de la factura (`COBRADA`, `PARCIAL`, `PENDIENTE`) se calcula 
 | Pagos a proveedores | pago | fecha, número, proveedor, medio, referencia, monto, estado |
 | Saldos de proveedores | proveedor | saldo al cierre del período, deuda vencida |
 
-#### 5.g.4 Facturación fiscal electrónica — PROPUESTO (fase posterior)
-
-```mermaid
-sequenceDiagram
-    participant AD as Administrativo
-    participant S as Sistema
-    participant FE as Servicio de facturación electrónica
-    AD->>S: Emitir fiscal la factura interna FAC-000512
-    S->>S: Arma comprobante según condición fiscal del cliente
-    S->>FE: Solicitud de autorización
-    FE-->>S: Autorización, CAE en Argentina o CFE en Uruguay, con número fiscal
-    S->>S: Guarda número fiscal, código de autorización, vencimiento y QR
-    S-->>AD: PDF fiscal para enviar al cliente
-    Note over S,FE: Una anulación posterior se hace con nota de crédito electrónica
-```
-
-- Argentina: ARCA/AFIP, factura electrónica (A/B/C según condición frente al IVA), CAE. Uruguay: DGI, CFE (e-Factura / e-Ticket) a través de un proveedor habilitado.
-- La factura interna del MVP se convierte en la base del comprobante fiscal: por eso el MVP ya agrupa entregas y congela precios e IVA.
-
-#### 5.g.5 Cobranzas de clientes — PROPUESTO (fase posterior)
-
-Factura `EMITIDA` → cargo en la cuenta corriente del cliente (`movimiento_cuenta_cliente`) → registro del cobro (`cobro_cliente`: fecha, medio, referencia, monto) → imputación FIFO o manual a facturas (`imputacion_cobro_cliente`) → estado de cobro `PENDIENTE`/`PARCIAL`/`COBRADA` → reporte de antigüedad de deuda. Detalle en `06-creditos-y-pagos.md` §13.
-
-**Datos que se crean o modifican:** `entrega` (estado de facturación), `factura`, `factura_entrega`, `secuencia`, `auditoria`; en fases posteriores `cobro_cliente`, `imputacion_cobro_cliente`, `movimiento_cuenta_cliente`.
+**Datos que se crean o modifican:** `entrega` (estado de facturación), `factura`, `factura_entrega`, `secuencia`, `auditoria`.
 
 **Resultados:** ventas registradas y agrupadas en comprobantes internos; exportación lista para el contador.
 
@@ -982,8 +958,8 @@ Factura `EMITIDA` → cargo en la cuenta corriente del cliente (`movimiento_cuen
 
 | Excepción | Resolución |
 |---|---|
-| Corregir una entrega ya facturada | Anular la factura (RN-139), corregir y volver a facturar; en fase fiscal, nota de crédito. |
-| Cliente sin identificador fiscal al facturar | Advierte; el comprobante interno se emite igual; la fase fiscal lo exigirá. |
+| Corregir una entrega ya facturada | Anular el comprobante (RN-139), corregir y volver a facturar. |
+| Cliente sin identificador fiscal al facturar | El comprobante interno se emite igual. |
 | Entrega con total $0 (rechazo total) | No se incluye en facturas; queda registrada con su motivo. |
 | El contador pide el detalle de un mes ya exportado | Se vuelve a exportar: el resultado es idéntico porque los precios están congelados y los documentos no se editan. |
 
@@ -1013,7 +989,7 @@ Factura `EMITIDA` → cargo en la cuenta corriente del cliente (`movimiento_cuen
 
 1. El sistema ejecuta las validaciones y muestra el resultado.
 2. Resueltos los bloqueos, muestra el resumen del día.
-3. Sobrantes y mermas: el usuario confirma el sobrante por producto. MVP: se registra en el resumen (cantidad y costo). **PROPUESTO fase 2:** cada sobrante genera un `ajuste_stock` (stock disponible para la próxima lista de compra) y cada merma un `ajuste_stock` negativo con motivo.
+3. Sobrantes y mermas: el usuario confirma el sobrante por producto. Se registra en el resumen (cantidad y costo).
 4. "Cerrar": jornada `CERRADA` (registra `cerrada_en` y `cerrada_por`), todo en solo lectura (RN-041). El resumen queda fijo porque se calcula con datos que ya no cambian (precios congelados, documentos emitidos, compras y pagos inmutables).
 
 **Resumen del día — ejemplo jornada 24/09**
@@ -1032,7 +1008,7 @@ Factura `EMITIDA` → cargo en la cuenta corriente del cliente (`movimiento_cuen
 | Alertas | 2 | Banana al hospital: margen 13,79 % (< 15 %) porque se compró a E a $1.250/kg por falta de crédito con D · Proveedor B en 69,6 % de uso, a punto de pasar a AMARILLO |
 | Pedidos | 3 entregados · 0 cancelados | 1 entrega con diferencias (Verdulería, versión 2) |
 
-**Datos que se crean o modifican:** `jornada` (estado, `cerrada_en`, `cerrada_por`), `lista_compra_item` (justificaciones), `auditoria` (reapertura); fase 2: `ajuste_stock` (`SOBRANTE`, `MERMA`).
+**Datos que se crean o modifican:** `jornada` (estado, `cerrada_en`, `cerrada_por`), `lista_compra_item` (justificaciones), `auditoria` (reapertura).
 
 **Resultados:** jornada cerrada y auditada; resumen disponible para el dueño.
 
@@ -1057,7 +1033,7 @@ Factura `EMITIDA` → cargo en la cuenta corriente del cliente (`movimiento_cuen
 | 5.d Compras | RN-054 a RN-066, RN-067 a RN-075 | DOC-06 | `05-precios-y-margenes.md` §2, `06-creditos-y-pagos.md` |
 | 5.e Preparación | RN-111 a RN-119 | DOC-07 | — |
 | 5.f Entregas | RN-120 a RN-134 | DOC-02, DOC-03, DOC-04 | `05-precios-y-margenes.md` §7 (congelamiento) |
-| 5.g Facturación | RN-135 a RN-143 | DOC-08 Comprobante interno | `06-creditos-y-pagos.md` §13 (PROPUESTO) |
+| 5.g Facturación | RN-135 a RN-143 | DOC-08 Comprobante interno | — |
 | 5.h Cierre | RN-040, RN-041 | — | — |
 | Pagos a proveedores | RN-092 a RN-110 | DOC-05 | `06-creditos-y-pagos.md` |
 

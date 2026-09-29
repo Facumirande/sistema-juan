@@ -44,34 +44,21 @@ const primerEnlace = (problemas: readonly Problema[]) => {
   return enlace ? { enlace } : {};
 };
 
-/** "Armar la lista de compra" con los pedidos elegidos (los borradores se confirman antes). */
+/** "Mandar a la lista de compras" los pedidos elegidos (los que quedaron sin terminar se completan antes). */
 export async function armarListaConElegidosAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const pedidos = await estadosDePedidos(db, authUserId, elegidos(datos));
     if (pedidos.length === 0) return { ok: false, mensaje: "Elegí al menos un pedido." };
     const fechas = new Set(pedidos.map((p) => p.fecha));
-    if (fechas.size > 1) return { ok: false, mensaje: "Elegí pedidos de un mismo día: la lista de compra es por día." };
+    if (fechas.size > 1) return { ok: false, mensaje: "Elegí pedidos de un mismo día: la lista de compras es por día." };
     const { confirmados, problemas } = await confirmarBorradores(db, authUserId, pedidos.filter((p) => p.estado === "BORRADOR"));
     const paraLista = [...pedidos.filter((p) => p.estado === "CONFIRMADO").map((p) => p.id), ...confirmados];
-    if (paraLista.length === 0) return { ok: false, mensaje: textos(problemas) || "Esos pedidos ya están en la lista de compra.", ...primerEnlace(problemas) };
+    if (paraLista.length === 0) return { ok: false, mensaje: textos(problemas) || "Esos pedidos ya están en la lista de compras.", ...primerEnlace(problemas) };
     const r = await generarListaCompra(db, authUserId, [...fechas][0]!, { pedidoIds: paraLista });
-    const partes = [`Listo: ${cuantos(r.agregados, "pedido entró", "pedidos entraron")} en la lista de compra ${r.numero}.`];
-    if (r.fueraDeLista > 0) partes.push(`Quedan ${cuantos(r.fueraDeLista, "confirmado afuera", "confirmados afuera")}.`);
-    if (problemas.length) partes.push(`Quedaron afuera porque no se pudieron confirmar: ${textos(problemas)}`);
+    const partes = [`Listo: ${cuantos(r.agregados, "pedido entró", "pedidos entraron")} en la lista de compras.`];
+    if (r.fueraDeLista > 0) partes.push(`Quedan ${cuantos(r.fueraDeLista, "pedido afuera", "pedidos afuera")}.`);
+    if (problemas.length) partes.push(`Quedaron afuera: ${textos(problemas)}`);
     return { ok: problemas.length === 0, mensaje: partes.join(" "), ...primerEnlace(problemas) };
-  });
-}
-
-export async function confirmarElegidosAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    const pedidos = await estadosDePedidos(db, authUserId, elegidos(datos));
-    const { confirmados, problemas } = await confirmarBorradores(db, authUserId, pedidos.filter((p) => p.estado === "BORRADOR"));
-    if (confirmados.length === 0 && problemas.length === 0) return { ok: false, mensaje: "Elegí pedidos de la columna “Por confirmar”." };
-    return {
-      ok: problemas.length === 0,
-      mensaje: [confirmados.length ? `${cuantos(confirmados.length, "pedido confirmado", "pedidos confirmados")}.` : "", textos(problemas)].filter(Boolean).join(" "),
-      ...primerEnlace(problemas),
-    };
   });
 }
 
@@ -93,7 +80,7 @@ export async function sacarDeListaAccion(_estado: EstadoAccion, datos: FormData)
   return ejecutarAccion(async ({ db, authUserId }) => {
     const ids = elegidos(datos);
     for (const id of ids) await sacarPedidoDeLista(db, authUserId, id);
-    return { ok: true, mensaje: `${cuantos(ids.length, "pedido salió", "pedidos salieron")} de la lista de compra (lo ya comprado se conserva).` };
+    return { ok: true, mensaje: `${cuantos(ids.length, "pedido volvió", "pedidos volvieron")} a Pedidos (lo ya comprado se conserva).` };
   });
 }
 
@@ -109,19 +96,15 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
   return ejecutarAccion(async ({ db, authUserId }) => {
     const id = campo(datos, "pedido");
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
-    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: esa etapa avanza sola (preparación, reparto y entrega)." };
+    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: comprado, preparación, reparto y entrega avanzan solos cuando se hacen esos pasos." };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
     if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
-    if (accion === "CONFIRMAR") {
-      await confirmarPedido(db, authUserId, id);
-      return { ok: true, mensaje: "Pedido confirmado." };
-    }
     if (accion === "SACAR_DE_LISTA") {
       await sacarPedidoDeLista(db, authUserId, id);
-      return { ok: true, mensaje: "El pedido salió de la lista de compra." };
+      return { ok: true, mensaje: "El pedido volvió a Pedidos: salió de la lista de compras." };
     }
     if (p.estado === "BORRADOR") await confirmarPedido(db, authUserId, id);
-    const r = await generarListaCompra(db, authUserId, p.fecha, { pedidoIds: [id] });
-    return { ok: true, mensaje: `El pedido entró en la lista de compra ${r.numero}.` };
+    await generarListaCompra(db, authUserId, p.fecha, { pedidoIds: [id] });
+    return { ok: true, mensaje: "El pedido entró en la lista de compras." };
   });
 }

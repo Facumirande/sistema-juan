@@ -655,7 +655,7 @@ export async function cambiarDatosPedido(db: BaseDatos, authUserId: string, dato
     let jornadaId = p.pedido.jornadaId;
     if (d.fecha && d.fecha !== p.fecha) {
       if (p.pedido.estado === "EN_COMPRA") {
-        throw new ErrorDeNegocio("VALIDACION", "El pedido ya está en la lista de compra: cancelalo y duplicalo para la otra fecha.");
+        throw new ErrorDeNegocio("VALIDACION", "El pedido ya está en la lista de compras: para pasarlo a otro día, primero sacalo de la lista desde el tablero.");
       }
       jornadaId = (await jornadaParaPedidos(tx, c, d.fecha)).id;
     }
@@ -691,18 +691,18 @@ async function confirmarEnTransaccion(tx: Transaccion, c: ContextoUsuario, pedid
     .from(pedidoItem)
     .where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false)));
   if (Number(lineas?.n ?? 0) === 0) {
-    throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no tiene productos: agregale al menos uno y después confirmalo (RN-018).", {
+    throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no tiene productos: agregale al menos uno (RN-018).", {
       enlace: { href: `/pedidos/${pedidoId}/cambiar`, texto: "Agregar productos" },
     });
   }
   const [cli] = await tx.select({ nombre: cliente.nombre, requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId));
   if (!cli?.activo) {
-    throw new ErrorDeNegocio("VALIDACION", "Este cliente está dado de baja: reactivalo en su ficha para poder confirmar el pedido (RN-012).", {
+    throw new ErrorDeNegocio("VALIDACION", "Este cliente está dado de baja: reactivalo en su ficha para poder seguir con el pedido (RN-012).", {
       enlace: { href: `/clientes/${p.pedido.clienteId}`, texto: "Abrir la ficha del cliente" },
     });
   }
   if (cli.requiereOC && !p.pedido.referenciaCliente) {
-    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} trabaja con orden de compra: cargá el número de la orden en el pedido y después confirmalo (RN-017).`, {
+    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} trabaja con orden de compra: cargá el número de la orden en el pedido antes de mandarlo a la lista de compras (RN-017).`, {
       enlace: { href: `/pedidos/${pedidoId}`, texto: "Cargar el número de orden" },
     });
   }
@@ -712,7 +712,7 @@ async function confirmarEnTransaccion(tx: Transaccion, c: ContextoUsuario, pedid
       enlace: { href: `/pedidos/${pedidoId}`, texto: "Elegir otro lugar" },
     });
   }
-  if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para confirmar pedidos, primero reabrilo desde “Cierre del día”.");
+  if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para seguir con sus pedidos, primero reabrilo desde “Cierre del día”.");
   if (p.estadoJornada === "PREPARANDO" || p.estadoJornada === "REPARTIENDO") c.permisos.exigir("pedidos.editar_en_curso");
 
   await tx
@@ -1150,7 +1150,7 @@ export async function cambiarProductosDePedido(db: BaseDatos, authUserId: string
     let jornadaId = p.pedido.jornadaId;
     if (d.fecha && d.fecha !== p.fecha) {
       if (estado === "EN_COMPRA") {
-        throw new ErrorDeNegocio("VALIDACION", "Este pedido ya está en la lista de compra de su día: para pasarlo a otro día, primero sacalo de la lista desde el tablero.");
+        throw new ErrorDeNegocio("VALIDACION", "Este pedido ya está en la lista de compras de su día: para pasarlo a otro día, primero sacalo de la lista desde el tablero.");
       }
       jornadaId = (await jornadaParaPedidos(tx, c, d.fecha)).id;
     }

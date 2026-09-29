@@ -4,6 +4,7 @@ import {
   COLUMNAS,
   accionAlMover,
   columnaDePedido,
+  columnaDeTarjeta,
   estadoDelPlazo,
   ordenarTarjetas,
   prioridadMasAlta,
@@ -15,15 +16,23 @@ import {
 
 describe("tablero de pedidos", () => {
   it("cada estado va en su columna; los cancelados en ninguna", () => {
-    expect(COLUMNAS.map((c) => c.clave)).toEqual(["por_confirmar", "confirmados", "en_lista", "preparando", "en_camino", "entregados"]);
-    expect(columnaDePedido("BORRADOR")).toBe("por_confirmar");
-    expect(columnaDePedido("CONFIRMADO")).toBe("confirmados");
+    expect(COLUMNAS.map((c) => c.clave)).toEqual(["pedidos", "en_lista", "comprados", "preparando", "en_camino", "entregados"]);
+    expect(columnaDePedido("BORRADOR")).toBe("pedidos");
+    expect(columnaDePedido("CONFIRMADO")).toBe("pedidos");
     expect(columnaDePedido("EN_COMPRA")).toBe("en_lista");
     expect(columnaDePedido("EN_PREPARACION")).toBe("preparando");
     expect(columnaDePedido("PREPARADO")).toBe("preparando");
     expect(columnaDePedido("EN_REPARTO")).toBe("en_camino");
     expect(columnaDePedido("ENTREGADO")).toBe("entregados");
     expect(columnaDePedido("CANCELADO")).toBeNull();
+    // Con todo lo suyo comprado, el pedido de la lista pasa a "Comprado".
+    expect(columnaDeTarjeta("EN_COMPRA", true)).toBe("comprados");
+    expect(columnaDeTarjeta("EN_COMPRA", false)).toBe("en_lista");
+    expect(columnaDeTarjeta("EN_PREPARACION", true)).toBe("preparando");
+    // Con la preparación armada (aunque no se separó nada) ya está en "Preparando".
+    expect(columnaDeTarjeta("CONFIRMADO", false, true)).toBe("preparando");
+    expect(columnaDeTarjeta("EN_COMPRA", true, true)).toBe("preparando");
+    expect(columnaDeTarjeta("EN_REPARTO", false, true)).toBe("en_camino");
   });
 
   it("primero la prioridad alta, después lo que tiene que llegar antes, después el más viejo", () => {
@@ -52,17 +61,15 @@ describe("tablero de pedidos", () => {
   });
 
   it("arrastrar una tarjeta: confirmar, agregar a la lista o sacarla", () => {
-    expect(accionAlMover("por_confirmar", "confirmados")).toBe("CONFIRMAR");
-    expect(accionAlMover("por_confirmar", "en_lista")).toBe("AGREGAR_A_LISTA");
-    expect(accionAlMover("confirmados", "en_lista")).toBe("AGREGAR_A_LISTA");
-    expect(accionAlMover("en_lista", "confirmados")).toBe("SACAR_DE_LISTA");
-    expect(accionAlMover("confirmados", "por_confirmar")).toBeNull();
+    expect(accionAlMover("pedidos", "en_lista")).toBe("AGREGAR_A_LISTA");
+    expect(accionAlMover("en_lista", "pedidos")).toBe("SACAR_DE_LISTA");
+    expect(accionAlMover("pedidos", "comprados")).toBeNull();
     expect(accionAlMover("preparando", "en_lista")).toBeNull();
   });
 
   it("qué se puede hacer con lo elegido", () => {
-    expect(resumenDeSeleccion(["BORRADOR", "CONFIRMADO", "CONFIRMADO", "EN_COMPRA"])).toEqual({ total: 4, paraLista: 3, paraConfirmar: 1, paraSacar: 1 });
-    expect(resumenDeSeleccion([])).toEqual({ total: 0, paraLista: 0, paraConfirmar: 0, paraSacar: 0 });
+    expect(resumenDeSeleccion(["BORRADOR", "CONFIRMADO", "CONFIRMADO", "EN_COMPRA"])).toEqual({ total: 4, paraLista: 3, paraSacar: 1 });
+    expect(resumenDeSeleccion([])).toEqual({ total: 0, paraLista: 0, paraSacar: 0 });
   });
 
   it("con faltantes, primero los pedidos de prioridad alta y dentro de cada grupo la del cliente", () => {

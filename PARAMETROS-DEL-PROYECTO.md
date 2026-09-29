@@ -11,7 +11,7 @@ Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que
 | Campo | Valor |
 |---|---|
 | Uso | **Interno, para un solo negocio** (el del hermano del desarrollador). Sin formalidades: no hay equipo contratado, presupuesto, calendario, demos ni aprobaciones firmadas. Las decisiones abiertas se toman con valores por defecto razonables que se cambian desde la configuración cuando haga falta |
-| Etapa actual | Construcción del MVP. Iteraciones 1 a 7 construidas y probadas: todo el circuito, desde los pedidos hasta la facturación interna (DOC-08), el cierre del día con su resumen y los reportes básicos, más la exportación para el contador. Interfaz reorganizada alrededor del **tablero de pedidos tipo Trello** (pantalla principal, tarjetas grandes con lo que lleva cada pedido), con **carga visual de pedidos** en recuadros que guarda el pedido completo de una vez, menú simplificado y mensajes que explican cómo resolver cada problema. Incluye: (listas por estado, elegir pedidos para armar la lista de compra, prioridad, plazos, quién se encarga y notas) y el día paso a paso; notas entre las personas y registro de lo que hizo cada una; registros en tarjetas; alta de productos guiada; **viaje de entrega** con el mejor orden y GPS; Balance con gráficos. Migraciones 0000 a 0014 aplicadas en Supabase. Siguiente: iteración 8 (puesta en marcha: publicar, cargar los datos reales y revisar seguridad) |
+| Etapa actual | MVP construido (iteraciones 1 a 7 y la interfaz de uso diario) y probado. **Iteración 8 (puesta en marcha) en curso:** hechas las cabeceras de seguridad, las pantallas de error, la configuración del negocio desde la app y el ícono con manifiesto para el celular; faltan la base de producción, publicar en Vercel, el primer uso y cargar los datos reales (`docs/plan/10-plan-de-implementacion.md` §3). Migraciones 0000 a 0014 aplicadas en Supabase de desarrollo |
 | Código | Next.js 16 en la raíz del repositorio; guía técnica en `README.md` y `docs/tecnico/` |
 | Documentación del plan | [docs/plan/](docs/plan/) — el índice es `docs/plan/README.md` |
 | Nombre del sistema | "Sistema Juan". Es de uso interno: no lleva nombre comercial (decisión D-02) |
@@ -23,33 +23,36 @@ Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que
 ## 2. Negocio
 
 - **Destinatarios:** personas o empresas que compran frutas y verduras en el mercado y las distribuyen a sus clientes (hospitales, restaurantes, comercios).
-- **Circuito que cubre el sistema:** Clientes → Pedidos → Lista de compra → Compra a proveedores → Control de créditos/deudas → Preparación → Entrega → Facturación/contabilidad.
+- **Circuito que cubre el sistema:** Clientes → Pedidos → Lista de compras → Compra a proveedores → Control de créditos/deudas → Preparación → Entrega → Facturación/contabilidad.
 - **Flujo de 12 pasos:** pedido → registro → cantidades a comprar → consulta de proveedores y precios → registro de compras → pago contado o crédito → actualización de deuda con proveedores → preparación por cliente → lista de entrega sin precios → entrega → lista contable con precios → actualización de la venta.
 
 ## 3. Tipo de aplicación y tecnología
 
-- **Tipo:** aplicación web responsive instalable como PWA. Un solo código y un solo backend para computadora y celular. Sin app nativa en las primeras fases.
-- **Diseño de pantallas:** las operativas (lista de compra en el mercado, registrar compra, preparación, entrega, carga rápida de pedidos) son mobile-first; las administrativas (precios, márgenes, cuentas corrientes, reportes, configuración) son desktop-first pero usables en celular.
+- **Tipo:** aplicación web responsive, con ícono y manifiesto para agregarla a la pantalla de inicio del celular y abrirla sin la barra del navegador. Un solo código y un solo backend para computadora y celular. Sin app nativa.
+- **Diseño de pantallas:** las del día (tablero, carga de pedidos, lista de compras, preparación, viaje de entrega) son mobile-first; precios, cuentas, facturación y balance son desktop-first pero usables en celular.
 - **Altas simples (29/09):** clientes, proveedores y productos se crean con tres preguntas cada uno (con botones grandes y una tarjeta de "Así va a quedar"); lo opcional queda plegado en "Más opciones". Ninguna pantalla muestra renglones vacíos de relleno: se agregan cuando hacen falta ("＋ Agregar otro producto" en la compra, "＋ Darle una ganancia propia" en precios de venta).
 - **Carga de pedidos (29/09):** la hacen siempre las mismas dos personas, en **Nuevo pedido**: cliente, día y productos en recuadros grandes, cantidades con − y + (o escritas), "Lo que suele pedir" y "Repetir su último pedido", prioridad, horario y nota; se guarda todo junto o nada (nunca un pedido vacío). La misma pantalla sirve para **Cambiar productos** de un pedido.
 - **Mensajes (29/09):** todo aviso dice qué pasó y cómo seguir, con el botón para ir a arreglarlo cuando lo hay; no se muestran códigos internos (RN-…) ni errores técnicos.
-- **Menú (29/09):** Día de trabajo (Tablero de pedidos, Nuevo pedido destacado, Viaje de entrega, Actividad y notas) · Registros (Clientes, Productos, Proveedores) · Cuentas (Balance, Deudas con proveedores, Facturación) · Más opciones (plegado: el día paso a paso, cada paso por separado, precios, movimientos, reportes, usuarios).
-- **Pantalla principal (28/09):** **Hoy**, que abre en el **tablero de pedidos al estilo Trello** (listas Por confirmar · Confirmados · En la lista de compra · Preparando · En camino · Entregados; tarjetas con etiquetas, plazo, notas, avance y quién se encarga; arrastrar para confirmar o agregar a la lista; elegir pedidos o "todo lo que falta comprar" para armar la lista de compra) y tiene la pestaña **Paso a paso** con **seis pasos** en tarjetas de colores pastel (como Trello): pedidos → lista de compra → compras en el mercado → preparación y remitos → reparto y entrega → cierre. "Ahora toca" es el paso más avanzado sin terminar; lo que quedó a medias antes se muestra como pendiente de atrás, con su botón. Las dos vistas van sobre una imagen de fondo de campo (29/09). En el menú, aparte: **Registros** (clientes, productos, proveedores, precios), **Cuentas y balance** (balance con gráficos, movimientos, deudas, facturación, reportes) y cada paso por separado en un grupo plegado.
-- **Conectividad:** el MVP requiere conexión; el modo offline (consultar lista de compra y encolar compras) es fase 2.
+- **Menú (29/09):** Día de trabajo (Tablero de pedidos, Nuevo pedido destacado, Lista de compras, Viaje de entrega, Mi reparto solo para quien no maneja todos los repartos, Actividad y notas) · Registros (Clientes, Productos, Proveedores) · Cuentas (Balance, Deudas con proveedores, Facturación). Sin "Más opciones": lo demás se abre desde donde se usa (precios desde Productos, reportes y movimientos desde Balance, compras anotadas desde la lista, usuarios y configuración desde Mi cuenta → Administración, otros días desde el tablero).
+- **Pantalla principal:** el **tablero de pedidos al estilo Trello** (29/09): listas **Pedidos** (los cargados; no hay "por confirmar" ni "confirmados": los pedidos no se confirman a mano) · **Lista de compras** (se están comprando) · **Comprado** (ya está todo lo suyo: listo para preparar) · **Preparando** (con todos sus productos tildados o por separar y lo que falta y por qué) · **En camino** · **Entregados**. Se arrastra de Pedidos a Lista de compras (o se eligen y "🛒 Mandar a la lista de compras"); lo demás avanza solo. Pestaña **Paso a paso** con seis pasos en tarjetas pastel (pedidos → lista de compras → compras en el mercado → preparación y remitos → reparto y entrega → cierre). Imagen de fondo de campo.
+- **Pedidos sin confirmación (29/09):** la carga guarda el pedido completo ("✓ Guardar el pedido") y queda en la columna Pedidos. Internamente sigue el estado `CONFIRMADO`; los que quedaron `BORRADOR` con productos se completan solos al mandarlos a la lista o al empezar a preparar.
+- **Compras desde la lista (29/09):** la **Lista de compras** tiene todo lo que hay que comprar junto (o por puesto), con cuánto, en qué envase y en qué puesto conviene. **✓ Lo compré** anota la compra en ese producto (puesto, cuántos, a cuánto, a cuenta o pagado) y la tacha; cuando está todo lo de un pedido, su tarjeta pasa a Comprado. Para varias cosas de un puesto sigue "Anotar otra compra".
+- **Preparación por cliente (29/09):** cada cliente es una tarjeta con lo que hay que separarle. Por producto, "✓ Está todo" en un toque o "Falta algo": cuánto se manda y por qué (no se consiguió, no alcanzó lo comprado, estaba en mal estado, error al preparar, el cliente lo sacó, otro). Lo que falta queda a la vista en la tarjeta del tablero y en "Lo que falta (para avisarle al cliente)".
+- **Conectividad:** requiere conexión (los datos móviles alcanzan); la lista de compras se puede imprimir antes de ir al mercado.
 
 | Pieza | Elección |
 |---|---|
 | Framework | Next.js (App Router) + TypeScript |
-| Interfaz | Tailwind CSS + shadcn/ui |
-| Base de datos | PostgreSQL gestionado en Supabase (también Auth, Storage de PDFs y backups) |
+| Interfaz | Tailwind CSS 4 con componentes propios (`src/ui`) |
+| Base de datos | PostgreSQL gestionado en Supabase (también Auth) |
 | ORM / validación | Drizzle / Zod |
 | Hosting | Vercel |
-| PDF | Del lado servidor con @react-pdf/renderer |
-| Impresión | Vistas HTML optimizadas (CSS `@media print`, A4) + botón Imprimir |
+| Impresión | Vistas HTML optimizadas (CSS `@media print`, A4) + botón Imprimir; para compartir, "Guardar como PDF" del navegador |
 | Multi-empresa | Preparado desde el inicio: `empresa_id` en toda tabla de negocio + Row Level Security |
 | Versiones | Next.js 16 (`proxy.ts` en lugar de middleware), React 19, Drizzle 0.45, Zod 4, Tailwind 4. Node.js 22 LTS recomendado (mínimo 20.9) |
 | Pruebas | Vitest 3 (compatible con Node 20; Vitest 5 exige Node 22.12) y PGlite (PostgreSQL en memoria) para las pruebas de base de datos, sin Docker |
-| Roles de base de datos | La aplicación se conecta como `app_servidor` (sin BYPASSRLS, NOINHERIT) y cada transacción cambia a `app_negocio`, `app_operativo` (sin precios) o `app_alta` (solo alta de empresas). Detalle en `docs/tecnico/base-de-datos.md` |
+| Seguridad web | Cabeceras en `next.config.ts`: sin iframes (`X-Frame-Options`, `frame-ancestors`), `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS; sin `X-Powered-By` |
+| Roles de base de datos | La aplicación se conecta como `app_servidor` (sin BYPASSRLS, NOINHERIT) y cada transacción cambia a `app_negocio`, `app_operativo` (reservado, sin uso) o `app_alta` (solo alta de empresas). Detalle en `docs/tecnico/base-de-datos.md` |
 
 ## 4. Convenciones de datos
 
@@ -74,13 +77,12 @@ Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que
 | Compra | `lista_compra`, `lista_compra_item`, `compra`, `compra_item` |
 | Créditos y pagos | `pago_proveedor`, `imputacion_pago_proveedor`, `movimiento_cuenta_proveedor` |
 | Entregas | `reparto`, `entrega`, `entrega_item`, `documento_emitido` |
-| Ventas y cobranzas | `factura`, `factura_entrega`, `cobro_cliente`, `imputacion_cobro_cliente`, `movimiento_cuenta_cliente` |
-| Colaboración (agregado 28/09) | `nota`, `nota_lectura`, `actividad` |
-| Stock (fase 2) | `ajuste_stock` |
+| Ventas | `factura`, `factura_entrega` |
+| Colaboración | `nota`, `nota_lectura`, `actividad` |
 
 **Unidades:** cada producto tiene una `unidad_base` (kg, unidad, atado, maple, bandeja…) y todos los cálculos internos se hacen en esa unidad. Una `presentacion` (ej. "Cajón 18 kg", `factor_a_base` = 18) define cómo se compra o vende. Costo por unidad base = precio de la presentación ÷ `factor_a_base`. La lista de compra redondea hacia arriba a presentaciones completas; el excedente queda como sobrante previsto.
 
-**Jornada:** una fecha operativa (fecha de entrega) que agrupa pedidos, lista de compra, compras, preparación, repartos y entregas del día.
+**Jornada:** una fecha operativa (fecha de entrega) que agrupa pedidos, lista de compras, compras, preparación, repartos y entregas del día.
 
 ## 6. Estados canónicos
 
@@ -131,7 +133,7 @@ Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que
 
 | ID | Documento |
 |---|---|
-| DOC-01 | Lista de compra |
+| DOC-01 | Lista de compras |
 | DOC-02 | Lista de entrega (sin precios) |
 | DOC-03 | Lista contable (remito valorizado) |
 | DOC-04 | Hoja de ruta de reparto |
@@ -139,8 +141,6 @@ Fuente de verdad de las decisiones fijas del proyecto. Se actualiza cada vez que
 | DOC-06 | Lista general de precios de compra |
 | DOC-07 | Hoja de preparación por cliente (sin precios) |
 | DOC-08 | Comprobante interno de venta (no fiscal, leyenda "Documento no válido como factura") |
-
-Reservados para fases posteriores (PROPUESTO): DOC-09 Estado de cuenta de cliente y DOC-10 Recibo de cobro.
 
 ## 10. Roles y permisos
 
@@ -152,12 +152,12 @@ Un usuario puede tener varios roles; los permisos son granulares con claves `mod
 
 | Rol | Alcance |
 |---|---|
-| ADMIN | Dueño; todo. Puede operar el circuito completo como usuario único |
+| ADMIN | Todo. Es el rol de todas las personas que usan el sistema |
 | VENDEDOR | Clientes y pedidos |
-| COMPRADOR | Lista de compra, compras, precios de compra, proveedores |
+| COMPRADOR | Lista de compras, compras, precios de compra, proveedores |
 | PREPARADOR | Preparación; **nunca ve precios** |
 | REPARTIDOR | Solo sus repartos (marca salida y regreso) y la confirmación de sus entregas; **nunca ve precios** |
-| ADMINISTRATIVO | Pagos a proveedores, cobranzas, facturación, reportes, documentos contables |
+| ADMINISTRATIVO | Pagos a proveedores, facturación, reportes, documentos contables |
 
 ## 11. Parámetros configurables por empresa
 
@@ -176,15 +176,15 @@ Valores por defecto con los que se crea la empresa (campos de `empresa`, `docs/p
 | Moneda | ARS (pesos argentinos) | Fijado (D-01) |
 | Otros (preferido caro, avisos, tolerancia de peso, faltantes, facturación automática…) | Ver `docs/plan/07-reglas-de-negocio.md` §4 | Adoptado |
 
-## 12. Alcance por fases
+## 12. Alcance
 
-- **Fase 1 (MVP):** todo lo pedido explícitamente. Incluye catálogo, clientes, proveedores, precios de compra y venta con márgenes, pedidos, lista de compra, compras, créditos y pagos con límite, preparación, entregas y los documentos imprimibles. La facturación del MVP es un registro de venta por entrega, un comprobante interno no fiscal y una exportación para el contador.
-- **Plan de construcción del MVP** (`docs/plan/10-plan-de-implementacion.md`): las 8 iteraciones en el orden del circuito, sin fechas ni presupuesto. Se empieza a usar por partes apenas cada una sirve: R1 pedidos, lista de compra y compras; R2 preparación y reparto; R3 facturación y cierre (MVP completo). La facturación del MVP es interna (no fiscal).
-- **Fases posteriores (PROPUESTO, no pedido explícitamente):** cuenta corriente y cobranzas de clientes, facturación fiscal electrónica (ARCA/AFIP en Argentina, DGI/CFE en Uruguay), modo offline, stock y sobrantes, pedidos habituales, portal de clientes, integración con WhatsApp, reportes avanzados, multi-empresa comercial.
+- **Construido:** catálogo, clientes, proveedores, precios de compra y venta con márgenes, pedidos, lista de compras, compras, créditos y pagos con límite, preparación, viaje de entrega y repartos, entregas, documentos imprimibles DOC-01 a DOC-08, facturación interna (no fiscal), exportación para el contador, cierre del día, reportes y balance.
+- **Plan de construcción** (`docs/plan/10-plan-de-implementacion.md`): 8 iteraciones en el orden del circuito, sin fechas ni presupuesto; falta la 8 (puesta en marcha).
+- **Ideas para más adelante (no pedidas; solo si el uso real las justifica):** anotar compras sin señal, sobrantes y mermas, cuenta corriente de clientes, pedidos habituales, facturación fiscal con ARCA.
 
 ## 13. Decisiones
 
-No quedan decisiones pendientes que frenen la construcción. Como es un sistema interno, las que eran formales se cerraron con la propuesta del plan; cualquiera se puede revisar cuando el uso real lo pida. Detalle en `docs/plan/10-plan-de-implementacion.md` §11.
+No quedan decisiones pendientes que frenen la construcción. Como es un sistema interno, las que eran formales se cerraron con la propuesta del plan; cualquiera se puede revisar cuando el uso real lo pida. Detalle en `docs/plan/10-plan-de-implementacion.md` §6.
 
 - **D-01 · País y moneda (2026-09-24):** Argentina, pesos argentinos. Si algún día hace falta facturación fiscal, será con ARCA/AFIP.
 - **D-02 · Nombre y dominio (2026-09-24):** sin nombre comercial. El dominio se ve al publicar (puede ser el gratuito del hosting).
@@ -221,3 +221,4 @@ No quedan decisiones pendientes que frenen la construcción. Como es un sistema 
 | 2026-09-28 | Migraciones 0011 a 0014 aplicadas en Supabase con `pnpm db:aplicar`. |
 | 2026-09-29 | **Carga visual de pedidos, tablero más grande y mensajes que explican** (pedido del usuario: cargar pedidos más fácil y visual con recuadros, sacar del menú lo que no hace falta, el tablero como página principal, tarjetas y tarjeta abierta más grandes y despejadas, y que ningún error aparezca sin explicar cómo solucionarlo). **Nuevo pedido** (P-41) y **Cambiar productos** (`/pedidos/[id]/cambiar`) con recuadros de clientes y productos, cantidades con − y +, cantidades rápidas, lo que suele pedir el cliente, repetir su último pedido, aviso si ya tiene un pedido ese día, prioridad, horario y nota; se guarda en una sola transacción (`cargarPedido`, `cambiarProductosDePedido`) con el pedido completo o nada (RN-018b). El tablero muestra los productos en cada tarjeta, la tarjeta abierta empieza por lo que lleva y en el celular hay un botón flotante de Nuevo pedido. Menú de cuatro grupos con dibujos (sección 3). Los errores de negocio pueden traer un enlace para resolverlos (`detalle.enlace`), la pantalla nunca muestra los códigos RN ni un error técnico (pantallas de error propias y mensaje claro si falla el sistema), y los mensajes de pedidos se reescribieron para decir cómo seguir. Se quitó el alta de pedido vacío desde el tablero, la lista de pedidos y el paso a paso: todo lleva a la carga visual. Sin tablas nuevas ni migraciones. |
 | 2026-09-29 | **Revisión integral de la interfaz** (pedido del usuario: sacar lo que sobra y los campos vacíos repetidos, dejar agregarlos cuando hace falta, descripciones más claras en todas las pantallas, tarjetas del paso a paso en colores pastel como Trello, un fondo con imagen, revisar la congruencia del paso a paso y simplificar las altas). **Paso a paso:** seis pasos (los remitos pasan a ser parte de la preparación, porque se hacen solos al marcar preparado cada cliente); "ahora toca" es el paso más avanzado sin terminar y lo que quedó a medias antes aparece como "Quedó pendiente de antes" con su botón (antes un borrador sin confirmar volvía a poner "Pedidos" como paso actual aunque ya se estuviera comprando); tarjetas pastel por paso y explicación de qué hacer en cada uno. **Fondo:** imagen de campo (`public/fondos/campo.svg`) en el tablero y el paso a paso; cada columna del tablero con la franja del color de su etapa. **Sin relleno:** Registrar compra muestra solo lo de la lista para ese puesto (con "＋ Agregar otro producto"), cómo se pagó con tres botones y el total en vivo; Precios de venta muestra solo las ganancias especiales que existen (con botón para agregar) y dice "ganancia" en vez de "recargo"; la tabla de precios de un proveedor cambia el precio desde "✏️ Cambiar" en vez de un campo por fila; el detalle de un pedido agrega productos desde la carga visual. **Altas:** cliente, proveedor y producto en tres preguntas (`/clientes/nuevo`, `/proveedores/nuevo`, `/productos/nuevo`); en las fichas, la edición de datos queda plegada. **Textos:** nuevas descripciones en todas las pantallas (para qué sirve y qué hacer), la lista de compra sin "versión" ni número técnico, una compra pagada ya no muestra vencimiento, y la ficha del proveedor no repite las compras. Sin tablas nuevas ni migraciones. |
+| 2026-09-29 | **Pedidos sin confirmar, lista de compras con "✓ Lo compré" y preparación por cliente; limpieza del plan e iteración 8** (pedido del usuario: una sola columna de pedidos porque no se confirma nada; "Lista de compras"; comprar desde una lista general clara y que el pedido quede como comprado; en Preparando, la lista de cada cliente con qué separar, qué faltó y por qué; sacar "Más opciones"; borrar de los .md todo lo que no va). Tablero: Pedidos · Lista de compras · Comprado · Preparando · En camino · Entregados; un pedido con su preparación armada pasa a Preparando aunque no se haya separado nada; las tarjetas en Preparando muestran todos sus productos con ✓/⬜ y lo que falta. La carga guarda sin confirmar a mano y los borradores con productos se completan solos al mandarlos a la lista o al empezar a preparar (`completarPedidosDelDia`). Lista de compras rehecha: todo junto o por puesto, "✓ Lo compré" por producto (`comprarDeLaLista`), no conseguido y cambiar cantidad plegados. Preparación: tarjeta por cliente con su lista; en cada producto "✓ Está todo", "Separé lo que hay" o "No va", y "Falta algo" con cuánto y el motivo (nuevo motivo "Estaba en mal estado"); `avisoDeFaltante` en el dominio. Menú sin "Más opciones". Iteración 8: cabeceras de seguridad, páginas de error, configuración del negocio (`/configuracion`), ícono y manifiesto para el celular. Documentación: se reescriben 01 (sin alternativas, costos, Sentry, Playwright, shadcn, react-pdf, Storage ni tareas programadas), 08 (solo las pantallas que existen) y 10 (estado, puesta en marcha, pruebas, carga de datos, decisiones); se sacan de 02 a 07 y 09 el día por rol, el modo usuario único, MFA, invitaciones, las vistas `v_*` (reemplazadas por la tabla de funciones de 03 §17), cobranzas, stock, offline, PDF en el servidor, envío por correo y DOC-09/DOC-10; los PROPUESTO quedan como una lista corta de ideas. |

@@ -10,7 +10,6 @@ import {
   cargarPedido,
   cambiarLinea,
   cancelarPedido,
-  confirmarPedido,
   duplicarPedido,
   fijarPrecioManual,
   quitarLinea,
@@ -59,13 +58,6 @@ export async function datosPedidoAccion(_estado: EstadoAccion, datos: FormData):
       observacionesInternas: campo(datos, "observacionesInternas"),
     });
     return { ok: true, mensaje: "Datos guardados." };
-  });
-}
-
-export async function confirmarPedidoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    await confirmarPedido(db, authUserId, campo(datos, "pedidoId"));
-    return { ok: true, mensaje: "Pedido confirmado." };
   });
 }
 

@@ -1,20 +1,20 @@
 # 02 — Usuarios, roles y permisos
 
-**Propósito:** definir quién usa el sistema, qué puede ver y hacer cada persona, cómo se garantiza en el servidor que el personal de preparación y reparto nunca vea precios ni deudas, y cómo se administran los usuarios. Cubre la parte "usuarios y permisos" de R16 y el requisito de listas sin precios de R11.
+**Propósito:** definir quién usa el sistema, qué puede ver y hacer cada persona, cómo se garantiza en el servidor que el personal de preparación y reparto nunca vea precios ni deudas, y cómo se administran los usuarios.
 
 **Contenido**
 
 1. [Principios](#1-principios)
 2. [Roles](#2-roles)
-3. [Un día típico por rol](#3-un-día-típico-por-rol)
+3. [Uso real](#3-uso-real)
 4. [Catálogo de permisos](#4-catálogo-de-permisos)
 5. [Matriz rol × permiso](#5-matriz-rol--permiso)
 6. [Permisos prohibidos para PREPARADOR y REPARTIDOR](#6-permisos-prohibidos-para-preparador-y-repartidor)
 7. [Visibilidad a nivel de campo](#7-visibilidad-a-nivel-de-campo)
 8. [Cómo se garantiza en el servidor](#8-cómo-se-garantiza-en-el-servidor)
-9. [Combinación de roles y modo usuario único](#9-combinación-de-roles-y-modo-usuario-único)
-10. [Alta, desactivación y cambio de roles](#10-alta-desactivación-y-cambio-de-roles)
-11. [Sesiones y auditoría de accesos](#11-sesiones-y-auditoría-de-accesos)
+9. [Combinación de roles](#9-combinación-de-roles)
+10. [Cuentas y acceso](#10-cuentas-y-acceso)
+11. [Sesiones](#11-sesiones)
 12. [Casos de prueba de permisos](#12-casos-de-prueba-de-permisos)
 
 Documentos relacionados: 01-tipo-de-aplicacion-y-arquitectura.md (seguridad técnica), 03-modelo-de-datos.md (tablas `usuario`, `rol`, `usuario_rol`, `auditoria`), 08-pantallas-y-acciones.md (qué pantalla requiere cada permiso), 09-documentos-imprimibles.md (DOC-01 a DOC-08).
@@ -38,27 +38,18 @@ Roles canónicos (creados automáticamente en cada empresa como roles de sistema
 
 | Rol | Quién es en la vida real | Qué hace en el circuito (pasos de R13) | Dispositivo principal | Nunca puede |
 |---|---|---|---|---|
-| **ADMIN** | El dueño (o socio a cargo). | Todo: configura precios y márgenes, autoriza excesos de límite, corrige y anula documentos, ve reportes de rentabilidad. En negocios chicos opera todo el circuito solo (modo usuario único). | PC en la oficina y celular en el mercado. | — (tiene todos los permisos). |
-| **VENDEDOR** | Quien atiende a los clientes y toma pedidos por teléfono, WhatsApp o correo. | Pasos 1–2: carga y confirma pedidos, mantiene datos de clientes y puntos de entrega, informa al cliente el precio estimado y el estado del pedido. | Celular (con WhatsApp al lado) o PC. | Ver costos, márgenes, precios de compra, deudas con proveedores; registrar compras o pagos. |
+| **ADMIN** | El dueño (o socio a cargo). | Todo: configura precios y márgenes, autoriza excesos de límite, corrige y anula documentos, ve reportes de rentabilidad. | PC en la oficina y celular en el mercado. | — (tiene todos los permisos). |
+| **VENDEDOR** | Quien atiende a los clientes y toma pedidos por teléfono, WhatsApp o correo. | Pasos 1–2: carga pedidos, mantiene datos de clientes y puntos de entrega, informa al cliente el precio estimado y el estado del pedido. | Celular (con WhatsApp al lado) o PC. | Ver costos, márgenes, precios de compra, deudas con proveedores; registrar compras o pagos. |
 | **COMPRADOR** | Quien va al mercado de madrugada. | Pasos 3–6: genera y usa la lista de compra, compara proveedores, registra compras (contado, crédito o mixta), actualiza precios de compra, ve el crédito disponible de cada proveedor. | Celular (una mano, poca luz, apuro). | Ver precios de venta y márgenes (salvo opcional), cambiar límites de crédito, exceder un límite sin autorización. |
 | **PREPARADOR** | Personal del depósito que arma la mercadería de cada cliente. | Paso 8: usa la hoja de preparación (DOC-07), carga cantidades preparadas (pesadas o contadas), informa faltantes, imprime la lista de entrega (DOC-02). | Tablet o celular en el depósito, o la hoja impresa. | Ver cualquier precio, costo, margen o deuda. |
 | **REPARTIDOR** | Chofer o persona que entrega. | Pasos 9–10: sigue su hoja de ruta (DOC-04), entrega con la lista de entrega sin precios (DOC-02), confirma la entrega (quién recibió, hora, firma o foto, diferencias). | Celular. | Ver cualquier precio, costo, margen o deuda; ver repartos de otros repartidores. |
-| **ADMINISTRATIVO** | Persona de administración / contable interna. | Pasos 7, 11–12: registra pagos a proveedores, controla cuentas corrientes y vencimientos, emite la lista contable (DOC-03) y el comprobante interno, exporta ventas para el contador, cobranzas (fase 2), reportes. | PC con impresora. | Cambiar reglas de precios o configuración (salvo que el ADMIN se lo otorgue). |
+| **ADMINISTRATIVO** | Persona de administración / contable interna. | Pasos 7, 11–12: registra pagos a proveedores, controla cuentas corrientes y vencimientos, emite la lista contable (DOC-03) y el comprobante interno, exporta ventas para el contador, reportes. | PC con impresora. | Cambiar reglas de precios o configuración (salvo que el ADMIN se lo otorgue). |
 
 ---
 
-## 3. Un día típico por rol
+## 3. Uso real
 
-Ejemplo: jornada del **jueves 24/09/2026**, distribuidora con 4 personas.
-
-| Hora | Persona (roles) | Qué hace en el sistema | Qué ve de dinero |
-|---|---|---|---|
-| Mié 17:00–21:00 | Laura (VENDEDOR) | Carga el pedido del Hospital Central (2 cajones de tomate, 3 bolsas de papa, 30 lechugas) y el de Restaurante La Esquina; los confirma. | Precio estimado de venta de cada línea y total estimado. No ve costos. |
-| Mié 21:30 | Juan (ADMIN) | Revisa la lista de compra generada, ajusta un proveedor sugerido, controla semáforos de proveedores. | Todo. |
-| Jue 04:00–06:30 | Pedro (COMPRADOR) | Recorre el mercado con la lista de compra en el celular; registra 2 compras (una a crédito, una mixta); actualiza el precio de la lechuga que subió. | Precios de compra, comparador, crédito disponible y semáforo de cada proveedor. No ve precios de venta. |
-| Jue 06:30–08:30 | Marta (PREPARADOR) | Arma cada entrega con la hoja de preparación; carga lo pesado; marca PREPARADA; imprime las listas de entrega. | Nada. |
-| Jue 08:30–12:30 | Pedro (REPARTIDOR, segundo rol) | Sigue la hoja de ruta, entrega, saca foto del remito firmado en la cocina del hospital; registra 2 lechugas rechazadas. | Nada (aunque sea COMPRADOR, las pantallas de reparto no muestran precios). |
-| Jue 14:00 | Laura (VENDEDOR + ADMINISTRATIVO) | Imprime la lista contable definitiva (versión 2 por el rechazo) del hospital; registra un pago a un proveedor; exporta las ventas de la semana. | Precios de venta, deudas con proveedores. |
+Lo usan **dos personas, las dos ADMIN** (el dueño y su esposa); Facundo, el desarrollador, también es ADMIN. La interfaz no muestra roles: toda persona que se habilita queda ADMIN. Los roles y permisos que siguen están en la base y en el código por si algún día entra alguien con acceso limitado (por ejemplo, un repartidor que solo vea sus entregas).
 
 ---
 
@@ -151,11 +142,11 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `facturacion.emitir` | Emitir el comprobante interno que agrupa una o más entregas. | Sí | V |
 | `facturacion.anular` | Anular un comprobante con motivo (las entregas vuelven a SIN_FACTURAR). | Sí | V |
 | `facturacion.exportar` | Exportar ventas y comprobantes para el contador (CSV/Excel). | Sí | V |
-| `cobranzas.ver` | PROPUESTO. Ver cuenta corriente de clientes y cobros. | No | F |
-| `cobranzas.registrar` | PROPUESTO. Registrar cobros de clientes e imputarlos a comprobantes. | Sí | F |
-| `cobranzas.anular` | PROPUESTO. Anular cobros con motivo. | Sí | F |
-| `stock.ver` | PROPUESTO (fase 2). Ver sobrantes y mermas (cantidades). | No | O |
-| `stock.ajustar` | PROPUESTO (fase 2). Registrar sobrantes, mermas y devoluciones. | Sí | O |
+| `cobranzas.ver` | Reservado, sin uso. Ver cuenta corriente de clientes y cobros. | No | F |
+| `cobranzas.registrar` | Reservado, sin uso. Registrar cobros de clientes e imputarlos a comprobantes. | Sí | F |
+| `cobranzas.anular` | Reservado, sin uso. Anular cobros con motivo. | Sí | F |
+| `stock.ver` | Reservado, sin uso. Ver sobrantes y mermas (cantidades). | No | O |
+| `stock.ajustar` | Reservado, sin uso. Registrar sobrantes, mermas y devoluciones. | Sí | O |
 
 ### 4.7 Reportes, configuración, usuarios y auditoría
 
@@ -234,11 +225,11 @@ Referencias: **Sí** = incluido por defecto en el rol. **Opc.** = no viene por d
 | facturacion.emitir | Sí | — | — | Nunca | Nunca | Sí |
 | facturacion.anular | Sí | — | — | Nunca | Nunca | Opc. |
 | facturacion.exportar | Sí | — | — | Nunca | Nunca | Sí |
-| cobranzas.ver (PROPUESTO) | Sí | Opc. | — | Nunca | Nunca | Sí |
-| cobranzas.registrar (PROPUESTO) | Sí | — | — | Nunca | Nunca | Sí |
-| cobranzas.anular (PROPUESTO) | Sí | — | — | Nunca | Nunca | Opc. |
-| stock.ver (PROPUESTO) | Sí | — | Sí | Sí | — | Opc. |
-| stock.ajustar (PROPUESTO) | Sí | — | Opc. | Opc. | — | — |
+| cobranzas.ver (reservado) | Sí | Opc. | — | Nunca | Nunca | Sí |
+| cobranzas.registrar (reservado) | Sí | — | — | Nunca | Nunca | Sí |
+| cobranzas.anular (reservado) | Sí | — | — | Nunca | Nunca | Opc. |
+| stock.ver (reservado) | Sí | — | Sí | Sí | — | Opc. |
+| stock.ajustar (reservado) | Sí | — | Opc. | Opc. | — | — |
 | reportes.ver | Sí | Opc. | Opc. | Nunca | Nunca | Sí |
 | reportes.exportar | Sí | — | — | Nunca | Nunca | Sí |
 | configuracion.ver | Sí | — | — | Nunca | Nunca | Opc. |
@@ -258,9 +249,9 @@ Observaciones:
 
 ## 6. Permisos prohibidos para PREPARADOR y REPARTIDOR
 
-El editor de roles **no permite** agregar a los roles de sistema PREPARADOR y REPARTIDOR ningún permiso de las clases V, C, M, F o P (sección 7). Concretamente: todos los `precios.*`, `proveedores.ver_credito`, `proveedores.editar_limite`, `compras.*`, `pagos.*`, `documentos.imprimir_contable`, `documentos.imprimir_cuenta`, `facturacion.*`, `cobranzas.*`, `reportes.*`, `configuracion.*`, `usuarios.administrar`, `auditoria.ver`.
+Los roles de sistema PREPARADOR y REPARTIDOR **no tienen** ningún permiso de las clases V, C, M, F o P (sección 7). Concretamente: todos los `precios.*`, `proveedores.ver_credito`, `proveedores.editar_limite`, `compras.*`, `pagos.*`, `documentos.imprimir_contable`, `documentos.imprimir_cuenta`, `facturacion.*`, `cobranzas.*`, `reportes.*`, `configuracion.*`, `usuarios.administrar`, `auditoria.ver`.
 
-Si una persona necesita, por ejemplo, preparar y además facturar, se le asignan **dos roles** (PREPARADOR + ADMINISTRATIVO): la decisión queda explícita y auditada. Aun así, en las pantallas de preparación y reparto esa persona **no verá precios**, porque esas pantallas no los consultan (principio 3).
+Si una persona necesita, por ejemplo, preparar y además facturar, se le asignan **dos roles** (PREPARADOR + ADMINISTRATIVO). Aun así, en las pantallas de preparación y reparto esa persona **no verá precios**, porque esas pantallas no los consultan (principio 3).
 
 ---
 
@@ -274,7 +265,7 @@ Si una persona necesita, por ejemplo, preparar y además facturar, se le asignan
 | **V — Precio de venta** | `pedido_item.precio_estimado`, `subtotal_estimado`, `origen_regla_estimada`; `pedido.total_estimado`; `entrega_item.precio_unitario`, `importe`, `origen_regla`; `entrega.importe_neto`, `importe_iva`, `importe_total`; `factura.importe_*`; `factura_entrega.importe_total`. | `precios.ver_venta` | **Nunca** |
 | **C — Costo** | `proveedor_producto.precio_vigente`, `costo_base`, `precio_anterior`; todo `historial_precio_compra`; `compra.total`, `monto_pagado_en_el_acto`; `compra_item.precio_unitario`, `costo_base`, `subtotal`; `lista_compra_item.precio_sugerido`, `costo_estimado`; `pedido_item.costo_estimado`; `entrega_item.costo_unitario`; `entrega.costo_total`. | `precios.ver_costos` | **Nunca** |
 | **M — Margen y reglas** | `recargo_default` de empresa, categoría, producto y cliente; `empresa.recargo_global`, `margen_minimo_pct`; toda `regla_precio`; `pedido_item.recargo_estimado`; `entrega_item.recargo_aplicado`; alertas de margen (`alertas` de `pedido_item` y `entrega_item`); margen en $ y %. | `precios.ver_margenes` (ver) / `precios.editar_reglas` (editar) | **Nunca** |
-| **F — Financiero** | `proveedor.limite_credito`, `plazo_pago_dias`, `saldo_actual`; saldo pendiente, crédito disponible, semáforo, deuda vencida; `pago_proveedor`, `imputacion_pago_proveedor`, `movimiento_cuenta_proveedor`; estado de pago de compras; cuenta corriente de clientes (PROPUESTO). | `proveedores.ver_credito`, `pagos.ver`, `cobranzas.ver` | **Nunca** |
+| **F — Financiero** | `proveedor.limite_credito`, `plazo_pago_dias`, `saldo_actual`; saldo pendiente, crédito disponible, semáforo, deuda vencida; `pago_proveedor`, `imputacion_pago_proveedor`, `movimiento_cuenta_proveedor`; estado de pago de compras. | `proveedores.ver_credito`, `pagos.ver`, `cobranzas.ver` | **Nunca** |
 | **P — Personal y seguridad** | Usuarios, roles, permisos, auditoría, direcciones IP y dispositivos. | `usuarios.administrar`, `auditoria.ver` | **Nunca** |
 
 ### 7.2 Qué ve cada rol en pantallas compartidas (ejemplos)
@@ -294,117 +285,71 @@ Si una persona necesita, por ejemplo, preparar y además facturar, se le asignan
 
 ## 8. Cómo se garantiza en el servidor
 
-"Ocultar en la pantalla" no alcanza: cualquier dato enviado al navegador (incluido el payload interno de React) puede verse con las herramientas del navegador. Por eso la regla es: **lo que un usuario no puede ver, nunca sale del servidor**. Se aplican ocho capas:
+"Ocultar en la pantalla" no alcanza: cualquier dato enviado al navegador (incluido el payload interno de React) puede verse con las herramientas del navegador. Por eso la regla es: **lo que un usuario no puede ver, nunca sale del servidor**.
 
 | # | Capa | Cómo funciona |
 |---|---|---|
-| 1 | **Vistas operativas sin precios** | Las pantallas de preparación, reparto y confirmación de entrega, y los documentos DOC-02, DOC-04 y DOC-07, leen **exclusivamente** vistas `v_op_*` (`v_op_hoja_preparacion`, `v_op_entrega`, `v_op_entrega_item`, `v_op_reparto`) que no tienen columnas de precio, costo, margen ni deuda. Se aplica a todos los usuarios, incluido el ADMIN. Definición en 03-modelo-de-datos.md. |
-| 2 | **Rol de base de datos restringido** | Si el usuario no tiene ningún permiso de las clases V, C, M o F (típico PREPARADOR o REPARTIDOR), y también en todas las rutas operativas, las transacciones que atienden sus pedidos ejecutan `SET LOCAL ROLE app_operativo`. Ese rol de PostgreSQL solo tiene `SELECT` sobre las vistas `v_op_*` y sobre columnas no sensibles (permisos por columna, `GRANT SELECT (col1, col2, ...)`), y `UPDATE` solo de cantidades y diferencias. Si por error el código intenta leer un precio, la base responde "permiso denegado": falla en las pruebas, no en producción. Los procesos internos que sí necesitan precios (recalcular importes al cambiar cantidades, generar y guardar el PDF de DOC-03 al emitir o reemitir) corren con el rol normal de la aplicación y **no devuelven** ese contenido al usuario (ver 03-modelo-de-datos.md, sección 17.12). |
-| 3 | **Código separado** | Las rutas operativas solo pueden importar archivos `consultas-operativas.ts`. Una regla de análisis de dependencias en la CI rechaza cualquier importación de consultas con precios desde esas rutas. |
-| 4 | **DTO por permisos** | Para pantallas mixtas (ej. detalle de pedido), el servidor arma un objeto de salida (DTO) y **quita** (no deja vacíos) los campos de cada clase que el usuario no puede ver. El esquema de salida Zod es estricto: un campo no previsto hace fallar la respuesta. |
-| 5 | **Frontera servidor/navegador** | Los Server Components pasan a los componentes del navegador solo DTOs, nunca filas completas de la base. |
-| 6 | **Documentos generados en el servidor** | PDFs y vistas de impresión se generan con las mismas consultas operativas o valorizadas según el documento; la plantilla de DOC-02 no tiene campos de precio. Las rutas `/imprimir/entrega/[id]/contable` y `/api/documentos/DOC-03/...` verifican `documentos.imprimir_contable` y responden 403 sin datos. |
-| 7 | **Sin caché compartida** | Las respuestas autenticadas no se cachean entre usuarios (`no-store`). |
-| 8 | **Pruebas automáticas de fuga** | En cada cambio, pruebas de integración inician sesión como PREPARADOR y REPARTIDOR, recorren todas sus pantallas, acciones y PDFs, y fallan si la respuesta contiene claves como `precio`, `costo`, `importe`, `recargo`, `margen`, `saldo`, `limite`, `total` o el símbolo de moneda seguido de un número. |
+| 1 | **Consultas operativas sin precios** | Las pantallas de preparación, reparto y confirmación, y los documentos DOC-02, DOC-04 y DOC-07, se arman con consultas que seleccionan columnas explícitas sin precio, costo, margen ni deuda (`lineasOperativas` y las de `src/modulos/entregas`). Vale para todos los usuarios, incluido el ADMIN. |
+| 2 | **Permiso en cada acción y página** | Cada caso de uso abre su transacción con el permiso que exige (`ejecutarComoUsuario(…, "compras.registrar", …)`); sin el permiso responde "sin permiso" y no graba nada. Las páginas piden su permiso al cargarse. |
+| 3 | **Frontera servidor/navegador** | Los Server Components pasan a los componentes del navegador solo los datos que la pantalla muestra, nunca filas completas. |
+| 4 | **Documentos del servidor** | Las vistas de impresión usan las mismas consultas operativas o valorizadas según el documento; la de DOC-03 exige `documentos.imprimir_contable`. |
+| 5 | **Sin caché compartida** | Las páginas con sesión son dinámicas: nada se cachea entre usuarios. |
+| 6 | **Pruebas de fuga** | Las pruebas de integración recorren las consultas de preparación y reparto y fallan si aparece un precio o un importe. |
 
 Alcance por filas además de columnas:
 
-- **REPARTIDOR:** solo ve repartos con `reparto.repartidor_id` = su usuario y las entregas de esos repartos. Si intenta abrir otro, recibe "no encontrado" (404), para no revelar que existe.
-- **Empresa:** todo queda limitado por `empresa_id` con RLS (ver 01-tipo-de-aplicacion-y-arquitectura.md, sección 11).
+- **REPARTIDOR:** solo ve sus repartos y las entregas de esos repartos, aunque tenga `entregas.ver` (RN-131). Si intenta abrir otro, recibe "no encontrado".
+- **Empresa:** todo queda limitado por `empresa_id` con RLS (01 §8).
 
-Verificación de permisos en el código (pseudocódigo):
+## 9. Combinación de roles
 
-```text
-funcion autorizar(contexto, permiso_requerido):
-    usuario = sesion_verificada(contexto)            # Supabase Auth, verificado en servidor
-    si usuario es nulo o usuario.activo = falso: error NO_AUTENTICADO
-    permisos = union(rol.permisos para cada rol activo de usuario)   # leído en cada pedido
-    si 'ADMIN' en roles o permiso_requerido en permisos: continuar
-    si no: registrar intento denegado (log técnico) y error SIN_PERMISO (403)
-```
+Un usuario puede tener varios roles; sus permisos son la unión. Las pantallas de preparación y reparto siguen sin precios aunque la persona tenga permisos de precios por otro rol.
 
 ---
 
-## 9. Combinación de roles y modo usuario único
+## 10. Cuentas y acceso
 
-### 9.1 Combinaciones típicas
+No hay correos del sistema: ni invitaciones ni recuperación de contraseña por correo.
 
-| Tamaño del negocio | Personas y roles sugeridos |
-|---|---|
-| 1 persona | Juan: ADMIN (modo usuario único). |
-| 3 personas | Juan: ADMIN. Laura: VENDEDOR + ADMINISTRATIVO. Pedro: COMPRADOR + PREPARADOR + REPARTIDOR. |
-| 6 o más | Un rol principal por persona; ADMIN solo para el dueño y, opcionalmente, un encargado. |
+### 10.1 Primer uso
 
-Los permisos efectivos son la unión de los roles; las pantallas operativas siguen sin precios aunque la persona tenga permisos de precios por otro rol.
+Mientras el sistema no está configurado, el ingreso lleva a `/configuracion-inicial`: nombre, usuario y contraseña de quien lo abre por primera vez y, opcional, el nombre del negocio. El servidor crea la cuenta en Supabase Auth, la empresa principal (id fijo: se puede crear una sola vez) y el usuario ADMIN, y entra directo. Después esa pantalla deja de existir.
 
-### 9.2 Modo usuario único
+### 10.2 Cada persona entra por su cuenta
 
-Cuando la empresa tiene **un solo usuario activo y es ADMIN**:
+Quien quiere entrar toca **Entrar con Google** (vuelve por `/auth/callback`; el botón aparece solo si Google está activado en Supabase) o **Crear una cuenta** (`/crear-cuenta`: nombre, usuario y contraseña). En los dos casos queda un **pedido de acceso** y la persona ve `/acceso-pendiente` hasta que alguien con `usuarios.administrar` lo **habilita** en Usuarios (queda ADMIN) o lo **rechaza** (la cuenta queda bloqueada). Como mucho 5 pedidos sin responder; el inicio avisa cuando hay pedidos.
 
-1. El menú se ordena según el circuito del día (Pedidos → Lista de compra → Compras → Preparación → Entregas → Documentos → Pagos) y el tablero muestra "qué falta hacer hoy".
-2. Las asignaciones (comprador de cada línea, repartidor del reparto) se completan automáticamente con ese usuario.
-3. No se piden confirmaciones "de otro rol" (p. ej. autorizar un exceso de límite sigue pidiendo motivo, porque la auditoría lo exige, pero no pide otro usuario).
-4. Los documentos se comportan igual: DOC-02 y DOC-07 salen sin precios aunque los imprima el dueño.
-5. El ADMIN dispone de **"Ver como…"**: vista previa de lo que verá un PREPARADOR o un REPARTIDOR, útil antes de sumar personal.
-6. Al dar de alta al segundo usuario, el sistema sale del modo usuario único sin migraciones ni cambios de datos.
+Un nombre de usuario se guarda en Supabase Auth como un correo interno que no se entrega (`nombre@sistema-juan.interno`); al entrar se escribe solo el nombre. Las cuentas las crea el servidor con la clave secreta de Supabase, nunca el navegador.
 
----
-
-## 10. Alta, desactivación y cambio de roles
-
-> **Decisión 26/09/2026 (uso interno):** no hay invitaciones ni recuperación de contraseña por correo. El correo incluido en Supabase solo entrega a los miembros del equipo del proyecto, y para un solo negocio no vale la pena contratar uno. Las columnas `invitacion_*` de `usuario` quedan sin uso.
-
-### 10.1 Primer usuario: configuración inicial
-
-Mientras el sistema no está configurado, el ingreso lleva a `/configuracion-inicial` ("Primer uso"): nombre, usuario y contraseña de quien lo abre por primera vez y, opcional, el nombre del negocio. El servidor crea la cuenta en Supabase Auth, la empresa principal (id fijo: solo se puede crear una vez) y el usuario con rol ADMIN, y entra directo. (El caso de uso admite crear dos personas a la vez; la pantalla ofrece una.) Si la cuenta ya se había creado a mano en Supabase y no pertenece a nadie, la reutiliza con la contraseña nueva. Después de eso la pantalla deja de existir.
-
-### 10.2 Alta de usuarios: cada uno por su cuenta (decisión del 26/09/2026)
-
-Quien quiere entrar abre el sistema y toca **Entrar con Google** (Supabase Auth con el proveedor Google, vuelve por `/auth/callback`) o **Crear una cuenta** (`/crear-cuenta`: nombre, usuario y contraseña; la cuenta la crea el servidor). En los dos casos queda un **pedido de acceso** (`usuario` inactivo con `accesoPedidoEn`) y la persona ve `/acceso-pendiente` hasta que alguien con `usuarios.administrar` lo **habilita** (queda ADMIN) o lo **rechaza** (la cuenta queda bloqueada). Como mucho 5 pedidos sin responder. El inicio del administrador avisa cuando hay pedidos.
-
-### 10.2.1 Alta de usuarios por el ADMIN (queda en el código, sin pantalla)
-
-> **Uso real (26/09/2026):** lo usan dos personas y las dos son ADMIN; la pantalla no muestra roles y todo usuario nuevo es ADMIN. Lo que sigue sobre roles queda para cuando haga falta alguien con acceso limitado.
-
-El ADMIN crea cada usuario en P-96 con un **nombre de usuario** (ej. `marta.deposito`, pensado para el personal sin correo) o un **correo**, sus roles y una **clave provisoria** que genera el sistema (8 letras fáciles de dictar); se muestra una sola vez para pasársela. En el primer ingreso la persona elige su propia contraseña (`/crear-clave`, `usuario.debe_cambiar_clave`) y no puede usar el sistema hasta hacerlo. Un nombre de usuario se guarda en Supabase Auth como un correo interno no entregable (`marta.deposito@sistema-juan.interno`); en el ingreso se escribe solo `marta.deposito`. Cada persona cambia su contraseña en "Mi cuenta" (P-03); si la olvida, el ADMIN le da otra clave provisoria y vuelve a elegir una. Las cuentas las crea el servidor con la clave secreta de Supabase: nunca el navegador.
-
-### 10.3 Reglas de administración
+### 10.3 Reglas
 
 | # | Regla |
 |---|---|
-| 1 | Solo quien tiene `usuarios.administrar` da de alta, cambia roles, desactiva, reactiva y crea roles personalizados. |
-| 2 | Siempre debe quedar **al menos un usuario activo con rol ADMIN**; el sistema rechaza desactivar o quitarle el rol al último. |
-| 3 | Un ADMIN no puede quitarse a sí mismo el rol ADMIN si no hay otro ADMIN activo. |
-| 4 | **Desactivar** (`usuario.activo = false`): bloquea el acceso en Supabase Auth y cierra todas sus sesiones en el momento. No se borra: su nombre sigue en pedidos, compras y auditoría. Si tiene un reparto EN_CURSO o líneas de lista de compra asignadas, el sistema pide reasignarlas antes. |
-| 5 | **Reactivar**: devuelve el acceso con los mismos roles (se audita). |
-| 6 | **Cambio de roles**: rige desde el siguiente pedido al servidor (los permisos se leen en cada pedido, sin caché de larga duración). Se audita con roles antes y después. |
-| 7 | **Roles personalizados**: el ADMIN puede crear roles nuevos (ej. "Encargado de depósito" = PREPARADOR + `repartos.gestionar`). Los roles de sistema no se borran; el rol ADMIN no se puede editar. |
-| 9 | Sin recuperación por correo: el ADMIN pone una contraseña nueva; cada uno cambia la suya en "Mi cuenta". |
+| 1 | Solo quien tiene `usuarios.administrar` habilita, rechaza o quita el acceso. |
+| 2 | Siempre queda **al menos un ADMIN activo**: el sistema no deja quitarle el acceso al último. |
+| 3 | **Quitar el acceso** no borra a la persona: su nombre sigue en pedidos, compras y auditoría. |
+| 4 | **Olvidó la contraseña:** "Darle una clave provisoria" (8 letras fáciles de dictar, se muestra una vez); en el próximo ingreso la persona elige una nueva (`/crear-clave`). Cada uno cambia la suya en "Mi cuenta". |
 
 ---
 
-## 11. Sesiones y auditoría de accesos
+## 11. Sesiones
 
 | Tema | Definición |
 |---|---|
-| Duración de sesión | Token de acceso de 1 hora renovado automáticamente; la sesión dura hasta 30 días en un dispositivo propio (práctico para el mercado de madrugada: no hay que volver a escribir la contraseña). Cierre por inactividad a los 7 días. |
-| Reautenticación | Acciones críticas (`usuarios.administrar`, `configuracion.editar`, `pagos.anular`, `facturacion.anular`, `jornada.reabrir`) piden reingresar la contraseña si el último ingreso tiene más de 12 horas. |
-| MFA | Recomendado (app autenticadora) para ADMIN y ADMINISTRATIVO; configurable como obligatorio. |
-| Dispositivos compartidos | Para una tablet del depósito compartida, se recomienda que cada preparador tenga su usuario y use "Cambiar de usuario" (la auditoría identifica a la persona). Un usuario genérico de depósito es posible pero no recomendado. |
-| Registro de ingresos | Cada inicio de sesión genera una fila en `auditoria` con acción `INICIO_SESION`, IP y dispositivo (user agent). `usuario.ultimo_acceso_en` se actualiza como máximo una vez por hora. Los intentos fallidos quedan en el registro de Supabase Auth. |
-| Pantalla de accesos | El ADMIN ve por usuario: último acceso, dispositivos recientes, sesiones abiertas, y puede **cerrar todas las sesiones** de un usuario (ej. celular perdido). |
-| Qué se audita de usuarios | Alta, cambio de roles, cambio de permisos de un rol, desactivación, reactivación, contraseña nueva puesta por el ADMIN, cierre de sesiones por el ADMIN. |
+| Duración | La sesión queda abierta en cada dispositivo (Supabase renueva el acceso solo): en el mercado de madrugada no hay que volver a escribir la contraseña. Se entra desde cualquier dispositivo, las veces que haga falta. |
+| Salir | "Salir" en la barra de arriba cierra la sesión de ese dispositivo. |
+| Qué se audita de usuarios | Habilitar o rechazar un pedido de acceso, clave provisoria nueva, quitar el acceso. |
 
 ---
 
 ## 12. Casos de prueba de permisos
 
-Estos casos se automatizan como pruebas de integración y son criterio de aceptación del MVP.
+Estos casos están automatizados como pruebas de integración.
 
 | # | Usuario | Acción | Resultado esperado |
 |---|---|---|---|
 | 1 | PREPARADOR | Abre la hoja de preparación de la jornada 24/09. | Ve productos, cantidades, clientes y observaciones; ningún campo de precio en la respuesta ni en el payload. |
-| 2 | PREPARADOR | Escribe a mano la URL del PDF de DOC-03 de una entrega. | 403, sin datos. |
+| 2 | PREPARADOR | Escribe a mano la dirección de la lista contable (DOC-03) de una entrega. | Sin permiso, sin datos. |
 | 3 | REPARTIDOR | Abre un reparto asignado a otro repartidor. | 404. |
 | 4 | REPARTIDOR | Confirma una entrega con 2 lechugas rechazadas. | Se registra la diferencia; la pantalla de confirmación no muestra importes. |
 | 5 | VENDEDOR | Abre la lista general de precios de compra (DOC-06). | 403. |
@@ -415,5 +360,3 @@ Estos casos se automatizan como pruebas de integración y son criterio de acepta
 | 10 | ADMIN | Intenta desactivarse siendo el único ADMIN. | Rechazado. |
 | 11 | Usuario desactivado | Hace cualquier pedido al servidor con una sesión abierta. | 401 y sesión cerrada. |
 | 12 | Usuario de la empresa A | Abre la entrega de la empresa B por id. | 404 (RLS no devuelve filas). |
-| 13 | ADMIN | Intenta agregar `precios.ver_venta` al rol REPARTIDOR. | Rechazado por el editor de roles. |
-| 14 | ADMINISTRATIVO | Anula un pago con sesión de hace 20 horas. | Pide reingresar la contraseña; luego anula con motivo y audita. |

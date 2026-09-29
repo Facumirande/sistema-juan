@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
@@ -7,6 +8,7 @@ import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { identificadorVisible, LARGO_MINIMO_CLAVE } from "@/seguridad/identificacion";
 import { CampoClave } from "@/ui/campo-clave";
 import { FormularioAccion } from "@/ui/formulario-accion";
+import { clasesBoton } from "@/ui/formularios";
 
 import { cambiarMiClave } from "./acciones";
 import { FormularioPerfil } from "./perfil";
@@ -33,6 +35,25 @@ export default async function PaginaMiCuenta() {
         <h2 className="mb-4 text-lg font-semibold">Tu perfil</h2>
         <FormularioPerfil nombre={sesion.nombre} color={sesion.color} otras={otras} />
       </div>
+
+      {(sesion.permisos.includes("usuarios.administrar") || sesion.permisos.includes("configuracion.ver")) && (
+        <div className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-4">
+          <h2 className="text-lg font-semibold">Administración</h2>
+          <p className="text-sm text-texto-suave">Quién puede entrar al sistema y los datos y ajustes del negocio.</p>
+          <div className="flex flex-wrap gap-2">
+            {sesion.permisos.includes("usuarios.administrar") && (
+              <Link href="/usuarios" className={clasesBoton("secundario")}>
+                👤 Usuarios
+              </Link>
+            )}
+            {sesion.permisos.includes("configuracion.ver") && (
+              <Link href="/configuracion" className={clasesBoton("secundario")}>
+                ⚙️ Configuración del negocio
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-lg border border-borde bg-superficie p-4">
         <h2 className="mb-4 text-lg font-semibold">Cambiar la contraseña</h2>

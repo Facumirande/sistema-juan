@@ -86,6 +86,9 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
         <Link href={`/balance/movimientos?desde=${desde}&hasta=${hasta}`} className={clasesBoton("secundario")}>
           Movimientos
         </Link>
+        <Link href="/reportes" className={clasesBoton("secundario")}>
+          Reportes
+        </Link>
       </Encabezado>
 
       <div className="flex flex-col gap-3 print:hidden">

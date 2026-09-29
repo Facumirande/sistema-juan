@@ -60,9 +60,9 @@ const HORARIOS: readonly { texto: string; desde: string; hasta: string }[] = [
 ];
 
 const ETAPA: Readonly<Record<string, string>> = {
-  BORRADOR: "por confirmar",
-  CONFIRMADO: "confirmado",
-  EN_COMPRA: "en la lista de compra",
+  BORRADOR: "en Pedidos",
+  CONFIRMADO: "en Pedidos",
+  EN_COMPRA: "en la lista de compras",
   EN_PREPARACION: "preparándose",
   PREPARADO: "preparado",
   EN_REPARTO: "en camino",
@@ -396,17 +396,16 @@ export function CargadorDePedido({
   };
 
   if (listo) {
-    const confirmado = listo.estado !== "BORRADOR";
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-5 rounded-2xl border border-borde bg-superficie p-6 text-center sm:p-10" role="status">
         <span aria-hidden className="text-7xl leading-none">
           ✅
         </span>
-        <h1 className="text-3xl font-semibold">{editando ? "Cambios guardados" : confirmado ? "Pedido confirmado" : "Pedido guardado"}</h1>
+        <h1 className="text-3xl font-semibold">{editando ? "Cambios guardados" : "Pedido guardado"}</h1>
         <p className="text-xl">
           {listo.numero} de <b>{listo.cliente}</b> para el {fechaConDia(listo.fecha)}.
         </p>
-        {!confirmado && <p className="text-lg text-texto-suave">Quedó en “Por confirmar”: cuando esté seguro, confirmalo desde el tablero (o abrí la tarjeta y tocá Confirmar).</p>}
+        {listo.estado === "CONFIRMADO" && <p className="text-lg text-texto-suave">Quedó en la columna “Pedidos” del tablero: desde ahí se manda a la lista de compras.</p>}
         {listo.totalEstimado !== null && (
           <p className="text-lg">
             Total estimado: <b>{formatearMoneda(listo.totalEstimado)}</b>
@@ -436,7 +435,8 @@ export function CargadorDePedido({
     );
   }
 
-  const botonPrincipal = editando ? (pedido.estado === "BORRADOR" && puedeConfirmar ? "✓ Guardar y confirmar" : "Guardar cambios") : puedeConfirmar ? "✓ Guardar y confirmar" : "Guardar el pedido";
+  const botonPrincipal = editando ? "✓ Guardar los cambios" : "✓ Guardar el pedido";
+  // No hay confirmación a la vista: un pedido guardado ya queda listo para mandarse a la lista de compras.
   const confirmaAlGuardar = puedeConfirmar && (!editando || pedido.estado === "BORRADOR");
 
   return (
@@ -446,9 +446,9 @@ export function CargadorDePedido({
           <h1 className="text-3xl font-semibold">{editando ? `Cambiar el pedido ${pedido.numero}` : "Nuevo pedido"}</h1>
           <p className="text-lg text-texto-suave">
             {editando
-              ? pedido.estado === "BORRADOR"
-                ? "Sumá, cambiá o sacá productos y guardá."
-                : `Está ${ETAPA[pedido.estado] ?? "en curso"}: lo que saques queda anotado como cancelado${pedido.estado === "EN_COMPRA" ? " y la lista de compra se marca para actualizar" : ""}.`
+              ? pedido.estado === "EN_COMPRA"
+                ? "Ya está en la lista de compras: al guardar, la lista se marca para actualizarla con lo nuevo."
+                : "Sumá, cambiá o sacá productos y guardá."
               : "Tocá el cliente, el día y lo que lleva. Al final, guardalo."}
           </p>
         </div>
@@ -772,13 +772,8 @@ export function CargadorDePedido({
             <button type="button" disabled={guardando} onClick={() => guardar(confirmaAlGuardar)} className="min-h-14 rounded-xl bg-marca px-4 text-lg font-semibold text-marca-texto disabled:opacity-60">
               {guardando ? "Guardando…" : botonPrincipal}
             </button>
-            {confirmaAlGuardar && (
-              <button type="button" disabled={guardando} onClick={() => guardar(false)} className="min-h-12 rounded-xl border-2 border-borde px-4 font-semibold disabled:opacity-60">
-                Guardar sin confirmar
-              </button>
-            )}
             <p className="text-sm text-texto-suave">
-              {confirmaAlGuardar ? "Confirmado entra para la compra. Sin confirmar queda en “Por confirmar” para revisarlo después." : "Los cambios se ven enseguida en el tablero."}
+              {editando ? "Los cambios se ven enseguida en el tablero." : "Queda en la columna “Pedidos” del tablero; desde ahí se manda a la lista de compras."}
             </p>
           </div>
         </aside>

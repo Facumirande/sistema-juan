@@ -75,7 +75,7 @@ export function FormularioCliente() {
           </div>
         </Pregunta>
 
-        <Pregunta n={2} titulo="¿Dónde se le entrega?" ayuda="Sin una dirección no se le pueden confirmar pedidos. Después, en su ficha, podés marcarla en el mapa o agregar otra.">
+        <Pregunta n={2} titulo="¿Dónde se le entrega?" ayuda="Sin una dirección no se le pueden cargar pedidos. Después, en su ficha, podés marcarla en el mapa o agregar otra.">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <input name="punto_direccion" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle y número" aria-label="Dirección de entrega" className={campoGrande} />
             <input name="punto_localidad" placeholder="Localidad (opcional)" aria-label="Localidad" className={campoGrande} />

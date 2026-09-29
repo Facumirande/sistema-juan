@@ -1,6 +1,6 @@
 # 09 · Documentos imprimibles
 
-> **Propósito:** definir cada documento que el sistema imprime o entrega en PDF: para qué sirve, quién lo puede sacar, de dónde salen sus datos, qué contiene y en qué orden, cómo se numera y versiona, y cómo se garantiza que los documentos sin precios nunca lleven precios. Cubre R5, R7, R10, R11 y R12.
+> **Propósito:** definir cada documento que el sistema imprime: para qué sirve, quién lo puede sacar, de dónde salen sus datos, qué contiene y en qué orden, cómo se numera y versiona, y cómo se garantiza que los documentos sin precios nunca lleven precios. Cubre R5, R7, R10, R11 y R12.
 
 ## Contenido
 
@@ -20,9 +20,8 @@
    - [DOC-08 Comprobante interno de venta](#doc-08-comprobante-interno-de-venta)
 7. [Implementación técnica](#7-implementación-técnica)
 8. [Casos de prueba de documentos](#8-casos-de-prueba-de-documentos)
-9. [Documentos de fases posteriores (PROPUESTO)](#9-documentos-de-fases-posteriores-propuesto)
 
-Documentos relacionados: `01-tipo-de-aplicacion-y-arquitectura.md` (vistas de impresión y PDF en el servidor, Storage), `02-usuarios-roles-y-permisos.md` (permisos `documentos.*`, ocultamiento de precios), `03-modelo-de-datos.md` (`documento_emitido`, vistas `v_op_*`, snapshots), `04-procesos-y-flujos.md` (cuándo se emite cada documento), `06-creditos-y-pagos.md` §11 (contenido de DOC-05), `08-pantallas-y-acciones.md` (desde qué pantalla se imprime cada uno).
+Documentos relacionados: `01-tipo-de-aplicacion-y-arquitectura.md` (vistas de impresión), `02-usuarios-roles-y-permisos.md` (permisos `documentos.*`, ocultamiento de precios), `03-modelo-de-datos.md` (`documento_emitido`, vistas `v_op_*`, snapshots), `04-procesos-y-flujos.md` (cuándo se emite cada documento), `06-creditos-y-pagos.md` §11 (contenido de DOC-05), `08-pantallas-y-acciones.md` (desde qué pantalla se imprime cada uno).
 
 Los ejemplos usan el escenario de `04-procesos-y-flujos.md` §2 (jornada del jueves 24/09/2026). Números de entrega del ejemplo: ENT-000411 Hospital San Martín, ENT-000412 Restaurante La Esquina, ENT-000413 Verdulería Don Pepe; reparto REP-000088. Direcciones y teléfonos son ficticios.
 
@@ -32,12 +31,12 @@ Los ejemplos usan el escenario de `04-procesos-y-flujos.md` §2 (jornada del jue
 
 | # | Principio | Consecuencia |
 |---|---|---|
-| 1 | **Un documento, dos salidas idénticas** | Cada documento tiene una vista HTML para imprimir en el momento (botón **Imprimir**, CSS `@media print`, A4) y un PDF generado en el servidor para archivar, descargar o compartir. Ambas se dibujan a partir del **mismo contenido** (§7.1), por eso muestran lo mismo (RNF-12). |
+| 1 | **Una vista de impresión** | Cada documento es una vista HTML A4 (`@media print`) con el botón **🖨️ Imprimir**; para compartirlo se usa "Guardar como PDF" del navegador. |
 | 2 | **A4 vertical, legible en blanco y negro** | Ningún dato depende del color: estados, alertas y semáforos llevan texto. Letra mínima de 9 pt. |
-| 3 | **Sin precios quiere decir sin precios en el servidor** | DOC-02, DOC-04 y DOC-07 se arman solo con las vistas operativas `v_op_*`; su contenido guardado no tiene ningún campo de precio, costo, margen ni deuda, y así lo verifica una prueba automática (RN-124; 02 §8). No alcanza con no dibujarlos. |
-| 4 | **Lo emitido no cambia** | El contenido exacto de cada emisión se guarda en `documento_emitido.contenido` y el PDF en Storage con su huella SHA-256. Si algo cambia después, se emite una versión nueva; la anterior queda como `REEMPLAZADO` (03 §11.4). |
+| 3 | **Sin precios quiere decir sin precios en el servidor** | DOC-02, DOC-04 y DOC-07 se arman con consultas que no leen ningún precio, costo, margen ni deuda, y así lo verifica una prueba automática (RN-124; 02 §8). No alcanza con no dibujarlos. |
+| 4 | **Lo emitido no cambia** | El contenido exacto de cada emisión de DOC-02 y DOC-03 se guarda en `documento_emitido.contenido`. Si algo cambia después, se emite una versión nueva; la anterior queda como `REEMPLAZADO` (03 §11.4). |
 | 5 | **La misma entrega, la misma versión** | DOC-02 y DOC-03 se emiten siempre juntos, de la misma entrega y con el mismo número de versión (RN-120). |
-| 6 | **Nada se borra** | Un documento emitido se anula (`ANULADO`, con motivo), nunca se elimina; el PDF se conserva. |
+| 6 | **Nada se borra** | Un documento emitido se anula (`ANULADO`, con motivo), nunca se elimina. |
 | 7 | **Lo imprime quien tiene permiso, y solo lo que puede ver** | Cada documento exige su permiso `documentos.*` (§3). Las columnas de costos o crédito de DOC-01 y DOC-06 aparecen solo si el usuario además puede verlas. |
 
 ---
@@ -54,8 +53,6 @@ Los ejemplos usan el escenario de `04-procesos-y-flujos.md` §2 (jornada del jue
 | DOC-06 | Lista general de precios de compra | Ver y actualizar en papel los precios de cada proveedor recorriendo el mercado. | COMPRADOR, ADMIN | `empresa` | P-25 | MVP |
 | DOC-07 | Hoja de preparación por cliente (sin precios) | Armar la mercadería de cada cliente y anotar el peso real. | PREPARADOR | `jornada` | P-70 | MVP |
 | DOC-08 | Comprobante interno de venta | Registrar la venta de una o varias entregas en un comprobante no fiscal (04 §5.g.2). | ADMINISTRATIVO, ADMIN, cliente | `factura` | P-86, P-87 | MVP |
-| DOC-09 | Estado de cuenta de cliente | Ver §9. | ADMINISTRATIVO | `cliente` | — | PROPUESTO |
-| DOC-10 | Recibo de cobro | Ver §9. | ADMINISTRATIVO, REPARTIDOR | `cobro_cliente` | — | PROPUESTO |
 
 DOC-08 se agrega al catálogo del contrato de diseño (DOC-01 a DOC-07) porque `04-procesos-y-flujos.md` §5.g.2 y RN-140 piden un comprobante interno imprimible; el enum `tipo_documento` de `03-modelo-de-datos.md` ya preveía agregar `DOC_08` en adelante desde este documento.
 
@@ -95,20 +92,11 @@ Documento × rol con los permisos por defecto (02 §5). **Sí** = lo imprime; **
 
 ### 4.1 Qué se registra de cada documento
 
-Cada impresión o descarga deja una fila en `documento_emitido` (03 §11.4) con el contenido impreso. Para las entidades que tienen versión propia, `version` es esa versión; para las demás es un **número correlativo de emisión** por entidad (1, 2, 3…), de modo que la restricción `unique (empresa_id, tipo, entidad_id, version) where evento = 'EMISION'` se cumple siempre.
-
-| Documento | `entidad` | `version` | Nueva **EMISION** cuando… | **REIMPRESION** cuando… | PDF en Storage |
-|---|---|---|---|---|---|
-| DOC-01 | `lista_compra` | `lista_compra.version` | Se imprime por primera vez una versión de la lista. | Se vuelve a imprimir la misma versión. | Al descargar o compartir. |
-| DOC-02 | `entrega` | `entrega.version` | Se emiten los documentos de la entrega (junto con DOC-03). | Se vuelve a imprimir la versión vigente. | Siempre (al emitir). |
-| DOC-03 | `entrega` | `entrega.version` | Ídem DOC-02, en la misma transacción. | Ídem. | Siempre (al emitir). |
-| DOC-04 | `reparto` | Correlativo | Se imprime por primera vez o cambió el reparto (paradas, orden, repartidor o vehículo) desde la última emisión. | Sin cambios desde la última emisión. | Al descargar o compartir. |
-| DOC-05 | `proveedor` | Correlativo | Cada generación (el período y los filtros quedan en `contenido`). | — | Siempre. |
-| DOC-06 | `empresa` | Correlativo | Cada generación (filtros y agrupación en `contenido`). | — | Al descargar o compartir. |
-| DOC-07 | `jornada` | Correlativo | Cada generación (entregas incluidas y vista por cliente o por producto en `contenido`). | — | Al descargar o compartir. |
-| DOC-08 | `factura` | 1 (un comprobante no se versiona: se anula y se emite otro) | Al emitir el comprobante. | Cada nueva impresión. | Siempre. |
-
-La impresión HTML registra la fila con su `contenido` y sin `pdf_path`; si luego se descarga el PDF de esa misma emisión, se genera desde ese `contenido` y se completan `pdf_path` y `pdf_sha256`. Las reimpresiones de DOC-02, DOC-03, DOC-07 y DOC-08 se auditan (02 §4.6).
+| Documento | Se registra en `documento_emitido` |
+|---|---|
+| DOC-02 y DOC-03 | Sí: una fila `EMISION` por versión de la entrega, con el `contenido` exacto (§4.2). |
+| DOC-08 | El comprobante mismo (`factura`) es el registro: no cambia; se anula y se emite otro. |
+| DOC-01, DOC-04, DOC-05, DOC-06, DOC-07 | No: se arman en el momento con los datos vigentes. |
 
 ### 4.2 Emisión de los documentos de una entrega (DOC-02 y DOC-03)
 
@@ -120,7 +108,7 @@ función emitirDocumentosEntrega(entrega, usuario, confirma_margen_negativo = fa
     requiere jornada(entrega).estado ≠ CERRADA                       // RN-041
     requiere entrega.estado_facturacion = SIN_FACTURAR                // RN-138
     requiere permiso entregas.emitir_documentos,
-             o que la emisión la dispare "Marcar PREPARADA" con empresa.emitir_documentos_al_preparar
+             o que la emisión la dispare "Marcar como preparado"
 
     si entrega.version > 0 y existe documento_emitido(DOC_02, entrega, entrega.version, EMISION):
         devolver REIMPRESION                                           // RN-133: no se emite de nuevo
@@ -136,12 +124,10 @@ función emitirDocumentosEntrega(entrega, usuario, confirma_margen_negativo = fa
     si entrega.precios_congelados_en es null: entrega.precios_congelados_en = ahora
     recalcular importes de líneas y totales; guardar snapshots de cliente y dirección
 
-    c02 = construirContenidoDOC02(entrega)       // solo v_op_entrega y v_op_entrega_item
-    c03 = construirContenidoDOC03(entrega)       // entrega_item con precios congelados
-    pdf02 = renderizarPDF(c02) ; pdf03 = renderizarPDF(c03)
-    subir ambos PDFs a Storage y calcular su SHA-256
-    insertar documento_emitido(DOC_02, version, EMISION, VIGENTE, c02, pdf02)
-    insertar documento_emitido(DOC_03, version, EMISION, VIGENTE, c03, pdf03)
+    c02 = contenidoListaEntrega(entrega)         // consultas sin precios (lineasOperativas)
+    c03 = contenido con precios congelados
+    insertar documento_emitido(DOC_02, version, EMISION, VIGENTE, c02)
+    insertar documento_emitido(DOC_03, version, EMISION, VIGENTE, c03)
     marcar REEMPLAZADO los DOC_02 y DOC_03 VIGENTE de versiones anteriores
     auditar EMISION_DOCUMENTO
 
@@ -154,7 +140,7 @@ función registrarCambioEntrega(entrega, cambio, usuario):          // llamada p
         emitirDocumentosEntrega(entrega, usuario)                   // misma transacción
 ```
 
-Todo corre en el servidor con el rol normal de la aplicación, también cuando lo dispara un PREPARADOR o un REPARTIDOR: el PDF de DOC-03 se guarda, pero a ellos se les devuelve solo DOC-02 (02 §8 capa 2; 03 §17.12).
+Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 queda registrado, pero solo lo puede abrir quien tiene `documentos.imprimir_contable` (02 §8).
 
 ### 4.3 Ejemplo de versiones
 
@@ -188,7 +174,7 @@ Todo corre en el servidor con el rol normal de la aplicación, también cuando l
 |---|---|
 | Encabezado izquierdo | Logo, `empresa.nombre`, identificación y condición fiscal, dirección y teléfono (si están cargados). |
 | Encabezado derecho | Nombre del documento en mayúsculas, número visible y versión, fecha principal (jornada, período o fecha de emisión). |
-| Pie | Fecha y hora de emisión (zona de la empresa), usuario, primeros 8 caracteres de la huella SHA-256 (solo en PDF), página X de Y, leyendas del documento. |
+| Pie | Fecha y hora de emisión (zona de la empresa), usuario, página X de Y, leyendas del documento. |
 | Marca de agua | `REEMPLAZADO — ver versión N` al reimprimir una versión vieja; `ANULADO` en documentos anulados; `VISTA PREVIA` cuando se imprime algo que todavía no se emitió (p. ej. una entrega en preparación). |
 
 ### 5.2 Formatos
@@ -208,7 +194,7 @@ Todo corre en el servidor con el rol normal de la aplicación, también cuando l
 - El encabezado de las tablas se repite en cada página (`thead { display: table-header-group }`); una fila no se parte entre páginas (`break-inside: avoid`); en DOC-02, DOC-03, DOC-07 y DOC-08 cada entrega o cliente empieza en una página nueva cuando se imprimen varios juntos.
 - Casillas para anotar a mano (☐, líneas `______`) con alto mínimo de 7 mm.
 - La vista de impresión no carga el menú ni scripts de la aplicación; el botón **Imprimir** llama a `window.print()`.
-- Numeración de páginas: exacta en el PDF; en la vista HTML se usa el pie del navegador.
+- Numeración de páginas: la del pie del navegador.
 
 ---
 
@@ -264,7 +250,7 @@ E · MAYORISTA NORTE — Nave 1                    VERDE 13,3 % → 55,0 % · di
 | Campo | Definición |
 |---|---|
 | Cuándo | Al emitir los documentos de la entrega (§4.2), normalmente al marcarla `PREPARADA`; se reemite con cada versión nueva. |
-| Fuente | **Solo** `v_op_entrega` y `v_op_entrega_item` (03 §17.12). |
+| Fuente | **Solo** consultas sin precios (`contenidoListaEntrega`, `lineasOperativas`; 03 §17). |
 | Copias | Se recomienda imprimir dos: **ORIGINAL — CLIENTE** y **DUPLICADO — EMPRESA** (vuelve firmado). La vista de impresión ofrece "2 copias" y agrega el rótulo a cada una. |
 
 **Contenido**
@@ -347,14 +333,13 @@ Precios fijados el 24/09/2026 07:40; no cambian aunque cambien las listas de pre
 | Campo | Definición |
 |---|---|
 | Cuándo | Al armar el reparto (P-76) o antes de salir (P-77). |
-| Fuente | **Solo** `v_op_reparto` y `v_op_entrega` (sin precios; los datos de contacto y horario se leen del punto de entrega vigente, 03 §18). |
+| Fuente | **Solo** consultas sin precios (los datos de contacto y horario se leen del punto de entrega vigente, 03 §18). |
 
 **Contenido**
 
 1. Encabezado: "HOJA DE RUTA", `REP-` número, jornada, repartidor, vehículo, salida prevista, cantidad de paradas y bultos totales.
 2. Paradas en orden: orden · cliente y punto de entrega · dirección y localidad (con referencias) · franja de recepción · contacto y teléfono · bultos · número de entrega y versión · instrucciones de entrega · columnas vacías **Llegada** y **Recibió**.
-3. Opcional (PDF): código QR por parada que abre el mapa con la ubicación.
-4. Pie: "Documento sin valores." y "Devolver al finalizar el reparto con los duplicados firmados."
+3. Pie: "Documento sin valores." y "Devolver al finalizar el reparto con los duplicados firmados."
 
 **Ejemplo** (orden y horarios de 04 §5.f.1):
 
@@ -470,7 +455,7 @@ B · LA QUINTA — Puesto 32 · 11 5555-0102
 | Campo | Definición |
 |---|---|
 | Cuándo | Al iniciar la preparación o en cualquier momento de la jornada `PREPARANDO` (P-70). |
-| Fuente | **Solo** `v_op_hoja_preparacion` (03 §17.12). |
+| Fuente | **Solo** consultas sin precios (03 §17). |
 | Variantes | **Por cliente** (una hoja por entrega, en el orden del reparto) y **por producto** (una hoja por producto con el reparto entre clientes, útil para pesar a granel y para faltantes). |
 
 **Contenido (por cliente)**
@@ -553,85 +538,45 @@ Los remitos valorizados de cada entrega respaldan este comprobante.
 
 ## 7. Implementación técnica
 
-### 7.1 Un contenido, dos dibujos
+### 7.1 Rutas
 
-```mermaid
-flowchart LR
-    Q["Consultas del documento<br/>DOC-02/04/07: solo consultas-operativas"] --> C["construirContenidoDOCxx<br/>objeto JSON validado con Zod"]
-    C --> H["Vista HTML A4<br/>/imprimir/..."]
-    C --> P["PDF en el servidor<br/>react-pdf"]
-    C --> S[("documento_emitido.contenido")]
-    P --> ST[("Storage<br/>empresa_id/DOC_xx/aaaa/archivo.pdf")]
-    S -. regenerar PDF .-> P
-```
-
-1. **Constructor de contenido** (`src/documentos/<doc>/contenido.ts`): una función del servidor por documento que consulta los datos y devuelve un objeto con todo lo que se imprime, ya formateado en lo que no depende del medio (textos de estado, equivalencias de presentación). Su esquema Zod es estricto: un campo no previsto hace fallar la emisión.
-2. Los constructores de DOC-02, DOC-04 y DOC-07 solo pueden importar `consultas-operativas.ts` (regla de dependencias en la CI, 01 §8) y sus esquemas **no tienen** campos de precio.
-3. **Dos dibujos del mismo contenido:** un componente React para la vista HTML (`app/imprimir/...`) y una plantilla `@react-pdf/renderer` para el PDF (`src/documentos/<doc>/pdf.tsx`). Comparten los componentes de formato (moneda, cantidades, fechas).
-4. El contenido es lo que se guarda en `documento_emitido.contenido`; con él se puede **regenerar** un PDF idéntico si se pierde el archivo (01 §14).
-
-### 7.2 Rutas
-
-| Ruta | Qué hace | Controles |
+| Ruta | Documento | Controles |
 |---|---|---|
-| `/imprimir/lista-compra/[id]` | DOC-01 HTML | `documentos.imprimir_compra`; columnas C y F según permisos. |
-| `/imprimir/entrega/[id]/sin-precios` | DOC-02 HTML de la versión vigente (o `?version=N`) | `documentos.imprimir_entrega`; REPARTIDOR: solo sus repartos (404 si no). |
-| `/imprimir/entrega/[id]/contable` | DOC-03 HTML | `documentos.imprimir_contable`; si no, 403 sin datos. |
-| `/imprimir/reparto/[id]` | DOC-04 HTML | `documentos.imprimir_entrega`; REPARTIDOR: solo sus repartos. |
-| `/imprimir/proveedor/[id]/estado-cuenta?desde=&hasta=` | DOC-05 HTML | `documentos.imprimir_cuenta`. |
-| `/imprimir/precios-compra?agrupar=&filtros` | DOC-06 HTML | `documentos.imprimir_compra`; columnas según permisos. |
-| `/imprimir/preparacion/[fecha]?vista=cliente\|producto&entregas=` | DOC-07 HTML | `documentos.imprimir_entrega`. |
-| `/imprimir/factura/[id]` | DOC-08 HTML | `documentos.imprimir_contable`. |
-| `/api/documentos/[tipo]/[id]/pdf` | Devuelve el PDF: si ya existe la emisión, desde Storage; si no, lo genera, lo guarda y registra la emisión. | Mismos permisos que la vista; respuesta `no-store`; URL firmada de 5 minutos para descargar desde Storage. |
+| `/lista-compra/imprimir?fecha=` | DOC-01 | `documentos.imprimir_compra`; columnas de costo según permisos. |
+| `/entregas/[id]/documento/lista-entrega` | DOC-02 de la versión vigente | `documentos.imprimir_entrega`; REPARTIDOR: solo sus repartos. |
+| `/entregas/[id]/documento/lista-contable` | DOC-03 | `documentos.imprimir_contable`; si no, sin datos. |
+| `/entregas/remitos?fecha=` | Todos los DOC-02 (una o dos copias) o todos los DOC-03 del día juntos | Los mismos permisos. |
+| `/repartos/[id]/imprimir` | DOC-04 | `documentos.imprimir_entrega`. |
+| `/cuentas-proveedores/[id]/estado-de-cuenta` | DOC-05 | `documentos.imprimir_cuenta`. |
+| `/precios/compra/imprimir` | DOC-06 | `documentos.imprimir_compra`. |
+| `/preparacion/[fecha]/imprimir` | DOC-07 (por cliente o por producto) | `documentos.imprimir_entrega`. |
+| `/facturacion/[id]/imprimir` | DOC-08 | `documentos.imprimir_contable`. |
 
-### 7.3 Compartir y enviar
+Las vistas son Server Components sin JavaScript de la aplicación, con la barra de pantalla oculta al imprimir; una hoja de ruta de 40 paradas o una hoja de preparación de 30 clientes se dibuja en menos de un segundo.
 
-- **Compartir** (celular): Web Share API con el archivo PDF (WhatsApp, correo, etc.). Si el navegador no lo permite, descarga el archivo.
-- **Enviar por correo** (PC): a `cliente.email_contable` (DOC-03, DOC-08) o al correo del proveedor (DOC-05), con el PDF adjunto, desde el SMTP transaccional (01 §5). Se registra `documento_emitido.enviado_a`. El envío automático de DOC-03 al confirmar cada entrega queda **PROPUESTO** (decisión pendiente en `10-plan-de-implementacion.md`).
-- Los enlaces a Storage nunca se comparten: vencen a los 5 minutos (01 §12).
+### 7.2 Compartir
 
-### 7.4 Almacenamiento
-
-- Ruta: `empresa_id/DOC_xx/aaaa/<numero_visible>.pdf`, por ejemplo `…/DOC_03/2026/ENT-000413-v2.pdf`, `…/DOC_05/2026/PROV-hnos-garcia-e3.pdf`.
-- Bucket privado; políticas que verifican el prefijo `empresa_id/` (01 §11).
-- Los PDFs emitidos no se borran nunca (la tarea de limpieza solo borra exportaciones temporales, 01 §6.4). Tamaño estimado: 30–80 KB por documento.
-
-### 7.5 Rendimiento
-
-- Vistas HTML: se sirven como Server Components sin JavaScript de la aplicación; una hoja de ruta de 40 paradas o una hoja de preparación de 30 clientes se dibuja en menos de 1 segundo.
-- PDF: bajo demanda; para lotes grandes (hojas de preparación de toda la jornada) se genera un solo PDF con una página por entrega; si tarda más de 10 segundos, se ofrece la vista HTML (RT-07).
+Desde el celular o la PC: **Imprimir** → "Guardar como PDF" y se comparte por WhatsApp o correo a mano (decisión D-06: no hay envío automático).
 
 ---
 
 ## 8. Casos de prueba de documentos
 
-Se automatizan (integración y e2e) y son criterio de aceptación del MVP junto con los de 02 §12.
+Automatizados como pruebas de integración, junto con los de 02 §12.
 
 | # | Caso | Resultado esperado |
 |---|---|---|
 | 1 | Emitir los documentos de ENT-000412 del escenario. | DOC-02 y DOC-03 versión 1 en la misma transacción; total de DOC-03 $114.400,00; dos filas `EMISION` `VIGENTE`; `entrega.version` = 1; precios congelados. |
-| 2 | Buscar en el `contenido` y en el texto del PDF de DOC-02, DOC-04 y DOC-07 las claves `precio`, `costo`, `importe`, `total` (como importe), `recargo`, `margen`, `saldo` y el símbolo de moneda seguido de un número. | Ninguna coincidencia (02 §8, capa 8). |
-| 3 | PREPARADOR marca PREPARADA una entrega con emisión automática. | Recibe solo DOC-02; DOC-03 existe en Storage; la respuesta no contiene datos de DOC-03. |
-| 4 | PREPARADOR abre `/imprimir/entrega/[id]/contable` o `/api/documentos/DOC_03/[id]/pdf`. | 403 sin datos. |
+| 2 | Buscar en el contenido de DOC-02, DOC-04 y DOC-07 las claves `precio`, `costo`, `importe`, `total` (como importe), `recargo`, `margen`, `saldo` y el símbolo de moneda seguido de un número. | Ninguna coincidencia (02 §8, capa 8). |
+| 3 | PREPARADOR marca preparada una entrega. | Se registran DOC-02 y DOC-03; la respuesta no contiene datos de DOC-03. |
+| 4 | PREPARADOR abre la lista contable (DOC-03) de una entrega. | Sin permiso, sin datos. |
 | 5 | REPARTIDOR abre la hoja de ruta de un reparto ajeno. | 404. |
 | 6 | Confirmar ENT-000413 con 4 kg de tomate rechazados. | Versión 2; DOC-03 v2 total $222.770,00; los de versión 1 `REEMPLAZADO`; reimprimir la v1 muestra la marca de agua `REEMPLAZADO — ver versión 2`. |
 | 7 | Reimprimir DOC-02 de una versión vigente. | Fila `REIMPRESION`, sin versión nueva (RN-133). |
-| 8 | Emitir con una línea sin precio. | Bloqueo `PRECIO_SIN_COSTO`; no se crea ninguna fila ni PDF. |
+| 8 | Emitir con una línea sin precio. | Bloqueo `PRECIO_SIN_COSTO`; no se crea ninguna fila. |
 | 9 | Emitir con una línea con margen negativo sin confirmar / confirmando. | Pide confirmación / emite y audita. |
 | 10 | Intentar emitir o reimprimir documentos de una entrega `FACTURADA` para corregirla. | Bloqueo `DOCUMENTO_EMITIDO` (RN-138); la reimpresión de la versión vigente sí se permite. |
 | 11 | Generar DOC-05 de Hnos. García del 01/09 al 16/09 dos veces. | Mismo contenido (salvo fecha de emisión); saldo al cierre $15.000,00; Debe − Haber = saldo. |
 | 12 | Imprimir DOC-01 y DOC-06 con un usuario sin `precios.ver_costos`. | Sin columnas de precio ni costo; el `contenido` guardado tampoco las tiene. |
-| 13 | Comparar el texto extraído del PDF con el de la vista HTML de cada documento del escenario. | Mismos datos (RNF-12). |
-| 14 | Regenerar el PDF de una emisión a partir de `contenido` después de borrar el archivo en un entorno de prueba. | PDF con los mismos datos. |
 | 15 | Emitir DOC-08 de un período de un cliente `MENSUAL`. | Total = Σ totales de la última versión de cada entrega; leyenda "Documento no válido como factura". |
 
----
-
-## 9. Documentos de fases posteriores (PROPUESTO)
-
-| ID | Documento | Fase | Contenido previsto |
-|---|---|---|---|
-| DOC-09 | Estado de cuenta de cliente | 2 (Cobranzas) | Espejo de DOC-05 para clientes: saldo inicial, comprobantes, cobros, ajustes, saldo, comprobantes pendientes con antigüedad (06 §13). |
-| DOC-10 | Recibo de cobro | 2 (Cobranzas) | Número, fecha, cliente, monto, medio, referencia, comprobantes cancelados. Si lo emite el REPARTIDOR al cobrar en la entrega, solo muestra el total cobrado. |
-| — | Comprobante fiscal electrónico | 3 | Lo emite el organismo o el proveedor autorizado (ARCA/AFIP o DGI/CFE) con su formato legal (QR, CAE o datos del CFE). DOC-08 queda como documento interno de respaldo. |
-| — | Etiquetas de bultos | 3 | Etiqueta por bulto con cliente, entrega, parada y número de bulto ("3 de 22"), para impresoras térmicas (RT-08). |

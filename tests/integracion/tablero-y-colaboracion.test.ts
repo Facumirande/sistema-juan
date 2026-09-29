@@ -8,7 +8,7 @@ import { bandejaDeNotas, borrarNota, contarNotasSinLeer, escribirNota, marcarNot
 import { cambiarMiPerfil } from "@/modulos/colaboracion/personas";
 import { generarListaCompra, obtenerListaCompra, sacarPedidoDeLista } from "@/modulos/compras/lista-compra";
 import { registrarCompra } from "@/modulos/compras/compras";
-import { iniciarPreparacion, obtenerEntregaParaPreparar, obtenerPreparacion } from "@/modulos/entregas/preparacion";
+import { iniciarPreparacion, obtenerEntregaParaPreparar, obtenerPreparacion, registrarPreparado } from "@/modulos/entregas/preparacion";
 import { armarRepartoConOrden, fijarOrdenDeReparto, obtenerReparto } from "@/modulos/entregas/repartos";
 import { buscarDireccion, resolverEnlaceDeMapa, ubicarPuntoDeEntrega, ubicarSalida, viajeDelDia } from "@/modulos/entregas/viaje";
 import { diaDeTrabajo } from "@/modulos/jornadas/dia";
@@ -82,13 +82,13 @@ describe("el tablero", () => {
   it("cada pedido en su columna, con su avance de compra", async () => {
     const t = await tableroDePedidos(j.base.db, j.admin, dia);
     const columna = (clave: string) => t.columnas.find((c) => c.clave === clave)!.tarjetas.map((x) => x.cliente);
-    expect(columna("por_confirmar")).toEqual(["Restaurante La Esquina"]);
+    expect(columna("pedidos")).toEqual(["Restaurante La Esquina"]);
     expect(columna("en_lista").sort()).toEqual(["Hospital San Martín", "Verdulería Don Pepe"]);
     const hospital = t.columnas.find((c) => c.clave === "en_lista")!.tarjetas.find((x) => x.cliente === "Hospital San Martín")!;
     expect(hospital.avance).toEqual({ que: "comprado", hechos: 0, total: 2 });
     expect(hospital.productos).toEqual([
-      { nombre: "Tomate redondo", cantidad: "30 kg", grupo: "VERDURA" },
-      { nombre: "Papa", cantidad: "50 kg", grupo: "VERDURA" },
+      { nombre: "Tomate redondo", cantidad: "30 kg", grupo: "VERDURA", hecha: false, aviso: null },
+      { nombre: "Papa", cantidad: "50 kg", grupo: "VERDURA", hecha: false, aviso: null },
     ]);
     expect(t.lista.armada).toBe(true);
   });
@@ -124,6 +124,16 @@ describe("el tablero", () => {
       (await obtenerEntregaParaPreparar(j.base.db, j.admin, entregas.find((e) => e.cliente === cliente)!.id)).lineas.find((l) => l.producto === "Tomate redondo")!.propuesta;
     expect(await tomateDe("Verdulería Don Pepe")).toBe("30.000");
     expect(await tomateDe("Hospital San Martín")).toBe("6.000");
+    // Al preparar, cada cliente ve qué separar y lo que no alcanzó, en el tablero y en preparación.
+    const hospital = entregas.find((e) => e.cliente === "Hospital San Martín")!;
+    expect(hospital.detalle[0]).toEqual({ producto: "Tomate redondo", cantidad: "30 kg", hecha: false, aviso: "Alcanza para 6 kg de 30 kg", reemplazo: false });
+    const tarjeta = (await tableroDePedidos(j.base.db, j.admin, dia)).columnas.flatMap((c) => c.tarjetas).find((x) => x.cliente === "Hospital San Martín")!;
+    expect(tarjeta.productos[0]).toMatchObject({ nombre: "Tomate redondo", hecha: false, aviso: "Alcanza para 6 kg de 30 kg" });
+    const tomate = (await obtenerEntregaParaPreparar(j.base.db, j.admin, hospital.id)).lineas.find((l) => l.producto === "Tomate redondo")!;
+    await registrarPreparado(j.base.db, j.admin, { itemId: tomate.id, cantidad: "6", motivo: "NO_CONSEGUIDO", confirmar: false });
+    const despues = await avanceDeTarjeta(j.base.db, j.admin, pedidos.hospital!);
+    expect(despues.lineas[0]).toMatchObject({ hecha: true, aviso: "Va 6 kg de 30 kg · no se consiguió" });
+    expect(despues.entregaId).toBe(hospital.id);
   });
 });
 

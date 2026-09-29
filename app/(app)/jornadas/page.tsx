@@ -45,7 +45,7 @@ export default async function PaginaJornadas() {
                 </td>
                 <td>{ESTADOS_JORNADA[j.estado]}</td>
                 <td>
-                  {j.confirmados} confirmado(s)
+                  {j.confirmados} pedido(s)
                   {j.borradores > 0 && <span className="block text-sm text-texto-suave">{j.borradores} en borrador</span>}
                 </td>
                 {verVenta && <td className="text-right">{j.totalEstimado ? formatearMoneda(j.totalEstimado) : "—"}</td>}

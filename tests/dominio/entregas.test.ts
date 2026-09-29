@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  avisoDeFaltante,
   distribuirFaltante,
   entregaConDiferencias,
   evaluarPreparado,
@@ -110,5 +111,26 @@ describe("preparación y entrega (RN-113, RN-127)", () => {
     expect(ordenarParadas(paradas).map((p) => p.id)).toEqual(["hospital", "avellaneda", "pepe", "sin localidad", "esquina", "sin horario"]);
     expect(ordenarParadas([paradas[5]!, paradas[0]!]).map((p) => p.id)).toEqual(["sin localidad", "esquina"]);
     expect(ordenarParadas([paradas[0]!, paradas[5]!]).map((p) => p.id)).toEqual(["sin localidad", "esquina"]);
+  });
+});
+
+describe("avisoDeFaltante", () => {
+  const base = { pedida: "36.000", propuesta: null, preparada: null, motivo: null, unidad: "KG" as const };
+
+  it("sin faltante no avisa nada", () => {
+    expect(avisoDeFaltante(base)).toBeNull();
+    expect(avisoDeFaltante({ ...base, propuesta: "36.000" })).toBeNull();
+    expect(avisoDeFaltante({ ...base, preparada: "35.800" })).toBeNull();
+  });
+
+  it("antes de separar dice para cuánto alcanza lo comprado", () => {
+    expect(avisoDeFaltante({ ...base, propuesta: "30.000" })).toBe("Alcanza para 30 kg de 36 kg");
+    expect(avisoDeFaltante({ ...base, propuesta: "0" })).toBe("No hay para este cliente");
+  });
+
+  it("ya separado, cuenta cuánto va y por qué faltó", () => {
+    expect(avisoDeFaltante({ ...base, preparada: "30.000", motivo: "NO_CONSEGUIDO" })).toBe("Va 30 kg de 36 kg · no se consiguió");
+    expect(avisoDeFaltante({ ...base, preparada: "0", motivo: "RECHAZO_CALIDAD" })).toBe("No va · estaba en mal estado");
+    expect(avisoDeFaltante({ pedida: "12", propuesta: "12", preparada: "10", motivo: "FALTANTE", unidad: "ATADO" })).toBe("Va 10 atado de 12 atado · no alcanzó lo comprado");
   });
 });

@@ -15,12 +15,12 @@
 9. [Lista de compra](#9-lista-de-compra)
 10. [Compras y cuentas corrientes de proveedores](#10-compras-y-cuentas-corrientes-de-proveedores)
 11. [Repartos, entregas y documentos](#11-repartos-entregas-y-documentos)
-12. [Ventas, facturación y cobranzas](#12-ventas-facturación-y-cobranzas)
-13. [Stock y sobrantes (PROPUESTO)](#13-stock-y-sobrantes-propuesto)
+12. [Ventas y facturación](#12-ventas-y-facturación)
+13. [Colaboración: notas y actividad](#13-colaboración-notas-y-actividad)
 14. [Relaciones y cardinalidades](#14-relaciones-y-cardinalidades)
 15. [Restricciones de integridad](#15-restricciones-de-integridad)
 16. [Índices recomendados](#16-índices-recomendados)
-17. [Vistas y consultas derivadas](#17-vistas-y-consultas-derivadas)
+17. [Consultas derivadas](#17-consultas-derivadas)
 18. [Snapshots y referencias](#18-snapshots-y-referencias)
 19. [Escenario de ejemplo](#19-escenario-de-ejemplo)
 
@@ -55,7 +55,7 @@ En las tablas de las secciones 4 a 13 se indican como **"+ campos comunes"** y n
 
 ### 1.3 Campos de anulación (documentos)
 
-Documentos: `pedido` (usa cancelación), `lista_compra` (no se anula), `compra`, `pago_proveedor`, `reparto`, `entrega`, `documento_emitido`, `factura`, `cobro_cliente`, `ajuste_stock`. Se indican como **"+ campos de anulación"**.
+Documentos: `pedido` (usa cancelación), `lista_compra` (no se anula), `compra`, `pago_proveedor`, `reparto`, `entrega`, `documento_emitido`, `factura`. Se indican como **"+ campos de anulación"**.
 
 | Campo | Tipo | Nulo | Descripción |
 |---|---|---|---|
@@ -83,9 +83,9 @@ Documentos: `pedido` (usa cancelación), `lista_compra` (no se anula), `compra`,
 | Tipo de tabla | Qué se hace en lugar de borrar | Tablas |
 |---|---|---|
 | Maestros | `activo = false` (desaparece de las búsquedas nuevas; sigue en la historia). | categoria, producto, presentacion, proveedor, proveedor_producto, cliente, punto_entrega, regla_precio, rol, usuario |
-| Documentos | Estado ANULADA/ANULADO (o CANCELADO en pedido) con motivo, usuario y fecha. | pedido, compra, pago_proveedor, reparto, entrega, documento_emitido, factura, cobro_cliente, ajuste_stock |
-| Libros (movimientos) | Nunca se modifican ni se borran: se agrega un movimiento compensatorio. | movimiento_cuenta_proveedor, movimiento_cuenta_cliente, historial_precio_compra, auditoria |
-| Imputaciones | `activa = false` con fecha y motivo (al anular el pago, la compra o la factura, o al reimputar); se crean imputaciones nuevas. | imputacion_pago_proveedor, imputacion_cobro_cliente, factura_entrega |
+| Documentos | Estado ANULADA/ANULADO (o CANCELADO en pedido) con motivo, usuario y fecha. | pedido, compra, pago_proveedor, reparto, entrega, documento_emitido, factura |
+| Libros (movimientos) | Nunca se modifican ni se borran: se agrega un movimiento compensatorio. | movimiento_cuenta_proveedor, historial_precio_compra, auditoria, actividad |
+| Imputaciones | `activa = false` con fecha y motivo (al anular el pago, la compra o la factura, o al reimputar); se crean imputaciones nuevas. | imputacion_pago_proveedor, factura_entrega |
 | Líneas | Pedido: en BORRADOR se pueden eliminar físicamente; desde CONFIRMADO solo `cancelado = true`. Resto de líneas: siguen el estado de su documento. | pedido_item, compra_item, entrega_item, lista_compra_item |
 | Asignaciones | Se eliminan físicamente y el cambio queda en `auditoria`. | usuario_rol |
 
@@ -131,15 +131,11 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | entrega | Entregas | Documento | M11 (M10 actualiza preparación) | MVP |
 | entrega_item | Entregas | Línea | M11 (M10 actualiza preparación) | MVP |
 | documento_emitido | Documentos | Documento | M12 | MVP |
-| factura | Ventas | Documento | M13 | MVP (comprobante interno); fiscal PROPUESTO |
+| factura | Ventas | Documento | M13 | MVP (comprobante interno) |
 | factura_entrega | Ventas | Imputación | M13 | MVP |
-| cobro_cliente | Cobranzas | Documento | M14 | PROPUESTO |
-| imputacion_cobro_cliente | Cobranzas | Imputación | M14 | PROPUESTO |
-| movimiento_cuenta_cliente | Cobranzas | Libro | M14 | PROPUESTO |
-| ajuste_stock | Stock | Documento | M15 | PROPUESTO (fase 2) |
-| nota | Colaboración | Documento | M20 (agregado) | MVP |
-| nota_lectura | Colaboración | Registro | M20 (agregado) | MVP |
-| actividad | Colaboración | Libro | M20 (agregado) | MVP |
+| nota | Colaboración | Documento | M20 | MVP |
+| nota_lectura | Colaboración | Registro | M20 | MVP |
+| actividad | Colaboración | Libro | M20 | MVP |
 
 ---
 
@@ -154,20 +150,19 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | `estado_lista_compra_item` | `PENDIENTE`, `PARCIAL`, `COMPRADO`, `NO_CONSEGUIDO` | lista_compra_item.estado | |
 | `estado_compra` | `REGISTRADA`, `ANULADA` | compra.estado | |
 | `condicion_pago` | `CONTADO`, `CREDITO`, `MIXTA` | compra.condicion_pago, proveedor.condicion_pago_habitual | |
-| `estado_pago_compra` (calculado) | `PAGADA`, `PARCIAL`, `PENDIENTE` | vista `v_compra_estado_pago` | No se guarda: se calcula de las imputaciones activas (de pagos y de ajustes de crédito). |
+| `estado_pago_compra` (calculado) | `PAGADA`, `PARCIAL`, `PENDIENTE` | (calculado, §17) | No se guarda: se calcula de las imputaciones activas (de pagos y de ajustes de crédito). |
 | `estado_entrega` | `BORRADOR`, `EN_PREPARACION`, `PREPARADA`, `EN_REPARTO`, `ENTREGADA`, `ANULADA` | entrega.estado | Más el flag `con_diferencias`. |
 | `estado_facturacion` | `SIN_FACTURAR`, `FACTURADA` | entrega.estado_facturacion | |
 | `estado_factura` | `EMITIDA`, `ANULADA` | factura.estado | |
-| `estado_cobro` (calculado) | `COBRADA`, `PARCIAL`, `PENDIENTE` | vista `v_factura_estado_cobro` | Requiere el módulo Cobranzas (PROPUESTO). |
 
 ### 3.2 Estados agregados por este diseño
 
 | Enum | Valores | Usado en | Motivo |
 |---|---|---|---|
 | `estado_reparto` | `PLANIFICADO`, `EN_CURSO`, `FINALIZADO`, `ANULADO` | reparto.estado | La hoja de ruta necesita saber si salió y si volvió. |
-| `estado_registro` | `REGISTRADO`, `ANULADO` | pago_proveedor, cobro_cliente, ajuste_stock | Documentos simples anulables. |
+| `estado_registro` | `REGISTRADO`, `ANULADO` | pago_proveedor | Documentos simples anulables. |
 | `estado_documento` | `VIGENTE`, `REEMPLAZADO`, `ANULADO` | documento_emitido.estado | REEMPLAZADO cuando se emite una versión nueva de la misma entrega. |
-| `semaforo_credito` (calculado) | `SIN_LIMITE`, `VERDE`, `AMARILLO`, `ROJO`, `EXCEDIDO` | vista `v_saldo_proveedor` | SIN_LIMITE cuando `limite_credito` es nulo. |
+| `semaforo_credito` (calculado) | `SIN_LIMITE`, `VERDE`, `AMARILLO`, `ROJO`, `EXCEDIDO` | (calculado, §17) | SIN_LIMITE cuando `limite_credito` es nulo. |
 
 ### 3.3 Precios y costos
 
@@ -188,7 +183,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | `grupo_producto` | `FRUTA`, `VERDURA`, `OTRO` |
 | `tipo_cliente` | `HOSPITAL`, `RESTAURANTE`, `COMERCIO`, `INSTITUCION`, `OTRO` |
 | `periodicidad_facturacion` | `POR_ENTREGA`, `SEMANAL`, `QUINCENAL`, `MENSUAL` |
-| `canal_pedido` | `TELEFONO`, `WHATSAPP`, `EMAIL`, `PRESENCIAL`, `PORTAL` (PORTAL = PROPUESTO, portal de clientes) |
+| `canal_pedido` | `TELEFONO`, `WHATSAPP`, `EMAIL`, `PRESENCIAL`, `PORTAL` (PORTAL sin uso) |
 | `politica_faltantes` | `PRIORIDAD_CLIENTE`, `PROPORCIONAL`, `MANUAL` |
 | `prioridad_pedido` | `ALTA` ("Urgente" en el tablero), `NORMAL`, `BAJA` ("Sin apuro"). Ordena las tarjetas y pesa en el reparto de faltantes (07, RN-115). |
 | `motivo_diferencia` | `RECHAZO_CALIDAD`, `FALTANTE`, `NO_CONSEGUIDO`, `ERROR_PREPARACION`, `CAMBIO_CLIENTE`, `OTRO` (con detalle en texto). Se usa tanto en preparación (faltantes) como en la confirmación de la entrega (rechazos). |
@@ -198,22 +193,20 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | Enum | Valores | Signo del importe en el libro |
 |---|---|---|
 | `tipo_compra` | `MERCADERIA`, `SALDO_INICIAL` | SALDO_INICIAL = deuda anterior al uso del sistema, sin líneas ni jornada. |
-| `medio_pago` | `EFECTIVO`, `TRANSFERENCIA`, `CHEQUE`, `TARJETA`, `OTRO` | TARJETA se reserva para cobros de clientes (PROPUESTO). |
+| `medio_pago` | `EFECTIVO`, `TRANSFERENCIA`, `CHEQUE`, `TARJETA`, `OTRO` | TARJETA sin uso por ahora. |
 | `origen_pago` | `EN_COMPRA`, `POSTERIOR` | EN_COMPRA = pago automático de una compra CONTADO o MIXTA. |
 | `modo_imputacion` | `FIFO`, `MANUAL` | |
 | `tipo_movimiento_proveedor` | `SALDO_INICIAL` (+), `CARGO_COMPRA` (+), `PAGO` (−), `ANULACION_COMPRA` (−), `ANULACION_PAGO` (+), `AJUSTE_DEBITO` (+), `AJUSTE_CREDITO` (−) | + aumenta la deuda con el proveedor; − la disminuye. Un saldo a favor previo al sistema se carga como AJUSTE_CREDITO. |
-| `tipo_movimiento_cliente` (PROPUESTO) | `SALDO_INICIAL` (+), `CARGO_FACTURA` (+), `COBRO` (−), `ANULACION_FACTURA` (−), `ANULACION_COBRO` (+), `AJUSTE_DEBITO` (+), `AJUSTE_CREDITO` (−) | + aumenta lo que el cliente debe. |
 
-### 3.6 Documentos, ventas, stock y sistema
+### 3.6 Documentos, ventas y sistema
 
 | Enum | Valores |
 |---|---|
-| `tipo_documento` | `DOC_01` Lista de compra, `DOC_02` Lista de entrega (sin precios), `DOC_03` Lista contable (remito valorizado), `DOC_04` Hoja de ruta de reparto, `DOC_05` Estado de cuenta de proveedor, `DOC_06` Lista general de precios de compra, `DOC_07` Hoja de preparación por cliente (sin precios), `DOC_08` Comprobante interno de venta (definido en 09-documentos-imprimibles.md). Reservados PROPUESTO: `DOC_09` Estado de cuenta de cliente, `DOC_10` Recibo de cobro. |
+| `tipo_documento` | `DOC_01` Lista de compra, `DOC_02` Lista de entrega (sin precios), `DOC_03` Lista contable (remito valorizado), `DOC_04` Hoja de ruta de reparto, `DOC_05` Estado de cuenta de proveedor, `DOC_06` Lista general de precios de compra, `DOC_07` Hoja de preparación por cliente (sin precios), `DOC_08` Comprobante interno de venta (definido en 09-documentos-imprimibles.md). |
 | `evento_documento` | `EMISION` (nueva versión), `REIMPRESION` (misma versión, otra copia) |
-| `tipo_comprobante` | `INTERNO` (MVP, no fiscal), `FISCAL` (PROPUESTO), `SALDO_INICIAL` (PROPUESTO, deuda previa de clientes) |
-| `tipo_ajuste_stock` (PROPUESTO) | `SOBRANTE` (+), `MERMA` (−), `DEVOLUCION_CLIENTE` (+), `USO_SOBRANTE` (−), `CORRECCION` (±) |
+| `tipo_comprobante` | `INTERNO` (no fiscal) |
 | `tipo_secuencia` | `PEDIDO`, `LISTA_COMPRA`, `COMPRA`, `PAGO_PROVEEDOR`, `REPARTO`, `ENTREGA`, `FACTURA`, `COBRO_CLIENTE`, `AJUSTE_STOCK` |
-| `tipo_entidad` | `PEDIDO`, `CLIENTE`, `PROVEEDOR`, `PRODUCTO`, `COMPRA`, `PAGO`, `ENTREGA`, `REPARTO`, `JORNADA`, `LISTA_COMPRA`, `FACTURA`, `USUARIO`: a qué se refiere una nota o una entrada de actividad (§13b). |
+| `tipo_entidad` | `PEDIDO`, `CLIENTE`, `PROVEEDOR`, `PRODUCTO`, `COMPRA`, `PAGO`, `ENTREGA`, `REPARTO`, `JORNADA`, `LISTA_COMPRA`, `FACTURA`, `USUARIO`: a qué se refiere una nota o una entrada de actividad (§13). |
 | `accion_auditoria` | `CREAR`, `MODIFICAR`, `CAMBIO_ESTADO`, `CANCELAR`, `ANULAR`, `CAMBIO_PRECIO_COMPRA`, `CAMBIO_RECARGO`, `CAMBIO_REGLA_PRECIO`, `OVERRIDE_PRECIO`, `EXCESO_LIMITE`, `CAMBIO_LIMITE_CREDITO`, `CORRECCION_ENTREGA`, `EMISION_DOCUMENTO`, `REAPERTURA_JORNADA`, `CAMBIO_CONFIGURACION`, `CAMBIO_PERMISOS`, `INICIO_SESION`, `EXPORTACION` |
 
 ---
@@ -289,7 +282,7 @@ Configuración del negocio. Una fila por empresa. No tiene `empresa_id`; sí tie
 | identificacion_fiscal | text | Sí | — | CUIT (AR) / RUT (UY). |
 | condicion_fiscal | text | Sí | — | Ej. "Responsable Inscripto". |
 | direccion, telefono, email | text | Sí | — | Para encabezados. |
-| logo_path | text | Sí | — | Ruta en Storage. |
+| logo_path | text | Sí | — | Sin uso. |
 | pais | char(2) | No | `'AR'` | ISO 3166-1. |
 | moneda | char(3) | No | `'ARS'` | ISO 4217. Una sola moneda por empresa. |
 | simbolo_moneda | text | No | `'$'` | |
@@ -319,7 +312,7 @@ Configuración del negocio. Una fila por empresa. No tiene `empresa_id`; sí tie
 | emitir_documentos_al_preparar | boolean | No | `true` | Emitir DOC-02 y DOC-03 al marcar la entrega PREPARADA. |
 | facturar_automatico_por_entrega | boolean | No | `true` | Clientes POR_ENTREGA: comprobante interno automático al confirmar la entrega. |
 | latitud, longitud | numeric(9,6) | Sí | — | Agregado: de dónde salen los repartos (depósito o mercado), para calcular el viaje. Ambas o ninguna, en rango válido (check `empresa_coordenadas`). |
-| modulos_habilitados | text[] | No | `'{}'` | Módulos PROPUESTO activados: `COBRANZAS`, `STOCK`, `OFFLINE`, `FACTURACION_FISCAL`, `PORTAL_CLIENTES`. "Usa stock de sobrantes" = contiene `STOCK`. |
+| modulos_habilitados | text[] | No | `'{}'` | Sin uso (reservado para activar módulos). |
 | activa | boolean | No | `true` | |
 
 Los parámetros coinciden con la tabla de parámetros configurables de 07-reglas-de-negocio.md, sección 4. Los valores por defecto son propuestas del plan pendientes de confirmación del dueño (PARAMETROS-DEL-PROYECTO.md §11). La empresa de los ejemplos de 04 a 07 usa `recargo_global` 25 y redondeo ARRIBA a $10.
@@ -599,7 +592,7 @@ Ejemplos:
 | saldo_actual | numeric(14,2) | No | `0` | **Caché opcional** del saldo neto (suma del libro), actualizado en la misma transacción que cada movimiento y conciliado por el control nocturno. La fuente de verdad es siempre `movimiento_cuenta_proveedor`. |
 | activo | boolean | No | `true` | Un proveedor con saldo distinto de cero puede desactivarse, pero se advierte; se le puede seguir pagando. |
 
-El crédito disponible y el semáforo **no se guardan**: se calculan en la vista `v_saldo_proveedor` (sección 17).
+El crédito disponible y el semáforo **no se guardan**: se calculan en el código (sección 17).
 
 ### 6.2 proveedor_producto
 
@@ -621,7 +614,7 @@ Oferta vigente: qué producto vende un proveedor, en qué presentación y a qué
 | observaciones | text | Sí | — | Ej. "Calidad primera, cajón bien lleno". |
 | activo | boolean | No | `true` | |
 
-Información para actualizar el precio (R7) que muestra la lista general, calculada con la vista `v_oferta_vigente`: precio vigente, precio anterior y variación %, costo por unidad base, fecha de actualización y días transcurridos, quién lo actualizó, si es el preferido, si es el más barato, y la marca "desactualizado".
+Información para actualizar el precio (R7) que muestra la lista general, calculada en el código (sección 17): precio vigente, precio anterior y variación %, costo por unidad base, fecha de actualización y días transcurridos, quién lo actualizó, si es el preferido, si es el más barato, y la marca "desactualizado".
 
 ### 6.3 historial_precio_compra
 
@@ -670,8 +663,8 @@ Libro de precios de compra: una fila por cada cambio de precio de una oferta. No
 | requiere_orden_compra | boolean | No | `false` | Si `true`, el pedido exige `referencia_cliente` (número de orden de compra, habitual en hospitales). |
 | acepta_sustituciones | boolean | No | `true` | Si `false`, una sustitución en preparación exige registrar quién la autorizó. |
 | requiere_firma | boolean | No | `false` | Si `true`, la confirmación de entrega exige firma o foto del remito firmado. |
-| plazo_cobro_dias | int | Sí | — | PROPUESTO (Cobranzas): vencimiento de comprobantes. |
-| limite_credito | numeric(14,2) | Sí | — | PROPUESTO (Cobranzas): deuda máxima del cliente. |
+| plazo_cobro_dias | int | Sí | — | Sin uso. |
+| limite_credito | numeric(14,2) | Sí | — | Sin uso. |
 | observaciones | text | Sí | — | |
 | activo | boolean | No | `true` | |
 
@@ -972,8 +965,8 @@ Una línea por producto: cuánto se necesita, cuánto ya se compró, cuánto com
 | + campos comunes | | | | |
 | lista_compra_id | uuid | No | — | FK `lista_compra`. |
 | producto_id | uuid | No | — | `unique (lista_compra_id, producto_id)`. |
-| necesidad_base | numeric(12,3) | No | — | Suma de `pedido_item.cantidad_base` (líneas no canceladas de pedidos CONFIRMADO o EN_COMPRA de la jornada; vista `v_necesidad_jornada`). |
-| sobrante_disponible_base | numeric(12,3) | No | `0` | PROPUESTO (fase 2, stock): sobrante utilizable que se descuenta. |
+| necesidad_base | numeric(12,3) | No | — | Suma de `pedido_item.cantidad_base` (líneas no canceladas de pedidos CONFIRMADO o EN_COMPRA de la jornada). |
+| sobrante_disponible_base | numeric(12,3) | No | `0` | Sin uso (siempre 0). |
 | necesidad_neta_base | numeric(12,3) | No | — | `max(necesidad_base − sobrante_disponible_base, 0)`. |
 | comprado_base | numeric(12,3) | No | `0` | Suma de `compra_item.cantidad_base` de compras REGISTRADA de la jornada para el producto (se cuenta por jornada y producto, no por el vínculo de la línea). Mantenido por el dominio al registrar o anular compras. |
 | presentacion_sugerida_id | uuid | Sí | — | Presentación de compra de la oferta sugerida (o `producto.presentacion_compra_default_id`). |
@@ -1019,19 +1012,19 @@ Compra a un proveedor. Genera un CARGO en su cuenta corriente y, si es CONTADO o
 | medio_pago_en_el_acto | medio_pago | Sí | — | Obligatorio si `monto_pagado_en_el_acto > 0`; se copia al pago automático. |
 | fecha_vencimiento | date | Sí | — | Fecha de la compra (zona de la empresa) + `proveedor.plazo_pago_dias`. Se congela al registrar. Nulo si el proveedor no tiene plazo. |
 | numero_comprobante_proveedor | text | Sí | — | Boleta o remito del puestero. |
-| foto_comprobante_path | text | Sí | — | Foto de la boleta (Storage). |
+| foto_comprobante_path | text | Sí | — | Sin uso. |
 | estado | estado_compra | No | `'REGISTRADA'` | REGISTRADA o ANULADA. |
 | excede_limite | boolean | No | `false` | La compra hizo superar el límite de crédito. |
 | motivo_exceso_limite | text | Sí | — | Obligatorio si `excede_limite` y fue autorizada. |
 | exceso_autorizado_por | uuid | Sí | — | Usuario con `compras.exceder_limite`. |
-| exceso_sin_autorizacion | boolean | No | `false` | Fase 2 (offline): la compra encolada sin conexión superó el límite al sincronizar; se registra igual y se avisa al ADMIN (07-reglas-de-negocio.md). |
-| registrada_sin_conexion | boolean | No | `false` | Fase 2: vino de la cola offline. |
+| exceso_sin_autorizacion | boolean | No | `false` | Sin uso (reservado para compras sin conexión). |
+| registrada_sin_conexion | boolean | No | `false` | Sin uso. |
 | observaciones | text | Sí | — | |
 | clave_idempotencia | uuid | Sí | — | `unique` cuando no es nula. Evita duplicados (doble toque, reintentos, cola offline). |
 
 Las deudas anteriores al uso del sistema se cargan como compra `tipo = SALDO_INICIAL` (una sola por proveedor, o una por cada compra pendiente si se quieren controlar vencimientos) con su movimiento `SALDO_INICIAL`; así quedan como partidas imputables por FIFO.
 
-El **estado de pago** (PAGADA, PARCIAL, PENDIENTE) no se guarda: se calcula en `v_compra_estado_pago`.
+El **estado de pago** (PAGADA, PARCIAL, PENDIENTE) no se guarda: se calcula en el código (sección 17).
 
 ### 10.2 compra_item
 
@@ -1257,8 +1250,8 @@ Mercadería para un cliente y punto de entrega en una jornada; puede agrupar var
 | recibido_por | text | Sí | — | Nombre de quien recibió (obligatorio al confirmar). |
 | recibido_cargo | text | Sí | — | Cargo de quien recibió (opcional; ej. "jefa de cocina"). |
 | recibido_en | timestamptz | Sí | — | Hora de recepción (la registra el servidor). |
-| firma_path | text | Sí | — | Firma en pantalla (Storage). Obligatoria (firma o foto) si `cliente.requiere_firma`. |
-| foto_remito_path | text | Sí | — | Foto del remito firmado (Storage). |
+| firma_path | text | Sí | — | Sin uso. |
+| foto_remito_path | text | Sí | — | Sin uso. |
 | observaciones_recepcion | text | Sí | — | Comentarios del cliente o del repartidor. |
 | confirmada_por | uuid | Sí | — | Usuario que confirmó (repartidor). |
 
@@ -1329,7 +1322,7 @@ Registro de cada emisión o reimpresión de un documento imprimible. Permite sab
 | estado | estado_documento | No | `'VIGENTE'` | REEMPLAZADO al emitirse una versión nueva; ANULADO si se anula la entrega o el documento. |
 | emitido_en | timestamptz | No | `now()` | |
 | emitido_por | uuid | Sí | — | FK `usuario`. |
-| pdf_path | text | Sí | — | Ruta en Storage: `empresa_id/DOC_03/2026/ENT-000301-v2.pdf`. |
+| pdf_path | text | Sí | — | Sin uso: los documentos se rearman desde la base con su versión. |
 | pdf_sha256 | text | Sí | — | Huella del PDF para verificar que no se alteró. |
 | contenido | jsonb | No | — | Snapshot exacto de los datos impresos. Para DOC-02, DOC-04 y DOC-07 **no contiene precios**. |
 | enviado_a | text | Sí | — | Correo o teléfono si se compartió desde el sistema. |
@@ -1338,23 +1331,15 @@ Restricción: `unique (empresa_id, tipo, entidad_id, version) where evento = 'EM
 
 ---
 
-## 12. Ventas, facturación y cobranzas
+## 12. Ventas y facturación
 
-Diagrama del dominio **ventas y cobranzas** (incluye stock, PROPUESTO):
+Diagrama del dominio **ventas**:
 
 ```mermaid
 erDiagram
     cliente ||--o{ factura : "recibe"
     factura ||--|{ factura_entrega : "agrupa"
     entrega ||--o{ factura_entrega : "incluida en"
-    cliente ||--o{ cobro_cliente : "paga con"
-    cobro_cliente ||--o{ imputacion_cobro_cliente : "se imputa en"
-    factura ||--o{ imputacion_cobro_cliente : "cancelada por"
-    cliente ||--o{ movimiento_cuenta_cliente : "cuenta corriente"
-    factura |o--o{ movimiento_cuenta_cliente : "genera"
-    cobro_cliente |o--o{ movimiento_cuenta_cliente : "genera"
-    producto ||--o{ ajuste_stock : "ajusta"
-    entrega_item |o--o{ ajuste_stock : "devolución de"
 
     factura {
         uuid id PK
@@ -1373,36 +1358,11 @@ erDiagram
         numeric importe_total
         boolean activa
     }
-    cobro_cliente {
-        uuid id PK
-        uuid cliente_id FK
-        numeric monto
-        enum estado
-    }
-    imputacion_cobro_cliente {
-        uuid id PK
-        uuid cobro_cliente_id FK
-        uuid factura_id FK
-        numeric monto
-        boolean activa
-    }
-    movimiento_cuenta_cliente {
-        uuid id PK
-        uuid cliente_id FK
-        enum tipo
-        numeric importe "con signo"
-    }
-    ajuste_stock {
-        uuid id PK
-        uuid producto_id FK
-        enum tipo
-        numeric cantidad_base "con signo"
-    }
 ```
 
 ### 12.1 factura
 
-Comprobante de venta que agrupa una o más entregas del mismo cliente. En el MVP es un **comprobante interno no fiscal** (`tipo_comprobante = INTERNO`) que registra la venta y se exporta para el contador. Los campos fiscales quedan preparados para la facturación electrónica (PROPUESTO).
+Comprobante de venta que agrupa una o más entregas del mismo cliente. En el MVP es un **comprobante interno no fiscal** (`tipo_comprobante = INTERNO`) que registra la venta y se exporta para el contador. Los campos fiscales quedan sin uso.
 
 | Campo | Tipo | Nulo | Default | Descripción / regla |
 |---|---|---|---|---|
@@ -1413,7 +1373,7 @@ Comprobante de venta que agrupa una o más entregas del mismo cliente. En el MVP
 | cliente_id | uuid | No | — | FK `cliente`. |
 | fecha_emision | date | No | — | |
 | periodo_desde, periodo_hasta | date | Sí | — | Período que cubre (clientes con facturación semanal, quincenal o mensual). |
-| fecha_vencimiento | date | Sí | — | PROPUESTO (Cobranzas): `fecha_emision + cliente.plazo_cobro_dias`. |
+| fecha_vencimiento | date | Sí | — | Sin uso. |
 | cliente_nombre, cliente_razon_social, cliente_identificacion_fiscal, cliente_condicion_fiscal, cliente_direccion_fiscal | text | Sí | — | **Snapshot** de datos del cliente al emitir. |
 | importe_neto | numeric(14,2) | No | — | Suma de las entregas incluidas. |
 | importe_iva | numeric(14,2) | No | `0` | |
@@ -1422,14 +1382,13 @@ Comprobante de venta que agrupa una o más entregas del mismo cliente. En el MVP
 | exportada_en | timestamptz | Sí | — | Última exportación para el contador. |
 | pdf_path | text | Sí | — | |
 | observaciones | text | Sí | — | |
-| punto_venta | int | Sí | — | PROPUESTO (fiscal). |
-| tipo_fiscal | text | Sí | — | PROPUESTO. Ej. "A", "B" (AR); "e-Factura", "e-Ticket" (UY). |
-| numero_fiscal | bigint | Sí | — | PROPUESTO. |
-| cae | text | Sí | — | PROPUESTO. Código de autorización (CAE en AR; en UY, datos del CFE). |
-| cae_vencimiento | date | Sí | — | PROPUESTO. |
-| datos_fiscales | jsonb | Sí | — | PROPUESTO. Respuesta completa del organismo o del proveedor de facturación. |
+| punto_venta | int | Sí | — | Sin uso (fiscal). |
+| tipo_fiscal | text | Sí | — | Sin uso (fiscal). |
+| numero_fiscal | bigint | Sí | — | Sin uso (fiscal). |
+| cae | text | Sí | — | Sin uso (fiscal). |
+| cae_vencimiento | date | Sí | — | Sin uso (fiscal). |
+| datos_fiscales | jsonb | Sí | — | Sin uso (fiscal). |
 
-El **estado de cobro** (COBRADA, PARCIAL, PENDIENTE) se calcula en `v_factura_estado_cobro` y solo se muestra si el módulo Cobranzas está habilitado.
 
 ### 12.2 factura_entrega
 
@@ -1442,85 +1401,11 @@ El **estado de cobro** (COBRADA, PARCIAL, PENDIENTE) se calcula en `v_factura_es
 | importe_total | numeric(14,2) | No | — | Snapshot de `entrega.importe_total`. |
 | activa | boolean | No | `true` | `false` al anular la factura. Índice único parcial `(entrega_id) where activa`: una entrega está en un solo comprobante vigente. |
 
-### 12.3 cobro_cliente (PROPUESTO)
-
-| Campo | Tipo | Nulo | Default | Descripción / regla |
-|---|---|---|---|---|
-| + campos comunes | | | | |
-| + campos de anulación | | | | |
-| numero | bigint | No | — | `COB-000001`. |
-| cliente_id | uuid | No | — | FK `cliente`. |
-| fecha_cobro | timestamptz | No | `now()` | |
-| monto | numeric(14,2) | No | — | `> 0`. |
-| medio_pago | medio_pago | No | — | |
-| referencia | text | Sí | — | |
-| modo_imputacion | modo_imputacion | No | `'FIFO'` | |
-| comprobante_path | text | Sí | — | |
-| estado | estado_registro | No | `'REGISTRADO'` | |
-| observaciones | text | Sí | — | |
-| clave_idempotencia | uuid | Sí | — | |
-
-### 12.4 imputacion_cobro_cliente (PROPUESTO)
-
-| Campo | Tipo | Nulo | Default | Descripción / regla |
-|---|---|---|---|---|
-| + campos comunes | | | | |
-| cobro_cliente_id | uuid | No | — | FK `cobro_cliente`. |
-| factura_id | uuid | No | — | FK `factura` EMITIDA del mismo cliente. |
-| monto | numeric(14,2) | No | — | `> 0`. |
-| activa | boolean | No | `true` | Igual que en `imputacion_pago_proveedor`. |
-| desactivada_en | timestamptz | Sí | — | |
-| motivo_desactivacion | text | Sí | — | Obligatorio si `activa = false`. |
-
-### 12.5 movimiento_cuenta_cliente (PROPUESTO)
-
-Misma lógica que `movimiento_cuenta_proveedor`, desde el lado del cliente. Inmutable.
-
-| Campo | Tipo | Nulo | Default | Descripción / regla |
-|---|---|---|---|---|
-| + campos comunes | | | | |
-| cliente_id | uuid | No | — | |
-| fecha | timestamptz | No | `now()` | |
-| tipo | tipo_movimiento_cliente | No | — | |
-| importe | numeric(14,2) | No | — | Con signo: + aumenta lo que el cliente debe. |
-| factura_id | uuid | Sí | — | En SALDO_INICIAL, CARGO_FACTURA y ANULACION_FACTURA. |
-| cobro_cliente_id | uuid | Sí | — | En COBRO y ANULACION_COBRO. |
-| movimiento_compensado_id | uuid | Sí | — | |
-| fecha_vencimiento | date | Sí | — | |
-| descripcion | text | No | — | |
-| motivo | text | Sí | — | |
-
----
-
-## 13. Stock y sobrantes (PROPUESTO)
-
-### 13.1 ajuste_stock (fase 2)
-
-Registra sobrantes (lo comprado de más por el redondeo a presentaciones), mermas, devoluciones y uso de sobrantes. El stock de un producto es la suma de `cantidad_base` de ajustes REGISTRADO. En el MVP el sobrante solo se **informa** (`lista_compra_item.sobrante_previsto_base`).
-
-| Campo | Tipo | Nulo | Default | Descripción / regla |
-|---|---|---|---|---|
-| + campos comunes | | | | |
-| + campos de anulación | | | | |
-| numero | bigint | No | — | `AJS-000001`. |
-| jornada_id | uuid | Sí | — | Jornada en que se produjo. |
-| producto_id | uuid | No | — | |
-| fecha | timestamptz | No | `now()` | |
-| tipo | tipo_ajuste_stock | No | — | SOBRANTE (+), MERMA (−), DEVOLUCION_CLIENTE (+), USO_SOBRANTE (−), CORRECCION (±). |
-| cantidad_base | numeric(12,3) | No | — | Con signo según el tipo. |
-| costo_unitario | numeric(14,4) | Sí | — | Costo por unidad base (para valorizar mermas). |
-| entrega_item_id | uuid | Sí | — | Para devoluciones y rechazos. |
-| lista_compra_item_id | uuid | Sí | — | Para uso de sobrantes en una lista de compra. |
-| motivo | text | Sí | — | |
-| estado | estado_registro | No | `'REGISTRADO'` | |
-
----
-
-## 13b. Colaboración: notas y actividad (agregado)
+## 13. Colaboración: notas y actividad
 
 Las dos personas que usan el sistema se dejan notas en las tarjetas y fichas y ven qué hizo cada una. Las tres tablas tienen RLS por empresa (migración 0014).
 
-### 13b.1 nota
+### 13.1 nota
 
 Nota que alguien deja en un pedido, cliente, proveedor, producto, compra, entrega, reparto, etc. Solo la puede borrar quien la escribió; no se edita.
 
@@ -1534,7 +1419,7 @@ Nota que alguien deja en un pedido, cliente, proveedor, producto, compra, entreg
 
 Índices: `(empresa_id, entidad_tipo, entidad_id, creado_en)` y `(empresa_id, para_usuario_id, creado_en desc)`.
 
-### 13b.2 nota_lectura
+### 13.2 nota_lectura
 
 Quién ya leyó cada nota (para el contador de la campanita). `unique (nota_id, usuario_id)`; se borra con la nota.
 
@@ -1545,7 +1430,7 @@ Quién ya leyó cada nota (para el contador de la campanita). `unique (nota_id, 
 | usuario_id | uuid | No | — | FK `usuario`. |
 | leida_en | timestamptz | No | `now()` | |
 
-### 13b.3 actividad
+### 13.3 actividad
 
 Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-000012 de Restaurante La Esquina"). Solo se agrega: no admite `UPDATE` ni `DELETE` (trigger `impedir_modificacion`). No reemplaza a `auditoria`, que guarda los datos antes y después de los cambios sensibles.
 
@@ -1582,7 +1467,7 @@ Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-
 | pedido → pedido_item | 1 a N | Un pedido confirmado tiene al menos una línea no cancelada. |
 | jornada → lista_compra | 1 a 0..1 | Una lista por jornada; cada regeneración incrementa su `version` (sección 9.1). |
 | lista_compra → lista_compra_item | 1 a N | Una línea por producto; la regeneración actualiza las líneas existentes. |
-| pedido_item → lista_compra_item | N a 1 (derivada) | No hay FK: la línea de la lista suma los `pedido_item` de la misma jornada y producto (vista `v_necesidad_jornada`). |
+| pedido_item → lista_compra_item | N a 1 (derivada) | No hay FK: la línea de la lista suma los `pedido_item` de la misma jornada y producto. |
 | jornada → compra | 1 a N | |
 | proveedor → compra | 1 a N | |
 | compra → compra_item | 1 a N | Mínimo 1 línea. |
@@ -1599,8 +1484,6 @@ Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-
 | pedido_item → entrega_item | 1 a 0..2 (en una sola entrega vigente) | Cada línea de pedido va a una sola entrega no anulada: su línea original y, si hubo, la de sustitución. Así, pedido ↔ entrega es N a M (una entrega puede agrupar varios pedidos del mismo cliente y punto). |
 | entrega → documento_emitido | 1 a N | Por versión: una emisión de DOC-02 y una de DOC-03, más reimpresiones. |
 | factura ↔ entrega (vía factura_entrega) | 1 a N / N a 0..1 vigente | Un comprobante agrupa entregas; una entrega está en un solo comprobante vigente (histórico: varios si se anularon). |
-| cobro_cliente ↔ factura (vía imputacion_cobro_cliente) | N a M | PROPUESTO. |
-| producto → ajuste_stock | 1 a N | PROPUESTO. |
 
 ---
 
@@ -1752,8 +1635,8 @@ alter table regla_precio add constraint sin_superposicion_recargo
 | jornada | `(empresa_id, fecha)` |
 | lista_compra | `(empresa_id, jornada_id)`; `(empresa_id, numero)` |
 | lista_compra_item | `(lista_compra_id, producto_id)` |
-| Documentos numerados (pedido, compra, pago_proveedor, reparto, entrega, factura, cobro_cliente, ajuste_stock) | `(empresa_id, numero)` |
-| pedido, compra, pago_proveedor, cobro_cliente | `clave_idempotencia` (cuando no es nula) |
+| Documentos numerados (pedido, compra, pago_proveedor, reparto, entrega, factura) | `(empresa_id, numero)` |
+| pedido, compra, pago_proveedor | `clave_idempotencia` (cuando no es nula) |
 | imputacion_pago_proveedor | `(coalesce(pago_proveedor_id, movimiento_acreedor_id), coalesce(compra_id, movimiento_deudor_id)) where activa` |
 | factura_entrega | `(entrega_id) where activa` |
 | documento_emitido | `(empresa_id, tipo, entidad_id, version) where evento = 'EMISION'` |
@@ -1785,7 +1668,7 @@ alter table regla_precio add constraint sin_superposicion_recargo
 | movimiento_cuenta_proveedor, movimiento_cuenta_cliente, auditoria | Sin `UPDATE`. | Solo `SELECT, INSERT` para el rol de la aplicación. |
 | historial_precio_compra | Solo se actualiza `vigente_hasta`. | `GRANT UPDATE (vigente_hasta)` por columna. |
 | compra y compra_item REGISTRADA | Solo cambian `estado` y campos de anulación. | Trigger `bloquear_documento_registrado`. |
-| pago_proveedor, cobro_cliente | Ídem. | Ídem. |
+| pago_proveedor | Ídem. | Ídem. |
 | factura EMITIDA | Solo cambian `estado`, anulación, `exportada_en`, `pdf_path`. | Trigger. |
 | entrega_item con `entrega.precios_congelados_en` no nulo | Los campos de precio solo cambian con `es_override = true` (y fila en `auditoria`). | Trigger. |
 | documento_emitido | Solo cambian `estado` y anulación. | Trigger. |
@@ -1798,12 +1681,11 @@ Las reglas de negocio completas (quién puede, en qué estados) están en 07-reg
 |---|---|
 | compra | `estado = ANULADA` + campos de anulación; movimiento `ANULACION_COMPRA` por −total que compensa el cargo; imputaciones activas de esa compra → `activa = false` (el dinero queda como saldo a favor y se reimputa FIFO si la empresa lo tiene activado); `lista_compra_item.comprado_base` y `estado`, y el costo real de la jornada, recalculados. Compra CONTADO: si el proveedor devolvió el dinero, también se anula el pago automático (06-creditos-y-pagos.md). |
 | pago_proveedor | `estado = ANULADO`; movimiento `ANULACION_PAGO` por +monto; imputaciones del pago → `activa = false` (las compras vuelven a PENDIENTE o PARCIAL). |
-| pedido (cancelación) | `estado = CANCELADO` + motivo; sus líneas dejan de sumar en `v_necesidad_jornada`; la lista de compra queda marcada para regenerar. |
+| pedido (cancelación) | `estado = CANCELADO` + motivo; sus líneas dejan de sumar en la necesidad del día; la lista de compra queda marcada para regenerar. |
 | entrega | Requiere SIN_FACTURAR. `estado = ANULADA`; sus `documento_emitido` → ANULADO; los `pedido_item` quedan libres para otra entrega. |
 | reparto | `estado = ANULADO`; sus entregas quedan con `reparto_id` nulo. |
-| factura | `estado = ANULADA`; `factura_entrega.activa = false`; entregas → SIN_FACTURAR. Con Cobranzas: movimiento `ANULACION_FACTURA` e imputaciones de cobros → `activa = false`. |
+| factura | `estado = ANULADA`; `factura_entrega.activa = false`; entregas → SIN_FACTURAR. |
 | documento_emitido | `estado = ANULADO`; la fila y el PDF se conservan. |
-| cobro_cliente (PROPUESTO) | `estado = ANULADO`; movimiento `ANULACION_COBRO`; imputaciones → `activa = false`. |
 
 ---
 
@@ -1838,449 +1720,21 @@ PostgreSQL no indexa automáticamente las claves foráneas: **toda FK lleva índ
 
 ---
 
-## 17. Vistas y consultas derivadas
+## 17. Consultas derivadas
 
-Todas las vistas se crean con `with (security_invoker = true)` para que respeten el RLS de las tablas (sin esa opción, una vista se ejecuta con los privilegios de su dueño y podría saltear el aislamiento por empresa). Las vistas **consultan**; los cálculos que deciden precios y saldos a registrar los hace la capa de dominio (ver 01-tipo-de-aplicacion-y-arquitectura.md, sección 10). Las columnas de cada vista pertenecen a una clase de datos (O, V, C, M, F de 02-usuarios-roles-y-permisos.md) y el servidor las filtra por permiso antes de enviarlas.
+No hay vistas en la base: lo que el diseño original resolvía con vistas (`v_oferta_vigente`, `v_saldo_proveedor`, `v_op_*`…) lo calculan funciones del código, que consultan con el rol de la transacción (y por lo tanto con RLS) y hacen los cálculos en `src/dominio` con decimales exactos.
 
-| Vista | Qué responde | Requisito |
-|---|---|---|
-| `v_oferta_vigente` | Precio de compra vigente por producto y proveedor, normalizado a unidad base, con datos para actualizarlo. | R6, R7 |
-| `v_costo_referencia_producto` | Costo preferido, mínimo y último costo real por producto; costo de referencia según la estrategia. | R6, R8 |
-| `v_costo_real_jornada` | Costo real (promedio ponderado) de cada producto en una jornada. | R8, R13 |
-| `v_necesidad_jornada` | Necesidad consolidada de una jornada (qué y cuánto comprar). | R5 |
-| `v_comparador_precios` | Comparación de precios entre proveedores, con crédito disponible. | R6 |
-| `v_compra_estado_pago` | Pagado, pendiente, estado de pago y vencimiento por compra. | R9 |
-| `v_partida_deudora_proveedor` | Todo lo que se debe y es imputable (compras, ajustes de débito, saldo inicial deudor) con su pendiente y vencimiento: base de FIFO y deuda vencida. | R9 |
-| `v_saldo_proveedor` | Saldo, crédito utilizado, disponible, % de uso, semáforo y deuda vencida por proveedor. | R9, R10 |
-| `v_margen_entrega_item`, `v_venta_entrega` | Venta, costo y margen por línea y por entrega. | R8, R12, R13 |
-| `v_producto_clientes` | Clientes que compran cada producto y cantidades. | R14 |
-| `v_ficha_producto` | Resumen central de un producto. | R14 |
-| `v_factura_estado_cobro` | Cobrado, pendiente y estado de cobro por comprobante (PROPUESTO). | — |
-| `v_op_*` | Vistas operativas sin precios para preparación, reparto y documentos DOC-02, DOC-04, DOC-07. | R11 |
-
-### 17.1 v_oferta_vigente — precio de compra vigente normalizado a unidad base
-
-```sql
-create view v_oferta_vigente with (security_invoker = true) as
-select
-  pp.empresa_id,
-  pp.id                                   as proveedor_producto_id,
-  pp.producto_id,
-  p.nombre                                as producto,
-  p.unidad_base,
-  pp.proveedor_id,
-  pv.nombre                               as proveedor,
-  pv.ubicacion_mercado,
-  pp.presentacion_id,
-  pr.nombre                               as presentacion,
-  pr.factor_a_base,
-  pp.precio_vigente,                      -- $ por presentación
-  pp.costo_base,                          -- $ por unidad base
-  pp.precio_anterior,
-  round(100 * (pp.precio_vigente - pp.precio_anterior)
-            / nullif(pp.precio_anterior, 0), 1)             as variacion_pct,
-  pp.fecha_actualizacion,
-  pp.fuente_actualizacion,
-  pp.actualizado_por,
-  (now() at time zone e.zona_horaria)::date
-    - (pp.fecha_actualizacion at time zone e.zona_horaria)::date as dias_sin_actualizar,
-  ((now() at time zone e.zona_horaria)::date
-    - (pp.fecha_actualizacion at time zone e.zona_horaria)::date)
-    > e.dias_alerta_precio_desactualizado                  as desactualizado,
-  pp.disponible,
-  coalesce(p.proveedor_preferido_id = pp.proveedor_id, false) as es_preferido,
-  min(pp.costo_base) filter (where pp.disponible)
-      over (partition by pp.producto_id)                   as costo_minimo_producto,
-  rank() over (partition by pp.producto_id
-               order by (not pp.disponible), pp.costo_base) as ranking_costo
-from proveedor_producto pp
-join producto     p  on p.id  = pp.producto_id  and p.activo
-join proveedor    pv on pv.id = pp.proveedor_id and pv.activo
-join presentacion pr on pr.id = pp.presentacion_id
-join empresa      e  on e.id  = pp.empresa_id
-where pp.activo;
-```
-
-Es la base de la **lista general de productos para compra** (DOC-06): producto, proveedor, presentación, precio, costo por unidad base, fecha de actualización, días sin actualizar, variación y marca de desactualizado.
-
-### 17.2 v_costo_referencia_producto
-
-```sql
-create view v_costo_referencia_producto with (security_invoker = true) as
-with preferido as (
-  select producto_id, min(costo_base) as costo       -- si el preferido cotiza varias presentaciones, la más barata por unidad base
-  from v_oferta_vigente
-  where es_preferido and disponible
-  group by producto_id
-),
-minimo as (
-  select producto_id, min(costo_base) as costo
-  from v_oferta_vigente
-  where disponible
-  group by producto_id
-),
-ultimo_real as (                                     -- costo real ponderado de la última jornada con compras
-  select distinct on (cr.producto_id) cr.producto_id, cr.costo_real_base as costo, j.fecha
-  from v_costo_real_jornada cr
-  join jornada j on j.id = cr.jornada_id
-  order by cr.producto_id, j.fecha desc
-)
-select
-  p.empresa_id,
-  p.id                    as producto_id,
-  e.estrategia_costo,
-  pf.costo                as costo_preferido,
-  mn.costo                as costo_minimo,
-  ur.costo                as ultimo_costo_real,
-  ur.fecha                as ultimo_costo_real_jornada,
-  case e.estrategia_costo
-    when 'PREFERIDO'         then pf.costo
-    when 'MINIMO'            then mn.costo
-    when 'ULTIMO_COSTO_REAL' then ur.costo
-  end                     as costo_referencia
-from producto p
-join empresa e            on e.id = p.empresa_id
-left join preferido   pf  on pf.producto_id = p.id
-left join minimo      mn  on mn.producto_id = p.id
-left join ultimo_real ur  on ur.producto_id = p.id
-where p.activo;
-```
-
-Es una vista de **consulta** (ficha de producto, lista general). El costo que se usa para calcular precios lo decide la función de dominio `costoReferencia` de 05-precios-y-margenes.md: primero el costo real de la jornada; después la estrategia; si falta, los respaldos (MINIMO, último costo real) y, para ULTIMO_COSTO_REAL, la última jornada **anterior** a la que se está calculando. Por eso la vista expone los tres costos por separado.
-
-### 17.3 v_costo_real_jornada — costo real ponderado
-
-```sql
-create view v_costo_real_jornada with (security_invoker = true) as
-select
-  c.empresa_id,
-  c.jornada_id,
-  ci.producto_id,
-  sum(ci.cantidad_base)                                           as cantidad_base_comprada,
-  sum(ci.subtotal)                                                as importe_comprado,
-  round(sum(ci.subtotal) / nullif(sum(ci.cantidad_base), 0), 4)  as costo_real_base
-from compra c
-join compra_item ci on ci.compra_id = c.id
-where c.estado = 'REGISTRADA'
-group by c.empresa_id, c.jornada_id, ci.producto_id;
-```
-
-Ejemplo: 2 cajones de tomate a $21.600 y 1 cajón a $22.500 → (43.200 + 22.500) / 54 kg = **$1.216,67/kg**.
-
-### 17.4 v_necesidad_jornada — necesidad consolidada
-
-```sql
-create view v_necesidad_jornada with (security_invoker = true) as
-select
-  pe.empresa_id,
-  pe.jornada_id,
-  pi.producto_id,
-  sum(pi.cantidad_base)                 as necesidad_base,
-  count(distinct pe.cliente_id)         as clientes,
-  count(*)                              as lineas,
-  string_agg(distinct pi.observaciones, ' / ')
-    filter (where pi.observaciones is not null) as observaciones
-from pedido pe
-join pedido_item pi on pi.pedido_id = pe.id
-where pe.estado in ('CONFIRMADO','EN_COMPRA','EN_PREPARACION','PREPARADO','EN_REPARTO','ENTREGADO')
-  and not pi.cancelado
-group by pe.empresa_id, pe.jornada_id, pi.producto_id;
-```
-
-La generación de la lista de compra (04-procesos-y-flujos.md) toma esta vista, descuenta lo ya comprado en la jornada (`v_costo_real_jornada.cantidad_base_comprada`), aplica `presentacionesNecesarias` (redondeo hacia arriba a presentaciones de compra) y escribe la nueva versión de `lista_compra_item`. Los pedidos en BORRADOR no cuentan. (La generación en 04 filtra CONFIRMADO y EN_COMPRA, que son los únicos estados posibles mientras se compra; la vista incluye los posteriores para los reportes del día.)
-
-### 17.5 v_comparador_precios
-
-```sql
-create view v_comparador_precios with (security_invoker = true) as
-select
-  o.empresa_id, o.producto_id, o.producto, o.unidad_base,
-  o.proveedor_id, o.proveedor, o.ubicacion_mercado,
-  o.presentacion, o.factor_a_base, o.precio_vigente, o.costo_base,
-  o.costo_minimo_producto,
-  round(100 * (o.costo_base - o.costo_minimo_producto)
-            / nullif(o.costo_minimo_producto, 0), 1)  as pct_sobre_minimo,
-  o.ranking_costo, o.es_preferido, o.disponible,
-  o.fecha_actualizacion, o.dias_sin_actualizar, o.desactualizado,
-  sp.semaforo, sp.credito_disponible                  -- clase F: solo con proveedores.ver_credito
-from v_oferta_vigente o
-left join v_saldo_proveedor sp on sp.proveedor_id = o.proveedor_id;
-```
-
-Ejemplo de resultado para Tomate redondo:
-
-| Proveedor | Presentación | Precio | $/kg | % sobre mínimo | Ranking | Preferido | Semáforo |
-|---|---|---|---|---|---|---|---|
-| Puesto Don Carlos (Nave 2, puesto 14) | Cajón 18 kg | $21.600 | $1.200,00 | 0,0% | 1 | Sí | VERDE |
-| Hortícola Los Hermanos (Nave 4, puesto 31) | Cajón 18 kg | $22.500 | $1.250,00 | 4,2% | 2 | No | AMARILLO |
-
-### 17.6 v_compra_estado_pago
-
-```sql
-create view v_compra_estado_pago with (security_invoker = true) as
-select
-  c.empresa_id, c.id as compra_id, c.numero, c.proveedor_id,
-  c.fecha_compra, c.fecha_vencimiento, c.condicion_pago, c.total,
-  x.pagado,
-  c.total - x.pagado                                  as pendiente,
-  case when c.total - x.pagado <= 0 then 'PAGADA'
-       when x.pagado > 0            then 'PARCIAL'
-       else 'PENDIENTE' end                           as estado_pago,
-  (c.fecha_vencimiento < (now() at time zone e.zona_horaria)::date
-     and c.total - x.pagado > 0)                      as vencida
-from compra c
-join empresa e on e.id = c.empresa_id
-cross join lateral (
-  select coalesce(sum(i.monto), 0) as pagado          -- pagos y ajustes de crédito imputados
-  from imputacion_pago_proveedor i
-  where i.compra_id = c.id and i.activa
-) x
-where c.estado = 'REGISTRADA';
-```
-
-### 17.6b v_partida_deudora_proveedor — partidas imputables (FIFO y deuda vencida)
-
-```sql
-create view v_partida_deudora_proveedor with (security_invoker = true) as
-select cp.empresa_id, cp.proveedor_id, 'COMPRA' as tipo_partida,
-       cp.compra_id as partida_id, cp.fecha_compra::date as fecha, cp.numero,
-       cp.total as importe, cp.pendiente, cp.fecha_vencimiento, cp.vencida
-from v_compra_estado_pago cp
-union all
-select m.empresa_id, m.proveedor_id, m.tipo::text,
-       m.id, coalesce(m.fecha_origen, m.fecha::date), null,
-       m.importe, m.importe - x.imputado,
-       m.fecha_vencimiento,
-       (m.fecha_vencimiento < (now() at time zone e.zona_horaria)::date and m.importe - x.imputado > 0)
-from movimiento_cuenta_proveedor m
-join empresa e on e.id = m.empresa_id
-cross join lateral (
-  select coalesce(sum(i.monto), 0) as imputado
-  from imputacion_pago_proveedor i
-  where i.movimiento_deudor_id = m.id and i.activa
-) x
-where m.tipo = 'AJUSTE_DEBITO';
-```
-
-La imputación FIFO recorre esta vista con `pendiente > 0` ordenada por `fecha` y `numero` (la más antigua primero). La deuda anterior al sistema entra por la primera parte de la unión (es una compra de tipo SALDO_INICIAL); por eso el movimiento SALDO_INICIAL no se suma aparte, lo que la contaría dos veces.
-
-### 17.7 v_saldo_proveedor — saldo, crédito disponible y semáforo
-
-```sql
-create view v_saldo_proveedor with (security_invoker = true) as
-select
-  p.empresa_id, p.id as proveedor_id, p.nombre, p.limite_credito, p.plazo_pago_dias,
-  s.saldo                                             as saldo_neto,           -- cargos − pagos
-  greatest(s.saldo, 0)                                as saldo_pendiente,      -- = crédito utilizado
-  greatest(s.saldo, 0)                                as credito_utilizado,
-  greatest(-s.saldo, 0)                               as saldo_a_favor,
-  case when p.limite_credito is null then null
-       else p.limite_credito - s.saldo end            as credito_disponible,
-  case when p.limite_credito is null or p.limite_credito = 0 then null
-       else round(100 * greatest(s.saldo, 0) / p.limite_credito, 1) end as porcentaje_uso,
-  case when p.limite_credito is null                                   then 'SIN_LIMITE'
-       when s.saldo > p.limite_credito                                 then 'EXCEDIDO'
-       when s.saldo <= 0                                               then 'VERDE'
-       when s.saldo >= p.limite_credito * e.semaforo_rojo_pct / 100     then 'ROJO'
-       when s.saldo >= p.limite_credito * e.semaforo_amarillo_pct / 100 then 'AMARILLO'
-       else 'VERDE' end                               as semaforo,
-  v.deuda_vencida,
-  v.proximo_vencimiento
-from proveedor p
-join empresa e on e.id = p.empresa_id
-cross join lateral (
-  select coalesce(sum(m.importe), 0) as saldo
-  from movimiento_cuenta_proveedor m
-  where m.proveedor_id = p.id
-) s
-cross join lateral (
-  select coalesce(sum(d.pendiente) filter (where d.vencida), 0)            as deuda_vencida,
-         min(d.fecha_vencimiento) filter (where d.pendiente > 0
-               and d.fecha_vencimiento >= (now() at time zone e.zona_horaria)::date) as proximo_vencimiento
-  from v_partida_deudora_proveedor d
-  where d.proveedor_id = p.id
-) v;
-```
-
-Umbrales por defecto: VERDE < 70%, AMARILLO 70% a < 90%, ROJO 90% a 100%, EXCEDIDO > 100% (configurables en `empresa`). Con `limite_credito = 0` (solo contado) cualquier deuda es EXCEDIDO. Para verificar si una compra **nueva** supera el límite, el dominio usa el saldo proyectado `saldo_neto + (total − monto_pagado_en_el_acto)` dentro de la transacción con bloqueo de la fila del proveedor (ver 06-creditos-y-pagos.md). Para listados rápidos puede usarse `proveedor.saldo_actual` (caché) en lugar de sumar el libro.
-
-### 17.8 v_margen_entrega_item y v_venta_entrega — ventas y margen
-
-```sql
-create view v_margen_entrega_item with (security_invoker = true) as
-select
-  ei.empresa_id, ei.entrega_id, ei.id as entrega_item_id, ei.producto_id,
-  q.cantidad, ei.precio_unitario, ei.costo_unitario, ei.origen_regla,
-  ei.importe                                                         as venta,
-  round(q.cantidad * ei.costo_unitario, 2)                           as costo,
-  ei.importe - round(q.cantidad * ei.costo_unitario, 2)              as margen,
-  round(100 * (ei.precio_unitario - ei.costo_unitario)
-            / nullif(ei.precio_unitario, 0), 1)                      as margen_sobre_venta_pct,
-  round(100 * (ei.precio_unitario - ei.costo_unitario)
-            / nullif(ei.costo_unitario, 0), 1)                       as recargo_efectivo_pct,
-  (ei.precio_unitario < ei.costo_unitario)                           as margen_negativo,
-  (100 * (ei.precio_unitario - ei.costo_unitario)
-       / nullif(ei.precio_unitario, 0)) < e.margen_minimo_pct         as margen_bajo
-from entrega_item ei
-join empresa e on e.id = ei.empresa_id
-cross join lateral (select coalesce(ei.cantidad_entregada, ei.cantidad_preparada, 0) as cantidad) q
-where ei.precio_unitario is not null;
-
-create view v_venta_entrega with (security_invoker = true) as
-select
-  en.empresa_id, en.id as entrega_id, en.numero, en.version, j.fecha,
-  en.cliente_id, c.nombre as cliente, en.estado, en.estado_facturacion,
-  sum(m.venta)                                            as venta,
-  sum(m.costo)                                            as costo,
-  sum(m.margen)                                           as margen,
-  round(100 * sum(m.margen) / nullif(sum(m.venta), 0), 1) as margen_sobre_venta_pct,
-  bool_or(m.margen_negativo)                              as tiene_margen_negativo,
-  bool_or(m.margen_bajo)                                  as tiene_margen_bajo
-from entrega en
-join jornada j on j.id = en.jornada_id
-join cliente c on c.id = en.cliente_id
-join v_margen_entrega_item m on m.entrega_id = en.id
-where en.estado <> 'ANULADA'
-group by en.empresa_id, en.id, en.numero, en.version, j.fecha, en.cliente_id, c.nombre,
-         en.estado, en.estado_facturacion;
-```
-
-### 17.9 v_producto_clientes — clientes que compran cada producto y cantidades
-
-```sql
-create view v_producto_clientes with (security_invoker = true) as
-select
-  en.empresa_id, ei.producto_id, en.cliente_id, c.nombre as cliente,
-  count(distinct en.id)                                         as entregas,
-  sum(ei.cantidad_entregada)                                    as cantidad_total_base,
-  sum(ei.cantidad_entregada) filter (where j.fecha >= current_date - 30) as cantidad_30_dias_base,
-  round(avg(ei.cantidad_entregada), 3)                          as promedio_por_entrega_base,
-  max(j.fecha)                                                  as ultima_entrega,
-  (array_agg(ei.precio_unitario order by j.fecha desc))[1]      as ultimo_precio_unitario,  -- clase V
-  sum(ei.importe)                                               as venta_total              -- clase V
-from entrega en
-join jornada j        on j.id = en.jornada_id
-join cliente c        on c.id = en.cliente_id
-join entrega_item ei  on ei.entrega_id = en.id
-where en.estado = 'ENTREGADA'
-group by en.empresa_id, ei.producto_id, en.cliente_id, c.nombre;
-```
-
-Se complementa con los pedidos pendientes del producto (pedidos CONFIRMADO a EN_REPARTO, suma de `cantidad_base` por cliente) para mostrar en la ficha "vendido" y "pedido para próximas jornadas".
-
-### 17.10 v_ficha_producto — administración central del producto (R14)
-
-```sql
-create view v_ficha_producto with (security_invoker = true) as
-select
-  p.empresa_id, p.id as producto_id, p.codigo, p.nombre,
-  cat.nombre as categoria, cat.grupo, p.unidad_base, p.activo,
-  pv.nombre                                                   as proveedor_preferido,
-  (select count(*) from v_oferta_vigente o
-    where o.producto_id = p.id and o.disponible)              as proveedores_con_oferta,
-  cr.costo_preferido, cr.costo_minimo, cr.ultimo_costo_real, cr.costo_referencia,
-  coalesce(p.recargo_default, cat.recargo_default, e.recargo_global) as recargo_general,
-  case when p.recargo_default   is not null then 'RECARGO_PRODUCTO'
-       when cat.recargo_default is not null then 'RECARGO_CATEGORIA'
-       else 'RECARGO_GLOBAL' end                              as origen_recargo_general,
-  (select count(*) from v_producto_clientes pc
-    where pc.producto_id = p.id)                              as clientes_que_lo_compran,
-  (select sum(pc.cantidad_30_dias_base) from v_producto_clientes pc
-    where pc.producto_id = p.id)                              as vendido_30_dias_base
-from producto p
-join categoria cat           on cat.id = p.categoria_id
-join empresa e               on e.id = p.empresa_id
-left join proveedor pv       on pv.id = p.proveedor_preferido_id
-left join v_costo_referencia_producto cr on cr.producto_id = p.id;
-```
-
-El **precio de venta general** (para un cliente sin reglas propias) y el precio para cada cliente se calculan en el servidor con `resolverPrecioVenta` sobre `costo_referencia` (misma función que usan los pedidos), para no duplicar la lógica de precedencia y redondeo en SQL.
-
-### 17.11 v_factura_estado_cobro (PROPUESTO)
-
-Igual que `v_compra_estado_pago`, sumando `imputacion_cobro_cliente` activas por `factura` EMITIDA: cobrado, pendiente, estado de cobro (COBRADA, PARCIAL, PENDIENTE) y vencida.
-
-### 17.12 Vistas operativas sin precios (`v_op_*`)
-
-Son las **únicas** fuentes de datos de las pantallas de preparación y reparto y de DOC-02, DOC-04 y DOC-07. No contienen ninguna columna de clase V, C, M o F.
-
-```sql
-create view v_op_entrega with (security_invoker = true) as
-select
-  en.empresa_id, en.id, en.numero, en.jornada_id, j.fecha,
-  en.cliente_id, coalesce(en.cliente_nombre, c.nombre)            as cliente,
-  en.punto_entrega_id, coalesce(en.punto_entrega_nombre, pe.nombre) as punto_entrega,
-  coalesce(en.direccion_entrega, pe.direccion)                     as direccion,
-  pe.referencias, pe.contacto_nombre, pe.contacto_telefono,
-  pe.horario_desde, pe.horario_hasta, pe.instrucciones_entrega, pe.latitud, pe.longitud,
-  en.reparto_id, en.orden_en_reparto, en.estado, en.con_diferencias, en.version,
-  en.cantidad_bultos, en.referencia_cliente, en.observaciones,
-  en.recibido_por, en.recibido_cargo, en.recibido_en
-from entrega en
-join jornada j        on j.id  = en.jornada_id
-join cliente c        on c.id  = en.cliente_id
-join punto_entrega pe on pe.id = en.punto_entrega_id;
-
-create view v_op_entrega_item with (security_invoker = true) as
-select
-  ei.empresa_id, ei.id, ei.entrega_id, ei.linea, ei.pedido_item_id, ei.producto_id, ei.producto_nombre,
-  ei.unidad_base, ei.presentacion_id, pr.nombre as presentacion_nombre, ei.factor_a_base,
-  ei.es_sustitucion, ei.sustituye_producto_id, ps.nombre as sustituye_producto_nombre,
-  ei.cantidad_pedida, ei.cantidad_propuesta, ei.cantidad_preparada, ei.motivo_faltante,
-  ei.cantidad_entregada, ei.motivo_diferencia, ei.detalle_diferencia, ei.observaciones
-from entrega_item ei
-left join presentacion pr on pr.id = ei.presentacion_id
-left join producto ps     on ps.id = ei.sustituye_producto_id;
-
-create view v_op_hoja_preparacion with (security_invoker = true) as
-select
-  oe.empresa_id, oe.jornada_id, oe.fecha, oe.id as entrega_id, oe.numero,
-  oe.cliente, oe.punto_entrega, oe.observaciones as observaciones_entrega,
-  oi.linea, oi.producto_id, oi.producto_nombre, oi.unidad_base, oi.presentacion_nombre,
-  oi.factor_a_base, oi.es_sustitucion, oi.sustituye_producto_nombre,
-  oi.cantidad_pedida, oi.cantidad_propuesta, oi.cantidad_preparada, oi.motivo_faltante, oi.observaciones,
-  cat.orden as orden_categoria
-from v_op_entrega oe
-join v_op_entrega_item oi on oi.entrega_id = oe.id
-join producto p           on p.id = oi.producto_id
-join categoria cat        on cat.id = p.categoria_id;
-
-create view v_op_reparto with (security_invoker = true) as
-select
-  r.empresa_id, r.id, r.numero, r.jornada_id, j.fecha, r.repartidor_id,
-  u.nombre as repartidor, r.vehiculo, r.estado, r.salida_en, r.regreso_en, r.observaciones,
-  (select count(*) from entrega en where en.reparto_id = r.id and en.estado <> 'ANULADA') as entregas
-from reparto r
-join jornada j       on j.id = r.jornada_id
-left join usuario u  on u.id = r.repartidor_id;
-```
-
-Permisos del rol de base restringido (`app_operativo`, ver 02-usuarios-roles-y-permisos.md, sección 8):
-
-```sql
-grant select on v_op_entrega, v_op_entrega_item, v_op_hoja_preparacion, v_op_reparto to app_operativo;
-
--- permisos por columna: solo columnas operativas de las tablas base (necesario con security_invoker)
-grant select (id, empresa_id, numero, jornada_id, cliente_id, punto_entrega_id, reparto_id,
-              orden_en_reparto, estado, con_diferencias, version, cantidad_bultos, referencia_cliente,
-              observaciones, cliente_nombre, punto_entrega_nombre, direccion_entrega,
-              recibido_por, recibido_cargo, recibido_en)
-  on entrega to app_operativo;
-grant select (id, empresa_id, entrega_id, linea, pedido_item_id, producto_id, presentacion_id,
-              factor_a_base, producto_nombre, unidad_base, es_sustitucion, sustituye_producto_id,
-              cantidad_pedida, cantidad_propuesta, cantidad_preparada, motivo_faltante,
-              cantidad_entregada, motivo_diferencia, detalle_diferencia, observaciones)
-  on entrega_item to app_operativo;
-grant update (cantidad_preparada, motivo_faltante, cantidad_entregada, motivo_diferencia,
-              detalle_diferencia, observaciones, actualizado_en, actualizado_por)
-  on entrega_item to app_operativo;
--- Las altas de líneas de sustitución y el pase de estados los hace una función SECURITY DEFINER
--- que calcula el precio del sustituto sin devolverlo.
--- (análogo para jornada, cliente, punto_entrega, presentacion, producto, categoria, reparto, usuario:
---  solo columnas sin precios, recargos, límites ni saldos)
-```
-
-Los importes de la entrega se recalculan con un trigger `SECURITY DEFINER` cuando cambian cantidades, de modo que el rol operativo actualiza cantidades **sin leer precios**. La emisión de DOC-03 y la reemisión por una nueva versión las ejecuta un proceso del servidor con el rol normal de la aplicación, que guarda el PDF y **no devuelve** su contenido a un usuario sin `documentos.imprimir_contable`.
+| Qué responde | Dónde se calcula |
+|---|---|
+| Precio de compra vigente por producto y puesto, normalizado a unidad base, mejor precio, % sobre el mejor, desactualizado | `listaGeneralPreciosCompra` y `preciosVigentes` (`src/modulos/precios-compra/ofertas.ts`), con `src/dominio/precios/compra.ts` |
+| Costo de referencia (preferido, mínimo, último real) y costo real del día (promedio ponderado de las compras) | `costosReales` y `calcularPrecios` (`src/modulos/precios-venta/calculo.ts`), `src/dominio/precios/venta.ts` |
+| Necesidad del día y cantidades a comprar | `generarListaCompra` y `compradoPorProducto` (`src/modulos/compras/lista-compra.ts`) |
+| Pagado, pendiente y estado de pago de una compra | `pagadoDeCompra` (`src/modulos/compras/cuenta.ts`) |
+| Partidas imputables (FIFO y deuda vencida) | `partidasDeudoras` y `partidasAcreedoras` (`src/modulos/compras/imputaciones.ts`) |
+| Saldo, crédito disponible, % de uso, semáforo y deuda vencida por proveedor | `cuentaDeProveedor`, `listarCuentasProveedores` y `cuentaCorriente` |
+| Venta, costo y margen por entrega, cliente y producto | `reporteVentas` y `balance` (`src/modulos/reportes`) |
+| Ficha central del producto | `obtenerProducto` (`src/modulos/catalogo/productos.ts`) |
+| Líneas de preparación y reparto **sin precios** | `lineasOperativas` y `contenidoListaEntrega` (`src/modulos/entregas/documentos.ts`): seleccionan columnas explícitas sin precio, costo ni deuda (02 §8) |
 
 ---
 
@@ -2442,21 +1896,21 @@ Efectos derivados, en la misma transacción de cada compra:
 
 (El saldo intermedio de $417.000 existe solo dentro de la transacción: cargo y pago se graban juntos.)
 
-`v_saldo_proveedor`:
+Saldo del proveedor:
 
 | proveedor | limite_credito | saldo_neto | saldo_pendiente | credito_disponible | porcentaje_uso | semaforo |
 |---|---|---|---|---|---|---|
 | Don Carlos | $2.000.000 | $1.314.800 | $1.314.800 | $685.200 | 65,7% | VERDE |
 | Los Hermanos | $400.000 | $377.000 | $377.000 | $23.000 | 94,3% | ROJO |
 
-`v_compra_estado_pago`:
+Estado de pago de las compras:
 
 | compra | total | pagado | pendiente | estado_pago | fecha_vencimiento |
 |---|---|---|---|---|---|
 | COM-000201 | $64.800 | $0 | $64.800 | PENDIENTE | 01/10/2026 |
 | COM-000202 | $87.000 | $40.000 | $47.000 | PARCIAL | 09/10/2026 |
 
-`v_costo_real_jornada`: Tomate 64.800 / 54 = **$1.200/kg**; Papa 57.000 / 100 = **$570/kg**; Lechuga 30.000 / 48 = **$625/u**. Con estos costos se recalculan los precios estimados de los pedidos (`origen_costo_estimado` = REAL_JORNADA): el total estimado del hospital pasa a $132.270 (lechuga $770) y el del restaurante a $41.160 (lechuga $880, papa $720).
+Costo real del día: Tomate 64.800 / 54 = **$1.200/kg**; Papa 57.000 / 100 = **$570/kg**; Lechuga 30.000 / 48 = **$625/u**. Con estos costos se recalculan los precios estimados de los pedidos (`origen_costo_estimado` = REAL_JORNADA): el total estimado del hospital pasa a $132.270 (lechuga $770) y el del restaurante a $41.160 (lechuga $880, papa $720).
 
 ### 19.6 Preparación y entrega — `entrega` y `entrega_item`
 
@@ -2501,7 +1955,7 @@ Estados finales: pedidos ENTREGADO (pasaron por EN_COMPRA, EN_PREPARACION, PREPA
 
 ### 19.7 Venta, margen, cierre y facturación
 
-`v_venta_entrega`:
+Venta de cada entrega:
 
 | entrega | venta | costo | margen | margen sobre venta | alertas |
 |---|---|---|---|---|---|
@@ -2524,7 +1978,7 @@ Estados finales: pedidos ENTREGADO (pasaron por EN_COMPRA, EN_PREPARACION, PREPA
 | Saldo total adeudado a proveedores | $1.691.800 (Don Carlos $1.314.800 · Los Hermanos $377.000) |
 | Alertas | Los Hermanos en ROJO (94,3%) |
 
-En la fase 2 el sobrante se registra en `ajuste_stock` y se descuenta de la lista de compra siguiente.
+
 
 Ejemplo de alerta: si el costo real de la papa hubiera sido $780/kg, la línea del hospital (precio fijo $750) tendría la alerta MARGEN_NEGATIVO y la emisión de documentos pediría confirmación explícita.
 
@@ -2535,4 +1989,4 @@ Facturación (`factura` + `factura_entrega`):
 | FAC-000011 | INTERNO | La Esquina (POR_ENTREGA, automático al confirmar) | 24/09/2026 | ENT-000302 v1 ($41.160) | $41.160 |
 | FAC-000012 | INTERNO | Hospital Central (MENSUAL) | 30/09/2026 | ENT-000301 v2 ($130.730) y las demás entregas de septiembre | suma de las entregas |
 
-Al emitirse cada comprobante, sus entregas pasan a `estado_facturacion` FACTURADA. La ficha del producto Lechuga (`v_producto_clientes`) muestra ahora: Hospital Central 28 u (último precio $770) y La Esquina 12 u (último precio $880).
+Al emitirse cada comprobante, sus entregas pasan a `estado_facturacion` FACTURADA. La ficha del producto Lechuga muestra ahora: Hospital Central 28 u (último precio $770) y La Esquina 12 u (último precio $880).

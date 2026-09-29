@@ -1,6 +1,7 @@
 "use server";
 
 import type { ResultadoEmision } from "@/modulos/entregas/documentos";
+import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { iniciarPreparacion, marcarPreparada, prepararTodoComoPropuesto, registrarPreparado, sustituirProducto } from "@/modulos/entregas/preparacion";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
@@ -18,14 +19,17 @@ function textoDocumentos(r: ResultadoEmision | null): string {
 
 export async function iniciarPreparacionAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
-    const r = await iniciarPreparacion(db, authUserId, campo(datos, "fecha"));
+    const fecha = campo(datos, "fecha");
+    const { problemas } = await completarPedidosDelDia(db, authUserId, fecha);
+    const r = await iniciarPreparacion(db, authUserId, fecha);
     const partes = [
-      r.entregasNuevas ? `${r.entregasNuevas} ${r.entregasNuevas === 1 ? "entrega nueva" : "entregas nuevas"}` : null,
-      r.lineasNuevas ? `${r.lineasNuevas} ${r.lineasNuevas === 1 ? "línea" : "líneas"}` : null,
+      r.entregasNuevas ? `${r.entregasNuevas} ${r.entregasNuevas === 1 ? "cliente nuevo" : "clientes nuevos"} para preparar` : null,
+      r.lineasNuevas ? `${r.lineasNuevas} ${r.lineasNuevas === 1 ? "producto" : "productos"} para separar` : null,
     ].filter(Boolean);
     const avisos = [
-      r.borradores ? `${r.borradores} ${r.borradores === 1 ? "pedido sigue" : "pedidos siguen"} en borrador y no ${r.borradores === 1 ? "entra" : "entran"}.` : null,
-      r.sinLugar ? `${r.sinLugar} ${r.sinLugar === 1 ? "línea llegó" : "líneas llegaron"} tarde para una entrega que ya salió: cargalas en otro pedido.` : null,
+      r.borradores ? `${r.borradores} ${r.borradores === 1 ? "pedido no tiene" : "pedidos no tienen"} productos y no ${r.borradores === 1 ? "entra" : "entran"}.` : null,
+      problemas.length ? `Quedaron afuera: ${problemas.join(" ")}` : null,
+      r.sinLugar ? `${r.sinLugar} ${r.sinLugar === 1 ? "producto llegó" : "productos llegaron"} tarde para un pedido que ya salió: cargalos en otro pedido.` : null,
     ].filter(Boolean);
     return { ok: true, mensaje: [partes.length ? `Listo: ${partes.join(" y ")}.` : "Todo al día: no había pedidos nuevos.", ...avisos].join(" ") };
   });

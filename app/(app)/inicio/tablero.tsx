@@ -15,7 +15,6 @@ import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquet
 import {
   armarListaConElegidosAccion,
   asignarElegidosAccion,
-  confirmarElegidosAccion,
   moverTarjetaAccion,
   prioridadElegidosAccion,
   sacarDeListaAccion,
@@ -23,8 +22,8 @@ import {
 
 // Tablero de pedidos estilo Trello: una columna por etapa y una tarjeta grande por pedido, con lo
 // que lleva a la vista, etiquetas, plazo, notas, avance y quién se encarga. Se arrastran entre
-// columnas (confirmar, agregar a la lista o sacar) y en "Elegir pedidos" se marcan varias (o
-// todas) para armar la lista de compra de una vez.
+// columnas (mandar a la lista de compras o sacarla) y en "Elegir pedidos" se marcan varias (o
+// todas) para mandarlas juntas a la lista de compras.
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
 
@@ -43,9 +42,9 @@ interface Props {
 
 /** El color de cada columna, el mismo de su paso en "Paso a paso". */
 const COLOR_COLUMNA: Record<ClaveColumna, string> = {
-  por_confirmar: "var(--pastel-azul)",
-  confirmados: "var(--pastel-azul)",
+  pedidos: "var(--pastel-azul)",
   en_lista: "var(--pastel-violeta)",
+  comprados: "var(--pastel-naranja)",
   preparando: "var(--pastel-amarillo)",
   en_camino: "var(--pastel-verde)",
   entregados: "var(--pastel-rosa)",
@@ -63,7 +62,7 @@ const PLAZO: Record<TarjetaPedido["estadoPlazo"], string> = {
 
 const sinProductos = (t: TarjetaPedido) => ({
   ok: false,
-  mensaje: `${t.cliente} (${t.numero}) todavía no tiene productos: cargale lo que lleva y después confirmalo.`,
+  mensaje: `${t.cliente} (${t.numero}) todavía no tiene productos: cargale lo que lleva y después mandalo a la lista de compras.`,
   enlace: { href: `/pedidos/${t.id}/cambiar`, texto: `Agregar productos a ${t.cliente}` },
 });
 
@@ -122,6 +121,10 @@ function Tarjeta({
   alArrastrar: (e: DragEvent<HTMLElement>) => void;
 }) {
   const etiquetas = etiquetasDePedido(t);
+  // En la lista de compras y al preparar se ve qué ya está (✓) y qué falta (⬜); al preparar,
+  // todos los productos, para saber qué separar para ese cliente y qué faltó.
+  const conTilde = t.columna === "en_lista" || t.columna === "preparando";
+  const todos = t.columna === "preparando";
   const contenido = (
     <>
       {etiquetas.length > 0 && (
@@ -147,14 +150,23 @@ function Tarjeta({
       </div>
       {t.productos.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1 rounded-lg bg-black/[0.03] p-2 dark:bg-white/5">
-          {t.productos.slice(0, PRODUCTOS_A_LA_VISTA).map((p, i) => (
-            <li key={`${p.nombre}-${i}`} className="flex items-baseline gap-2 text-[15px] text-tarjeta-texto">
-              <span aria-hidden>{dibujoDeProducto(p.nombre, p.grupo)}</span>
-              <span className="min-w-0 flex-1 truncate">{p.nombre}</span>
-              <span className="shrink-0 font-semibold tabular-nums">{p.cantidad}</span>
+          {(todos ? t.productos : t.productos.slice(0, PRODUCTOS_A_LA_VISTA)).map((p, i) => (
+            <li key={`${p.nombre}-${i}`} className="text-[15px] text-tarjeta-texto">
+              <span className="flex items-baseline gap-2">
+                {conTilde ? (
+                  <span aria-label={p.hecha ? "listo" : "falta"} className={p.hecha ? "font-bold text-[var(--pastel-verde-texto)]" : "text-tarjeta-suave"}>
+                    {p.hecha ? "✓" : "⬜"}
+                  </span>
+                ) : (
+                  <span aria-hidden>{dibujoDeProducto(p.nombre, p.grupo)}</span>
+                )}
+                <span className="min-w-0 flex-1 truncate">{p.nombre}</span>
+                <span className="shrink-0 font-semibold tabular-nums">{p.cantidad}</span>
+              </span>
+              {p.aviso && <span className="mt-0.5 ml-6 block w-fit rounded-md bg-[var(--pastel-naranja)] px-2 text-sm font-semibold text-[var(--pastel-naranja-texto)]">⚠ {p.aviso}</span>}
             </li>
           ))}
-          {t.productos.length > PRODUCTOS_A_LA_VISTA && <li className="pl-7 text-sm text-tarjeta-suave">y {t.productos.length - PRODUCTOS_A_LA_VISTA} más…</li>}
+          {!todos && t.productos.length > PRODUCTOS_A_LA_VISTA && <li className="pl-7 text-sm text-tarjeta-suave">y {t.productos.length - PRODUCTOS_A_LA_VISTA} más…</li>}
         </ul>
       ) : (
         <p className="mt-3 rounded-lg bg-[var(--pronto-fondo)] px-3 py-2 text-sm font-semibold text-[var(--pronto-texto)]">🧺 Sin productos todavía · tocá para cargarlos</p>
@@ -242,7 +254,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
       }
       return nuevas;
     });
-  const pendientesDeCompra = todas.filter((t) => (t.estado === "BORRADOR" || t.estado === "CONFIRMADO") && pasaFiltro(t));
+  const pendientesDeCompra = todas.filter((t) => t.columna === "pedidos" && pasaFiltro(t));
   const vacios = pendientesDeCompra.filter((t) => t.lineas === 0);
   const elegirFaltantes = () => {
     setEligiendo(true);
@@ -271,7 +283,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
       setMensaje({ ok: false, mensaje: "Esa tarjeta no se puede mover ahí: preparación, reparto y entrega avanzan solas cuando se hacen esos pasos." });
       return;
     }
-    if (tarjeta && tarjeta.lineas === 0 && (hacia === "confirmados" || hacia === "en_lista")) {
+    if (tarjeta && tarjeta.lineas === 0 && hacia === "en_lista") {
       setMensaje(sinProductos(tarjeta));
       return;
     }
@@ -307,7 +319,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
         <div className="flex flex-wrap items-center gap-2">
         {puede.armar && pendientesDeCompra.length > vacios.length && !eligiendo && (
           <button type="button" onClick={elegirFaltantes} className="min-h-10 rounded-lg bg-white px-4 text-sm font-semibold text-[#172b4d] hover:bg-white/90">
-            🛒 Elegir todo lo que falta comprar ({pendientesDeCompra.length - vacios.length})
+            🛒 Elegir todos los pedidos para la lista ({pendientesDeCompra.length - vacios.length})
           </button>
         )}
         <button
@@ -382,7 +394,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
                       eligiendo={eligiendo && col.seleccionable}
                       elegida={elegidas.has(t.id)}
                       alElegir={() => alternar(t.id)}
-                      arrastrable={puede.editar && (col.clave === "por_confirmar" || col.clave === "confirmados" || col.clave === "en_lista")}
+                      arrastrable={puede.editar && (col.clave === "pedidos" || col.clave === "en_lista")}
                       alArrastrar={(e) => {
                         e.dataTransfer.effectAllowed = "move";
                         e.dataTransfer.setData("text/plain", t.id);
@@ -394,7 +406,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
                 {visibles.length === 0 && <li className="px-1 py-3 text-tarjeta-suave">{col.tarjetas.length ? "Nada con este filtro." : "Sin pedidos."}</li>}
               </ol>
               <footer className="px-3 pt-2 pb-3">
-                {col.clave === "por_confirmar" && puede.crear ? (
+                {col.clave === "pedidos" && puede.crear ? (
                   <Link href={`/pedidos/nuevo?fecha=${fecha}`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black/5 text-base font-semibold hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15">
                     <span aria-hidden className="text-xl leading-none">
                       ＋
@@ -452,12 +464,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
           <span className="flex-1" />
           {puede.armar && resumen.paraLista > 0 && (
             <button type="button" disabled={pendiente} onClick={() => ejecutar(armarListaConElegidosAccion, { pedido: [...elegidas] }, terminar)} className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60">
-              🛒 Armar la lista de compra ({resumen.paraLista})
-            </button>
-          )}
-          {resumen.paraConfirmar > 0 && (
-            <button type="button" disabled={pendiente} onClick={() => ejecutar(confirmarElegidosAccion, { pedido: [...elegidas] }, terminar)} className="min-h-12 rounded-xl border-2 border-borde px-4 font-semibold disabled:opacity-60">
-              ✓ Confirmar ({resumen.paraConfirmar})
+              🛒 Mandar a la lista de compras ({resumen.paraLista})
             </button>
           )}
           {puede.armar && resumen.paraSacar > 0 && (

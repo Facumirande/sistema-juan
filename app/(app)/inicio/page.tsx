@@ -55,6 +55,12 @@ function SelectorDeDia({ dia, vista, sobreTablero }: { dia: DiaDeTrabajo; vista:
           </Link>
         );
       })}
+      <Link
+        href="/jornadas"
+        className={`flex min-h-14 shrink-0 items-center justify-center rounded-xl px-3 text-sm font-semibold ${sobreTablero ? "bg-white/20 text-white hover:bg-white/30" : "border border-borde bg-superficie"}`}
+      >
+        📅 Otros días
+      </Link>
     </nav>
   );
 }
@@ -116,7 +122,6 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           {dia && (
             <p className={`hidden sm:block ${sobre ? "text-white/85" : "text-texto-suave"}`}>
               {!dia.panel.estado ? "Todavía sin pedidos para este día" : dia.pasos.actual ? `Ahora toca: ${TITULOS[dia.pasos.actual].toLowerCase()}` : "Día terminado"}
-              {tablero?.lista.numero && ` · lista de compra ${tablero.lista.numero}`}
             </p>
           )}
         </div>
@@ -188,8 +193,9 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           base={base}
           puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar") }}
           enlaces={{
-            confirmados: { href: `/pedidos?fecha=${dia.fecha}`, texto: "Ver los pedidos" },
-            en_lista: { href: `/lista-compra?fecha=${dia.fecha}`, texto: "Ver la lista de compra" },
+
+            en_lista: { href: `/lista-compra?fecha=${dia.fecha}`, texto: "🛒 Ir a la lista de compras" },
+            comprados: { href: `/preparacion/${dia.fecha}`, texto: "📦 Ir a preparar" },
             preparando: { href: `/preparacion/${dia.fecha}`, texto: "Ir a preparación" },
             en_camino: { href: `/viaje?fecha=${dia.fecha}`, texto: "🧭 Ver el viaje y el GPS" },
             entregados: { href: `/entregas?fecha=${dia.fecha}`, texto: "Ver las entregas" },

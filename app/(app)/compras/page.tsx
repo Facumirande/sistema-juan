@@ -28,7 +28,7 @@ export default async function PaginaCompras({ searchParams }: PageProps<"/compra
     <section className="flex max-w-4xl flex-col gap-6">
       <Encabezado titulo="Compras" descripcion={`Lo que se compró en el mercado para la entrega del ${fechaConDia(fecha)}. Tocá una compra para ver el detalle o anularla.`}>
         <Link href={`/lista-compra?fecha=${fecha}`} className={clasesBoton("secundario")}>
-          Lista de compra
+          Lista de compras
         </Link>
         {sesion.permisos.includes("compras.registrar") && (
           <Link href={`/compras/nueva?fecha=${fecha}`} className={clasesBoton("principal")}>

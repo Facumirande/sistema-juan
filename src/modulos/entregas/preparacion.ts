@@ -5,7 +5,7 @@ import { cliente, compra, entrega, entregaItem, jornada, pedido, pedidoItem, pre
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { dec, sumar } from "@/dominio/dinero/decimal";
-import { distribuirFaltante, evaluarPreparado, pasoDeReparto, type MotivoDiferencia } from "@/dominio/entregas/entregas";
+import { avisoDeFaltante, distribuirFaltante, evaluarPreparado, pasoDeReparto, type MotivoDiferencia } from "@/dominio/entregas/entregas";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { prioridadParaFaltantes } from "@/dominio/pedidos/tablero";
 import { formatearCantidad, formatearPorcentaje, type UnidadMedida } from "@/dominio/dinero/formato";
@@ -23,7 +23,7 @@ import { documentosAlDia, emitirDocumentosEntrega, lineasOperativas, reemitirSiC
 
 const ESTADOS_PEDIDO_A_PREPARAR = ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO"] as const;
 const EDITABLES = ["BORRADOR", "EN_PREPARACION", "PREPARADA"] as const;
-const MOTIVOS_FALTANTE = ["NO_CONSEGUIDO", "FALTANTE", "ERROR_PREPARACION", "CAMBIO_CLIENTE", "OTRO"] as const;
+const MOTIVOS_FALTANTE = ["NO_CONSEGUIDO", "FALTANTE", "RECHAZO_CALIDAD", "ERROR_PREPARACION", "CAMBIO_CLIENTE", "OTRO"] as const;
 
 /**
  * RN-111: una entrega por cliente + punto de entrega con pedidos confirmados; cada línea referencia
@@ -210,6 +210,8 @@ export interface EntregaEnPreparacion {
   sustituciones: number;
   bultos: number | null;
   documentosPendientes: boolean;
+  /** Lo que hay que separar para el cliente, con lo ya separado tildado y lo que faltó y por qué. */
+  detalle: { producto: string; cantidad: string; hecha: boolean; aviso: string | null; reemplazo: boolean }[];
 }
 
 export interface ProductoEnPreparacion {
@@ -269,6 +271,7 @@ export async function obtenerPreparacion(
             pedida: entregaItem.cantidadPedida,
             propuesta: entregaItem.cantidadPropuesta,
             preparada: entregaItem.cantidadPreparada,
+            motivo: entregaItem.motivoFaltante,
             categoria: producto.categoriaId,
           })
           .from(entregaItem)
@@ -279,6 +282,7 @@ export async function obtenerPreparacion(
               filas.map((f) => f.id),
             ),
           )
+          .orderBy(asc(entregaItem.linea))
       : [];
     const entregas: EntregaEnPreparacion[] = [];
     for (const f of filas) {
@@ -298,6 +302,13 @@ export async function obtenerPreparacion(
         sustituciones: propias.filter((i) => i.esSustitucion).length,
         bultos: f.bultos,
         documentosPendientes: f.estado === "PREPARADA" && !(await documentosAlDia(tx, f.id, f.version)),
+        detalle: propias.map((i) => ({
+          producto: i.producto,
+          cantidad: formatearCantidad(i.esSustitucion ? (i.preparada ?? i.pedida) : i.pedida, i.unidad as UnidadMedida),
+          hecha: i.preparada !== null,
+          aviso: i.esSustitucion ? null : avisoDeFaltante({ ...i, unidad: i.unidad as UnidadMedida }),
+          reemplazo: i.esSustitucion,
+        })),
       });
     }
     const comprado = await compradoPorProducto(tx, j.id);

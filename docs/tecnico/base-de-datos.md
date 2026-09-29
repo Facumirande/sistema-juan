@@ -1,6 +1,6 @@
 # Base de datos: roles, aislamiento y migraciones
 
-Cómo se implementa lo definido en `docs/plan/01-tipo-de-aplicacion-y-arquitectura.md` §11 y `docs/plan/02-usuarios-roles-y-permisos.md` §8.
+Cómo se implementa lo definido en `docs/plan/01-tipo-de-aplicacion-y-arquitectura.md` §8 y `docs/plan/02-usuarios-roles-y-permisos.md` §8.
 
 ## Roles de PostgreSQL
 
@@ -9,7 +9,7 @@ Cómo se implementa lo definido en `docs/plan/01-tipo-de-aplicacion-y-arquitectu
 | Dueño de las tablas (`postgres` en Supabase) | Sí | Solo aplica migraciones (`DATABASE_MIGRACIONES_URL`). La aplicación nunca lo usa. |
 | `app_servidor` | Sí, `NOINHERIT`, sin `BYPASSRLS` | Conexión de la aplicación (`DATABASE_URL`). Por sí mismo no puede leer ninguna tabla. |
 | `app_negocio` | No | Rol de cada transacción normal: `SET LOCAL ROLE app_negocio`. |
-| `app_operativo` | No | Rol de las pantallas y documentos sin precios (preparación, reparto; se completa en la iteración 6 con permisos por columna). |
+| `app_operativo` | No | Reservado para las pantallas y documentos sin precios. Hoy no se usa: esas pantallas se arman con consultas que no leen precios (02 §8). |
 | `app_alta` | No | Solo puede crear la fila de una empresa nueva (alta de empresa). |
 
 Los tres roles sin login se crean en la migración `0001_seguridad_rls.sql`. `app_servidor` se crea a mano, una vez por entorno, porque lleva una clave:
@@ -35,9 +35,8 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 
 - Esquema en `src/db/esquema/*.ts` (Drizzle). `pnpm db:generar --name=<nombre>` crea la migración SQL de los cambios de tablas.
 - SQL que Drizzle no genera (políticas, funciones, triggers, permisos): `pnpm db:migracion-sql --name=<nombre>` crea un archivo vacío registrado en el orden de migraciones.
-- La CI falla si el esquema cambió sin generar la migración.
-- Aplicar en un entorno: `pnpm exec drizzle-kit migrate` con `DATABASE_MIGRACIONES_URL`.
-- Proyecto de desarrollo `sistema-juan-dev` (ref `zdtbxsdgbkiaesjczgav`): las migraciones 0000 a 0002 se aplicaron desde la integración de Supabase (quedan registradas en `supabase_migrations.schema_migrations`, no en la tabla de Drizzle). Desde la 0003 se aplican desde la terminal con `DATABASE_MIGRACIONES_URL`; antes de la primera vez hay que registrar 0000 a 0002 en `drizzle.__drizzle_migrations` para que Drizzle no las repita. Pooler: `aws-0-sa-east-1.pooler.supabase.com`, puerto 6543.
+- Aplicar en un entorno: `pnpm db:aplicar` (usa `DATABASE_MIGRACIONES_URL` de `.env.local`).
+- Proyecto de desarrollo `sistema-juan-dev` (ref `zdtbxsdgbkiaesjczgav`): migraciones 0000 a 0014 aplicadas y registradas en `drizzle.__drizzle_migrations`. Pooler: `aws-0-sa-east-1.pooler.supabase.com`, puerto 6543. Producción es un proyecto aparte: se crea `app_servidor` (arriba) y se aplican todas las migraciones con `pnpm db:aplicar`.
 
 ## Configuración inicial y cuentas de usuario
 
@@ -51,6 +50,13 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 - Habilitar: `activo = true`, `invitacion_aceptada_en` (`accesoAprobadoEn`) y rol ADMIN. Rechazar: se borra `invitacion_enviada_en` y se bloquea la cuenta en Auth.
 - La cuenta ve su propio estado con la política `usuario_propio` (`src/modulos/usuarios/acceso.ts`).
 - Pendiente de una migración futura: renombrar esas dos columnas a `acceso_pedido_en` / `acceso_aprobado_en`.
+
+## Lista de compras, preparación por cliente y pedidos sin confirmar (29/09/2026)
+
+- Sin migraciones. Los pedidos no se confirman a mano: la carga guarda en `CONFIRMADO` (`cargarPedido` con `confirmar`) y `completarPedidosDelDia` (`src/modulos/pedidos/completar.ts`) completa los `BORRADOR` con productos antes de armar la lista o de empezar a preparar.
+- "✓ Lo compré": `comprarDeLaLista` (`src/modulos/compras/compra-desde-lista.ts`) valida la línea y el puesto (oferta o proveedor + envase del mismo producto) y llama a `registrarCompra` con una sola línea, de contado o a crédito.
+- Columnas del tablero: `columnaDeTarjeta` (`src/dominio/pedidos/tablero.ts`) pasa a "Comprado" un pedido en la lista con todo lo suyo comprado, y a "Preparando" uno que ya tiene su entrega armada aunque no se haya separado nada.
+- Lo que falta de cada línea, en palabras: `avisoDeFaltante` (`src/dominio/entregas/entregas.ts`), usado por el tablero y por la preparación.
 
 ## Tablero, notas, actividad y viaje (28/09/2026)
 
@@ -81,7 +87,6 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 - Después de toda operación que libera deuda o crédito (compra a crédito, anulación, ajuste, saldo inicial, anulación de un pago) se aplica el saldo a favor por FIFO (RN-098); así se mantiene el invariante de 06 §2.2, que verifican las pruebas.
 - La fecha que cuenta en el libro es `coalesce(fecha_origen, fecha)` en la zona de la empresa: una deuda anterior o un pago cargado días después quedan en su día.
 - Cuidado con Drizzle: en una consulta de una sola tabla escribe las columnas sin el nombre de la tabla (`"id"`), así que dentro de una subconsulta correlacionada `${tabla.id}` apunta a la tabla de adentro. En esas subconsultas se escribe la referencia completa (`compra.id`).
-- Migraciones en Supabase: la 0000 a la 0010 se aplicaron con el conector (apply_migration, el contenido exacto de cada archivo) y se registraron en `drizzle.__drizzle_migrations` con el hash de Drizzle. Se verificó que columnas, restricciones, índices, políticas, triggers, permisos y RLS dan la misma huella (md5) que una base local migrada con Drizzle.
 
 ## Iteración 4: lista de compra, compras y cuenta de proveedores
 
@@ -100,7 +105,7 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 
 - Migraciones `0003_catalogo_proveedores_clientes` (tablas) y `0004_catalogo_rls` (aislamiento de las 8 tablas; `historial_precio_compra` solo admite `UPDATE` de `vigente_hasta` y `actualizado_por`).
 - Relaciones "del mismo padre" con claves compuestas (03 §15.1): la presentación de una oferta es del mismo producto (`(producto_id, presentacion_id)`), y el punto de entrega declara `(empresa_id, cliente_id, id)` para los pedidos.
-- Las vistas `v_oferta_vigente` y `v_comparador_precios` de 03 §17 no se crearon: la consulta trae las ofertas activas y la comparación (mejor precio, % sobre el mejor, puesto, días sin actualizar) la calcula `compararOfertas` en `src/dominio/precios/compra.ts`, con pruebas sobre los números de 05 §2.1.
+- No hay vistas en la base (03 §17): la consulta trae las ofertas activas y la comparación (mejor precio, % sobre el mejor, puesto, días sin actualizar) la calcula `compararOfertas` en `src/dominio/precios/compra.ts`, con pruebas sobre los números de 05 §2.1.
 - Conexiones: `DATABASE_POOL_MAX` (opcional, 5 por defecto) fija las conexiones por instancia; en Vercel conviene 1.
 
 ## Pruebas sin Docker

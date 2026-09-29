@@ -67,11 +67,11 @@ export default async function PanelJornada({ params }: PageProps<"/jornadas/[fec
           </ol>
           <div className="grid gap-3 sm:grid-cols-2">
             <Bloque titulo="Pedidos" ruta={`/pedidos?fecha=${fecha}`} texto="Ver pedidos">
-              {pedidosVivos} confirmados
+              {pedidosVivos} pedidos
               {(p.pedidos.BORRADOR ?? 0) > 0 && ` · ${p.pedidos.BORRADOR} en borrador`}
               {(p.pedidos.CANCELADO ?? 0) > 0 && ` · ${p.pedidos.CANCELADO} cancelados`}
             </Bloque>
-            <Bloque titulo="Compra" ruta={`/lista-compra?fecha=${fecha}`} texto="Lista de compra">
+            <Bloque titulo="Compra" ruta={`/lista-compra?fecha=${fecha}`} texto="Lista de compras">
               {p.lista.armada ? `${p.lista.compradas} de ${p.lista.lineas} productos resueltos` : "Lista sin armar"}
               {p.lista.desactualizada && " · hay cambios para actualizar"}
               {` · ${p.compras} ${p.compras === 1 ? "compra" : "compras"}`}

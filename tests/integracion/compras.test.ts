@@ -5,11 +5,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { auditoria, compra, compraItem, empresa, historialPrecioCompra, jornada, movimientoCuentaProveedor } from "@/db/esquema";
 import { enEmpresa } from "@/db/transaccion";
+import { dec } from "@/dominio/dinero/decimal";
 import { hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { guardarCategoria } from "@/modulos/catalogo/categorias";
 import { agregarPresentacion, crearProducto, marcarProveedorPreferido, obtenerProducto } from "@/modulos/catalogo/productos";
 import { guardarCliente } from "@/modulos/clientes/clientes";
 import { anularCompra, listarCompras, obtenerCompra, registrarCompra, registrarSaldoInicial } from "@/modulos/compras/compras";
+import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
 import { cuentaDeProveedor } from "@/modulos/compras/cuenta";
 import { cambiarLineaLista, generarListaCompra, marcarNoConseguido, obtenerListaCompra } from "@/modulos/compras/lista-compra";
 import { agregarLinea, confirmarPedido, crearPedido, obtenerPedido } from "@/modulos/pedidos/pedidos";
@@ -317,5 +319,23 @@ describe("cambios después de armar la lista (04 §5.c.4, RN-049 a RN-052)", () 
     await generarListaCompra(base.db, comprador, manana);
     expect(((await linea("Banana")).cantidadPresentaciones)).toBe("6.000");
     expect((await linea("Papa")).estado).toBe("NO_CONSEGUIDO");
+  });
+});
+
+describe("✓ Lo compré, desde la lista de compras", () => {
+  it("anota la compra en el puesto elegido y la línea suma lo comprado", async () => {
+    const banana = await linea("Banana");
+    const r = await comprarDeLaLista(base.db, comprador, { itemId: banana.id, proveedorId: ids.D!, presentacionId: presentaciones["banana:Caja 20 kg"]!, cantidad: "1", precio: "24000", pagado: true });
+    expect([r.producto, r.proveedor, r.total]).toEqual(["Banana", "Frutas Tropicales", "24000.00"]);
+    expect(dec((await linea("Banana")).compradoBase).minus(banana.compradoBase).toString()).toBe("20");
+    const compra = await obtenerCompra(base.db, admin, r.compraId);
+    expect([compra.condicion, compra.fechaJornada]).toEqual(["CONTADO", manana]);
+  });
+
+  it("no deja anotar en un puesto o un envase de otro producto", async () => {
+    const banana = await linea("Banana");
+    expect(await codigoDeError(comprarDeLaLista(base.db, comprador, { itemId: banana.id, ofertaId: ids.ofertaBtomate!, cantidad: "1", precio: "17100", pagado: false }))).toBe("VALIDACION");
+    expect(await codigoDeError(comprarDeLaLista(base.db, comprador, { itemId: banana.id, proveedorId: ids.D!, presentacionId: presentaciones["tomate:Cajón 18 kg"]!, cantidad: "1", precio: "100", pagado: true }))).toBe("VALIDACION");
+    expect(await codigoDeError(comprarDeLaLista(base.db, comprador, { itemId: banana.id, cantidad: "1", precio: "100", pagado: true }))).toBe("VALIDACION");
   });
 });

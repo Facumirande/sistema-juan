@@ -191,7 +191,7 @@ export async function sacarPedidoDeLista(db: BaseDatos, authUserId: string, pedi
       .where(eq(pedido.id, pedidoId))
       .for("update", { of: pedido });
     if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
-    if (p.estado !== "EN_COMPRA") throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Ese pedido no está en la lista de compra.");
+    if (p.estado !== "EN_COMPRA") throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Ese pedido no está en la lista de compras.");
     const [otros] = await tx.select({ n: sql<number>`count(*)` }).from(pedido).where(and(eq(pedido.jornadaId, p.jornadaId), eq(pedido.estado, "EN_COMPRA")));
     if (Number(otros?.n ?? 0) <= 1) throw new ErrorDeNegocio("VALIDACION", "Es el único pedido de la lista: si no se compra nada, cancelá el pedido.");
     await tx.update(pedido).set({ estado: "CONFIRMADO", actualizadoPor: c.usuarioId }).where(eq(pedido.id, p.id));
@@ -201,7 +201,7 @@ export async function sacarPedidoDeLista(db: BaseDatos, authUserId: string, pedi
       entidadTipo: "PEDIDO",
       entidadId: p.id,
       jornadaId: p.jornadaId,
-      resumen: `sacó el pedido ${formatearNumeroDocumento("PED-", p.numero)} de la lista de compra`,
+      resumen: `sacó el pedido ${formatearNumeroDocumento("PED-", p.numero)} de la lista de compras`,
     });
     return r;
   });
@@ -218,11 +218,11 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
     if ([...elegidos].some((id) => !pedidos.some((p) => p.id === id))) throw new ErrorDeNegocio("VALIDACION", "Algunos de los pedidos elegidos son de otro día.");
     const noConfirmados = pedidos.filter((p) => elegidos.has(p.id) && !(ESTADOS_EN_LISTA as readonly string[]).includes(p.estado));
     if (noConfirmados.length > 0) {
-      throw new ErrorDeNegocio("VALIDACION", `Para entrar en la lista, un pedido tiene que estar confirmado: ${noConfirmados.map((p) => formatearNumeroDocumento("PED-", p.numero)).join(", ")}.`);
+      throw new ErrorDeNegocio("VALIDACION", `Estos pedidos no pueden entrar en la lista (les faltan productos o ya pasaron a preparación): ${noConfirmados.map((p) => formatearNumeroDocumento("PED-", p.numero)).join(", ")}.`);
     }
     incluidos = incluidos.filter((p) => p.estado === "EN_COMPRA" || elegidos.has(p.id));
   }
-  if (incluidos.length === 0) throw new ErrorDeNegocio("VALIDACION", "Para armar la lista hace falta al menos un pedido confirmado (RN-037).");
+  if (incluidos.length === 0) throw new ErrorDeNegocio("VALIDACION", "Para armar la lista hace falta al menos un pedido con productos (RN-037).");
   const borradores = pedidos.filter((p) => p.estado === "BORRADOR").length;
 
   // 1. Necesidad por producto en unidad base (RN-043, RN-044)
@@ -416,8 +416,8 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
       entidadId: lista!.id,
       jornadaId: j.id,
       resumen: existente
-        ? `actualizó la lista de compra del ${dia}${aMover.length ? ` y agregó ${cuantos(aMover.length)}` : ""}`
-        : `armó la lista de compra del ${dia} con ${cuantos(incluidos.length)}`,
+        ? `actualizó la lista de compras del ${dia}${aMover.length ? ` y agregó ${cuantos(aMover.length)}` : ""}`
+        : `armó la lista de compras del ${dia} con ${cuantos(incluidos.length)}`,
     });
   }
   return { listaId: lista!.id, numero, version, borradores, cambios, agregados: aMover.length, fueraDeLista };
@@ -613,8 +613,13 @@ export async function ofertasParaLinea(db: BaseDatos, authUserId: string, produc
       .select({
         ofertaId: proveedorProducto.id,
         productoId: proveedorProducto.productoId,
+        proveedorId: proveedorProducto.proveedorId,
         proveedor: proveedor.nombre,
+        ubicacion: proveedor.ubicacionMercado,
+        condicionHabitual: proveedor.condicionPagoHabitual,
+        presentacionId: proveedorProducto.presentacionId,
         presentacion: presentacion.nombre,
+        factor: presentacion.factorABase,
         precio: proveedorProducto.precioVigente,
         costoBase: proveedorProducto.costoBase,
       })

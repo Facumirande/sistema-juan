@@ -24,9 +24,10 @@ export interface GrupoMenu {
 }
 
 /**
- * Menú por grupos (08 §2.2, simplificado el 28/09/2026 para las dos personas que lo usan): arriba
- * el tablero de pedidos y cargar un pedido, después los registros y las cuentas; todo lo demás
- * (cada paso del día por separado, precios, reportes, usuarios) queda plegado en "Más opciones".
+ * Menú por grupos (08 §2.2, reducido el 29/09/2026 a lo esencial): el día de trabajo, los
+ * registros y las cuentas. Lo demás se abre desde la pantalla que corresponde (los precios desde
+ * Productos, los reportes desde Balance, los usuarios y la configuración desde Mi cuenta, cada
+ * etapa del día desde el tablero o el paso a paso).
  */
 export const MENU: readonly GrupoMenu[] = [
   {
@@ -34,6 +35,7 @@ export const MENU: readonly GrupoMenu[] = [
     items: [
       { pantalla: "P-02", etiqueta: "Tablero de pedidos", icono: "📋", ruta: "/inicio", permisos: [] },
       { pantalla: "P-41", etiqueta: "Nuevo pedido", icono: "＋", ruta: "/pedidos/nuevo", permisos: ["pedidos.crear"], destacado: true },
+      { pantalla: "P-50", etiqueta: "Lista de compras", icono: "🛒", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
       { pantalla: "P-78b", etiqueta: "Viaje de entrega", icono: "🧭", ruta: "/viaje", permisos: ["repartos.ver"] },
       { pantalla: "P-77", etiqueta: "Mi reparto", icono: "🚚", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"], ocultarCon: ["repartos.gestionar"] },
       { pantalla: "P-94", etiqueta: "Actividad y notas", icono: "💬", ruta: "/actividad", permisos: [] },
@@ -53,35 +55,6 @@ export const MENU: readonly GrupoMenu[] = [
       { pantalla: "P-91", etiqueta: "Balance", icono: "📈", ruta: "/balance", permisos: ["reportes.ver"] },
       { pantalla: "P-60", etiqueta: "Deudas con proveedores", icono: "💰", ruta: "/cuentas-proveedores", permisos: ["pagos.ver"] },
       { pantalla: "P-85", etiqueta: "Facturación", icono: "🧾", ruta: "/facturacion", permisos: ["facturacion.ver"] },
-    ],
-  },
-  {
-    grupo: "Más opciones",
-    plegado: true,
-    items: [
-      { pantalla: "P-02b", etiqueta: "El día paso a paso", icono: "☰", ruta: "/inicio?vista=pasos", permisos: ["jornada.ver"] },
-      { pantalla: "P-45", etiqueta: "Todos los días", icono: "📅", ruta: "/jornadas", permisos: ["jornada.ver"] },
-      { pantalla: "P-40", etiqueta: "Lista de pedidos", icono: "🗒️", ruta: "/pedidos", permisos: ["pedidos.ver"] },
-      { pantalla: "P-50", etiqueta: "Lista de compra", icono: "🛒", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
-      { pantalla: "P-56", etiqueta: "Compras", icono: "🧺", ruta: "/compras", permisos: ["compras.ver"] },
-      { pantalla: "P-70", etiqueta: "Preparación", icono: "📦", ruta: "/preparacion", permisos: ["preparacion.ver"] },
-      { pantalla: "P-75", etiqueta: "Repartos", icono: "🚚", ruta: "/repartos", permisos: ["repartos.ver"] },
-      { pantalla: "P-79", etiqueta: "Entregas", icono: "✅", ruta: "/entregas", permisos: ["entregas.ver"] },
-      { pantalla: "P-25", etiqueta: "Precios de compra", icono: "🏷️", ruta: "/precios/compra", permisos: ["precios.ver_costos"] },
-      { pantalla: "P-32", etiqueta: "Precios de venta", icono: "💲", ruta: "/precios/venta", permisos: ["precios.ver_margenes"] },
-      { pantalla: "P-93", etiqueta: "Movimientos", icono: "↔️", ruta: "/balance/movimientos", permisos: ["reportes.ver"] },
-      { pantalla: "P-90", etiqueta: "Reportes", icono: "📊", ruta: "/reportes", permisos: ["reportes.ver"] },
-      {
-        pantalla: "P-92",
-        etiqueta: "Documentos emitidos",
-        icono: "📄",
-        ruta: "/documentos",
-        permisos: ["documentos.imprimir_compra", "documentos.imprimir_entrega", "documentos.imprimir_contable", "documentos.imprimir_cuenta"],
-        enConstruccion: true,
-      },
-      { pantalla: "P-96", etiqueta: "Usuarios", icono: "👤", ruta: "/usuarios", permisos: ["usuarios.administrar"] },
-      { pantalla: "P-95", etiqueta: "Empresa", icono: "⚙️", ruta: "/configuracion", permisos: ["configuracion.ver"], enConstruccion: true },
-      { pantalla: "P-98", etiqueta: "Auditoría", icono: "🔍", ruta: "/auditoria", permisos: ["auditoria.ver"], enConstruccion: true },
     ],
   },
 ];

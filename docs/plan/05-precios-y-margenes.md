@@ -12,7 +12,7 @@
 6. [Recargo vs. margen](#6-recargo-vs-margen)
 7. [Ciclo de vida del precio](#7-ciclo-de-vida-del-precio)
 8. [Alertas de margen y de precio](#8-alertas-de-margen-y-de-precio)
-9. [Consulta y edición de recargos · simulador](#9-consulta-y-edición-de-recargos--simulador)
+9. [Consulta y edición de recargos](#9-consulta-y-edición-de-recargos)
 10. [Ejemplo numérico completo: tomate](#10-ejemplo-numérico-completo-tomate)
 
 Datos de ejemplo: los del escenario de `04-procesos-y-flujos.md` §2. Reglas citadas: `07-reglas-de-negocio.md`.
@@ -81,20 +81,8 @@ Ejemplo (vista agrupada por producto, 23/09):
 | 1 | Edición en línea | Lista general (PC o celular) | COMPRADOR, ADMIN | Tocar la celda de precio, escribir, Enter. Tab/Enter pasa a la fila siguiente. | `MANUAL` |
 | 2 | Actualización rápida en el puesto | Celular | COMPRADOR | Elegir proveedor → aparecen solo sus productos con el precio actual en grande → tocar y escribir el nuevo; botón "Sin cambios" confirma todos los que siguen igual. | `MANUAL`. "Sin cambios" solo actualiza `fecha_actualizacion` de la oferta, sin fila de historial. |
 | 3 | Automática al registrar una compra | Registro de compra | COMPRADOR | Si el precio pagado difiere del vigente, se actualiza la oferta (RN-059). | `COMPRA` (con referencia al `compra_item`) |
-| 4 | Masiva por porcentaje | PC | ADMIN | Filtrar por proveedor y/o categoría, indicar % (positivo o negativo) y redondeo opcional del precio de compra ($10 o $100); vista previa obligatoria; confirmar (RN-071). | `MANUAL`, con la observación "Actualización masiva +8 % Hnos. García" |
-| 5 | Importación desde planilla | PC | ADMIN | Descargar plantilla XLSX/CSV con los precios actuales, editar la columna "precio nuevo", subir; vista previa con diferencias y errores; aplicar las filas válidas (RN-072). | `IMPORTACION` |
 
 Todas requieren `precios.editar_compra`.
-
-**Ejemplo de actualización masiva:** "Hnos. García aumenta 8 % todo", con redondeo del precio de compra a $10 más cercano. Vista previa:
-
-| Producto | Presentación | Actual | × 1,08 | Nuevo (redondeado) | Variación |
-|---|---|---|---|---|---|
-| Tomate | Cajón 18 kg | $16.200 | $17.496 | $17.500 | +8,02 % |
-| Papa | Bolsa 25 kg | $13.000 | $14.040 | $14.040 | +8,00 % |
-| Cebolla | Cajón 18 kg | $12.600 | $13.608 | $13.610 | +8,02 % |
-
-**Plantilla de importación:** `codigo_producto`, `producto` (referencia), `codigo_proveedor`, `proveedor` (referencia), `presentacion`, `precio_actual` (referencia), `precio_nuevo`. Validaciones por fila: producto, proveedor y presentación existen y están activos; `precio_nuevo` numérico > 0; variación mayor al umbral de variación brusca se marca y requiere tildar "confirmo"; una combinación proveedor + producto + presentación inexistente se ofrece crear como oferta nueva. Las filas con error no se aplican; al final se muestra el resumen (aplicadas, omitidas, con error).
 
 Reglas comunes a todas las formas: una sola oferta vigente por proveedor + producto + presentación (RN-067); todo cambio genera historial (RN-068); una variación mayor al umbral pide confirmación (RN-070); "Confirmar sin cambios" actualiza la fecha sin cambiar el precio (RN-075).
 
@@ -113,7 +101,7 @@ Cada cambio agrega una fila en `historial_precio_compra` (nunca se edita ni se b
 | Referencia | `compra_item` de COM-000302 (o la observación del lote masivo) |
 | Usuario | `creado_por`: el comprador |
 
-Consultas: historial por producto (evolución del precio en cada proveedor; el gráfico lo define `08-pantallas-y-acciones.md`) y por proveedor. Las actualizaciones masivas e importaciones registran además un evento único en `auditoria` con el filtro y el porcentaje aplicado.
+Consulta: historial por producto (evolución del precio en cada proveedor, 08 P-29).
 
 La **última actualización** de cada oferta (`fecha_actualizacion`, `actualizado_por`, `precio_anterior`) se guarda en la propia oferta (`proveedor_producto`) para mostrarla en la lista sin consultar el historial.
 
@@ -150,9 +138,9 @@ El cajón de A es más barato por unidad ($12.600 < $13.600) pero más caro por 
 | E · Bolsa 10 kg | 8 | 80 kg | $58.400 | 7 kg |
 | A · Cajón 18 kg | 5 | 90 kg | $63.000 | 17 kg |
 
-La sugerencia de proveedor usa el costo por unidad base (`04-procesos-y-flujos.md` §5.c.2). Combinar presentaciones de distintos proveedores para reducir el sobrante (ej. 3 bolsas de B + 1 cajón de A = 78 kg por $53.400) es una optimización **PROPUESTO** para una fase posterior.
+La sugerencia de proveedor usa el costo por unidad base (`04-procesos-y-flujos.md` §5.c.2).
 
-Consulta de referencia para el equipo de desarrollo (equivale a la vista `v_comparador_precios` de `03-modelo-de-datos.md`; `costo_base` = `precio_vigente / factor_a_base`, ya guardado en la oferta):
+Consulta de referencia (en el código la hace `listaGeneralPreciosCompra`; `costo_base` = `precio_vigente / factor_a_base`, ya guardado en la oferta):
 
 ```sql
 SELECT p.nombre                                   AS producto,
@@ -237,7 +225,7 @@ Los valores de `origen` son los del enum `origen_costo` de `03-modelo-de-datos.m
 
 El costo se guarda y se calcula con 4 decimales (`numeric(14,4)`) y se muestra con 2.
 
-**Alcance del costo:** en el MVP el costo es el precio de la mercadería. Gastos de compra como flete o changarines no se suman al costo; su prorrateo es **PROPUESTO** para una fase posterior.
+**Alcance del costo:** en el MVP el costo es el precio de la mercadería. Gastos de compra como flete o changarines no se suman al costo; no se prorratean.
 
 ---
 
@@ -427,7 +415,7 @@ función reglaVigente(cliente, tipo, producto_o_categoria, fecha):
     // RN-079 garantiza que hay como máximo una
 ```
 
-La función es pura (no escribe nada) y se usa en: carga de pedidos, recálculo tras compras, simulador, matriz de recargos y emisión de documentos (donde el resultado se congela en `entrega_item`). Los códigos de `origen_regla` son los del enum `origen_precio_venta` de `03-modelo-de-datos.md` (más `MANUAL` para el override). En `03-modelo-de-datos.md` esta misma función se menciona como `resolverPrecioVenta`: es una sola implementación.
+La función es pura (no escribe nada) y se usa en: carga de pedidos, recálculo tras compras, precios de venta, lista de precios del cliente y emisión de documentos (donde el resultado se congela en `entrega_item`). Los códigos de `origen_regla` son los del enum `origen_precio_venta` de `03-modelo-de-datos.md` (más `MANUAL` para el override). En `03-modelo-de-datos.md` esta misma función se menciona como `resolverPrecioVenta`: es una sola implementación.
 
 ---
 
@@ -494,11 +482,11 @@ stateDiagram-v2
 
 | Alerta | Condición | Dónde se muestra | Efecto |
 |---|---|---|---|
-| `MARGEN_BAJO` | margen < margen mínimo de la empresa (por defecto 15 %) | Pedido (a quien ve costos), matriz de recargos, simulador, emisión, resumen de jornada | ADVIERTE (RN-085) |
+| `MARGEN_BAJO` | margen < margen mínimo de la empresa (por defecto 15 %) | Pedido (a quien ve costos), precios de venta, emisión, resumen de jornada | ADVIERTE (RN-085) |
 | `MARGEN_NEGATIVO` | precio < costo (ej.: precio fijo menor que el costo real) | Mismos lugares, en rojo | ADVIERTE; al emitir documentos pide confirmación explícita (RN-086) |
 | `SIN_COSTO` | Hay precio fijo pero ningún costo | Pedido, emisión | ADVIERTE: margen desconocido |
 | `SIN_PRECIO` | Ni costo ni precio fijo | Pedido, lista de compra, emisión | BLOQUEA la emisión de documentos (RN-087) |
-| `COSTO_DESACTUALIZADO` | El costo estimado sale de una oferta con más de N días | Pedido, simulador | ADVIERTE |
+| `COSTO_DESACTUALIZADO` | El costo estimado sale de una oferta con más de N días | Pedido | ADVIERTE |
 | `PRECIO_FIJO_POR_VENCER` | Un precio fijo vence en 15 días o menos | Ficha del cliente, tablero del ADMIN | ADVIERTE |
 | `RECARGO_ATIPICO` | Al editar: recargo < 0 % o > 300 % | Edición de recargos y reglas | Pide confirmación y AUDITA (RN-084) |
 
@@ -506,28 +494,11 @@ Reporte "Líneas con alerta de margen" por jornada y por período: cliente, prod
 
 ---
 
-## 9. Consulta y edición de recargos · simulador
+## 9. Consulta y edición de recargos
 
-La presentación visual la define `08-pantallas-y-acciones.md`. Aquí se define qué debe permitir.
+La pantalla **Precios de venta** (08, P-32) muestra la ganancia general, la de cada categoría, producto y cliente, y los **especiales** (precio fijo o ganancia de un cliente en un producto o una categoría, con vigencia). Cada precio dice de qué nivel sale. En la ficha de cada cliente está su lista de precios del día. Editar requiere `precios.editar_reglas` y todo cambio queda en `auditoria` (`CAMBIO_RECARGO` o `CAMBIO_REGLA_PRECIO`).
 
-### 9.1 Matriz producto × cliente
-
-- Filas: productos (agrupables por categoría). Columnas: clientes (se eligen cuáles mostrar).
-- Cada celda muestra el **recargo efectivo**, el **precio resultante** con el costo de referencia actual y un indicador del **nivel de origen** (1 a 7) con color, más la marca de alerta de margen si corresponde.
-- Editar una celda crea o modifica una regla `RECARGO` cliente + producto (nivel 2). Opción "precio fijo" crea una regla `PRECIO_FIJO` con vigencia. "Quitar excepción" cierra la vigencia de la regla (no se borra: queda el historial).
-- Editar el encabezado de fila cambia `producto.recargo_default`; el de columna, `cliente.recargo_default`; el de un grupo de categoría, `categoria.recargo_default` o (dentro de la columna de un cliente) una regla cliente + categoría.
-- Filtros: categoría, clientes, "solo excepciones" (niveles 1 a 3), "solo con alerta".
-- Acciones masivas con vista previa: "sumar 2 puntos al recargo de Frutas para el cliente X", "copiar reglas de un cliente a otro".
-- Vistas derivadas: **por cliente** (todos los productos con su precio para ese cliente: lista de precios del cliente) y **por producto** (todos los clientes a los que se vende ese producto, con precio, cantidad vendida en el período y margen), que cubre la consulta central de productos pedida (proveedores, precio de compra, precio de venta, porcentaje, clientes y cantidades).
-- Permisos: la matriz requiere `precios.ver_margenes` (recargos, reglas y márgenes); los precios resultantes, `precios.ver_venta`; los costos, `precios.ver_costos`; editar, `precios.editar_reglas`. Todo cambio en `auditoria` (`CAMBIO_RECARGO` o `CAMBIO_REGLA_PRECIO`, RN-091).
-
-### 9.2 Simulador "¿A cuánto le vendo X a Y?"
-
-Entradas: cliente, producto, fecha o jornada (por defecto la próxima), cantidad y presentación (opcional), costo hipotético (opcional), recargo hipotético (opcional).
-
-Salida: la cascada completa de los 7 niveles, indicando cuáles existen y cuál gana; el costo con su origen; precio sin redondear, redondeado y con IVA; margen; ganancia total para la cantidad; alertas; y el rango de precios del mismo producto a otros clientes. Botón "Guardar como regla" (con `precios.editar_reglas`).
-
-Ejemplo: Restaurante La Esquina × Banana, jornada 25/09, 10 kg.
+Ejemplo de cómo se resuelve un precio: Restaurante La Esquina × Banana, jornada 25/09, 10 kg.
 
 | Nivel | ¿Existe? | Valor |
 |---|---|---|
@@ -539,9 +510,8 @@ Ejemplo: Restaurante La Esquina × Banana, jornada 25/09, 10 kg.
 | 6 · Recargo de la categoría Frutas | Sí | 32 % |
 | 7 · Recargo global | Sí | 25 % |
 
-Costo de referencia $1.200/kg (`PREFERIDO`: D · Frutas Tropicales, actualizado hace 1 día) → 1.200 × 1,30 = $1.560,00 → redondeo $10 arriba = **$1.560/kg**. Margen 23,08 %. 10 kg: venta $15.600, costo $12.000, ganancia $3.600. Otros clientes: de $1.450 (Hospital, precio fijo) a $1.620 (Verdulería).
+Costo de referencia $1.200/kg (`PREFERIDO`: D · Frutas Tropicales) → 1.200 × 1,30 = $1.560,00 → redondeo $10 arriba = **$1.560/kg**. Margen 23,08 %. 10 kg: venta $15.600, costo $12.000, ganancia $3.600.
 
-Con costo hipotético $1.250 (si se compra a E): 1.250 × 1,30 = 1.625 → **$1.630**, margen 23,31 %.
 
 ---
 

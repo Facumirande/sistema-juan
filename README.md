@@ -1,6 +1,6 @@
 # Sistema Juan
 
-Sistema de gestión para distribuidores de frutas y verduras: pedidos, lista de compra, compras y crédito con proveedores, preparación, entregas y facturación interna. El plan completo está en [`docs/plan/`](docs/plan/README.md) y las decisiones fijas en [`PARAMETROS-DEL-PROYECTO.md`](PARAMETROS-DEL-PROYECTO.md).
+Sistema de gestión para distribuidores de frutas y verduras: pedidos (tablero tipo Trello), lista de compras para el mercado, compras y deudas con proveedores, preparación por cliente, viaje de entrega, facturación interna y balance. El plan completo está en [`docs/plan/`](docs/plan/README.md) y las decisiones fijas en [`PARAMETROS-DEL-PROYECTO.md`](PARAMETROS-DEL-PROYECTO.md).
 
 ## Requisitos
 
@@ -18,22 +18,27 @@ Sistema de gestión para distribuidores de frutas y verduras: pedidos, lista de 
 | `pnpm typecheck` · `pnpm lint` | Tipos y lint. |
 | `pnpm build` | Build de producción. |
 | `pnpm db:generar --name=<nombre>` | Genera la migración SQL a partir del esquema. |
+| `pnpm db:aplicar` | Aplica las migraciones pendientes en la base de `DATABASE_MIGRACIONES_URL`. |
 
 ## Configuración
 
 Copiar `.env.example` a `.env.local` y completar con los datos del proyecto de Supabase, incluida `SUPABASE_SECRET_KEY` (la usa solo el servidor para crear las cuentas). Sin esa configuración la aplicación arranca y muestra el aviso en la pantalla de ingreso.
 
-Primer uso: `pnpm dev` y abrir `http://localhost:3000`. Mientras el sistema no está configurado, el ingreso lleva a la **configuración inicial** (nombre del negocio y usuario del dueño). Los demás usuarios se crean desde la pantalla **Usuarios**. Roles y conexión de la base: [`docs/tecnico/base-de-datos.md`](docs/tecnico/base-de-datos.md).
+Primer uso: `pnpm dev` y abrir `http://localhost:3000`. Mientras el sistema no está configurado, el ingreso lleva a la **configuración inicial** (nombre del negocio y usuario del dueño). Las demás personas entran con Google o con "Crear una cuenta" y se habilitan en **Usuarios** (Mi cuenta → Administración). Roles y conexión de la base: [`docs/tecnico/base-de-datos.md`](docs/tecnico/base-de-datos.md).
 
 ## Estructura
 
 ```text
 app/                 Rutas de Next.js (pantallas)
-src/dominio/         Cálculos puros con pruebas: dinero, fechas, unidades, numeración, precios de compra
+src/dominio/         Cálculos puros con pruebas: dinero, precios, compras y crédito, entregas, pedidos, pasos del día
 src/seguridad/       Catálogo de permisos y roles de sistema (02)
 src/db/              Esquema Drizzle, migraciones, transacción con empresa fijada, numeración, auditoría
-src/modulos/         Casos de uso por módulo (usuarios, catálogo, proveedores, clientes, precios de compra…)
+src/modulos/         Casos de uso por módulo (pedidos, compras, entregas, facturación, reportes…)
 src/lib/supabase/    Clientes de Supabase Auth, cuentas (clave secreta) y proxy de sesión
 src/ui/              Navegación y componentes compartidos
 tests/               dominio/, seguridad/, integracion/
 ```
+
+## Publicar
+
+Los pasos para ponerlo en producción (proyecto de Supabase aparte, migraciones con `pnpm db:aplicar`, variables en Vercel, primer uso y carga de los datos reales) están en [`docs/plan/10-plan-de-implementacion.md`](docs/plan/10-plan-de-implementacion.md) §3 y §5. Nunca publicar entre las 02:00 y las 13:00.

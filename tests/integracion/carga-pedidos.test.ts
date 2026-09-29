@@ -221,7 +221,7 @@ describe("confirmar un pedido vacío", () => {
   it("explica qué hacer y ofrece el botón para agregar productos", async () => {
     const { pedidoId } = await crearPedido(j.base.db, j.admin, { fecha: dia, clienteId: j.ids.verduleria! });
     const e = await errorDe(confirmarPedido(j.base.db, j.admin, pedidoId));
-    expect(textoParaPersona(e.message)).toBe("Este pedido todavía no tiene productos: agregale al menos uno y después confirmalo.");
+    expect(textoParaPersona(e.message)).toBe("Este pedido todavía no tiene productos: agregale al menos uno.");
     expect(e.detalle?.enlace).toEqual({ href: `/pedidos/${pedidoId}/cambiar`, texto: "Agregar productos" });
   });
 });

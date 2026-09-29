@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 
 import { dec, redondear2, redondearPesos, sumar, type ValorDecimal } from "../dinero/decimal";
+import { formatearCantidad, type UnidadMedida } from "../dinero/formato";
 
 // Preparación y entregas (04 §5.e y §5.f): reparto de faltantes, tolerancia de peso, totales de
 // la entrega y diferencias. Cantidades siempre en unidad base.
@@ -84,6 +85,32 @@ export function evaluarPreparado(pedida: ValorDecimal, preparada: ValorDecimal, 
   const diferenciaPct = redondear2(dec(preparada).minus(p).div(p).times(100));
   const dentro = diferenciaPct.abs().lte(dec(toleranciaPct));
   return { diferenciaPct, dentro, menor: !dentro && diferenciaPct.lt(0) };
+}
+
+/** El motivo de un faltante dentro de una frase ("Va 30 kg de 36 kg · no se consiguió"). */
+export const MOTIVO_EN_FRASE: Readonly<Record<MotivoDiferencia, string>> = {
+  NO_CONSEGUIDO: "no se consiguió",
+  FALTANTE: "no alcanzó lo comprado",
+  RECHAZO_CALIDAD: "estaba en mal estado",
+  ERROR_PREPARACION: "error al preparar",
+  CAMBIO_CLIENTE: "el cliente lo sacó",
+  OTRO: "otro motivo",
+};
+
+/**
+ * Qué faltó de una línea y por qué, en palabras, para ver de un vistazo qué separar para cada
+ * cliente: "Va 30 kg de 36 kg · no se consiguió" (ya se separó menos; el motivo solo se guarda
+ * cuando falta de verdad, fuera de la tolerancia de peso), "No va · …" (se separó 0) o, antes de
+ * separar, "Alcanza para 30 kg de 36 kg" (lo comprado no alcanzó, RN-115). Sin faltante, null.
+ */
+export function avisoDeFaltante(l: { pedida: ValorDecimal; propuesta: ValorDecimal | null; preparada: ValorDecimal | null; motivo: MotivoDiferencia | null; unidad: UnidadMedida }): string | null {
+  const cant = (v: ValorDecimal) => formatearCantidad(v, l.unidad);
+  if (l.preparada !== null) {
+    if (!l.motivo) return null;
+    return dec(l.preparada).isZero() ? `No va · ${MOTIVO_EN_FRASE[l.motivo]}` : `Va ${cant(l.preparada)} de ${cant(l.pedida)} · ${MOTIVO_EN_FRASE[l.motivo]}`;
+  }
+  if (l.propuesta === null || dec(l.propuesta).gte(l.pedida)) return null;
+  return dec(l.propuesta).isZero() ? "No hay para este cliente" : `Alcanza para ${cant(l.propuesta)} de ${cant(l.pedida)}`;
 }
 
 export interface LineaValorizada {

@@ -16,7 +16,6 @@ import { AreaTexto, Aviso, Campo, CampoNumero, Encabezado, Selector, Tabla, Tarj
 import {
   cambiarLineaAccion,
   cancelarPedidoAccion,
-  confirmarPedidoAccion,
   datosPedidoAccion,
   duplicarPedidoAccion,
   precioManualAccion,
@@ -101,7 +100,7 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
           . Van juntos en la misma entrega.
         </Aviso>
       )}
-      {p.estado === "BORRADOR" && <Aviso>Es un borrador: no entra en la lista de compra hasta que lo confirmes.</Aviso>}
+      {p.estado === "BORRADOR" && <Aviso>Este pedido no terminó de cargarse: revisá sus productos con “Cambiar productos” y guardalo.</Aviso>}
       {p.requiereOrdenCompra && !p.referenciaCliente && p.estado === "BORRADOR" && <Aviso>Este cliente trabaja con orden de compra: cargá el número en Datos del pedido.</Aviso>}
 
       <Tarjeta titulo="Productos">
@@ -212,11 +211,6 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
 
       {(p.estado === "BORRADOR" || p.editable) && (
         <div className="flex flex-wrap gap-2">
-          {p.estado === "BORRADOR" && sesion.permisos.includes("pedidos.confirmar") && (
-            <FormularioAccion accion={confirmarPedidoAccion} boton="Confirmar pedido">
-              <input type="hidden" name="pedidoId" value={p.id} />
-            </FormularioAccion>
-          )}
           {p.editable && p.totalEstimado !== null && (
             <FormularioAccion accion={recalcularAccion} boton="Recalcular precios" variante="secundario">
               <input type="hidden" name="pedidoId" value={p.id} />
