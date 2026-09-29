@@ -46,7 +46,7 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
       <Encabezado
         titulo={c.nombre}
         volver={{ ruta: "/clientes", texto: "Clientes" }}
-        descripcion={`${TIPOS_CLIENTE[c.tipoCliente]} · prioridad ${c.prioridadFaltantes} · facturación ${PERIODICIDADES[c.periodicidadFacturacion]?.toLowerCase()}`}
+        descripcion={`${TIPOS_CLIENTE[c.tipoCliente]} · comprobante de venta ${c.periodicidadFacturacion === "POR_ENTREGA" ? "en cada entrega" : PERIODICIDADES[c.periodicidadFacturacion]?.toLowerCase()}${c.prioridadFaltantes === 1 ? " · se le completa primero si falta mercadería" : ""}`}
       >
         <Estado activo={c.activo} />
       </Encabezado>
@@ -58,7 +58,7 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
       )}
       {precios && <PreciosDelCliente clienteId={c.id} recargoCliente={precios.recargoCliente} reglas={precios.reglas} objetivos={objetivos} />}
 
-      <Tarjeta titulo="Puntos de entrega">
+      <Tarjeta titulo="Dónde se le entrega">
         {c.puntosEntrega.length === 0 && <p className="text-texto-suave">Sin puntos de entrega.</p>}
         <ul className="flex flex-col gap-3">
           {c.puntosEntrega.map((p) => (
@@ -124,7 +124,7 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
         </ul>
         {puedeEditar && (
           <details open={c.puntosEntrega.length === 0}>
-            <summary className="min-h-11 cursor-pointer py-2 font-medium">+ Agregar punto de entrega</summary>
+            <summary className="min-h-11 cursor-pointer py-2 font-medium">＋ Agregar otra dirección de entrega</summary>
             <FormularioAccion accion={guardarPuntoAccion} boton="Agregar">
               <input type="hidden" name="clienteId" value={c.id} />
               <CamposPunto />
@@ -138,7 +138,9 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
       </Tarjeta>
 
       {puedeEditar && (
-        <Tarjeta titulo="Datos del cliente">
+        <details className="rounded-lg border border-borde bg-superficie p-4">
+          <summary className="min-h-11 cursor-pointer text-lg font-semibold">✏️ Editar los datos del cliente (o darlo de baja)</summary>
+          <div className="mt-4 flex flex-col gap-3">
           <FormularioAccion accion={editarClienteAccion} boton="Guardar cambios">
             <input type="hidden" name="id" value={c.id} />
             <CamposCliente cliente={c} />
@@ -152,7 +154,8 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
             <input type="hidden" name="id" value={c.id} />
             <input type="hidden" name="activo" value={String(!c.activo)} />
           </FormularioAccion>
-        </Tarjeta>
+          </div>
+        </details>
       )}
     </section>
   );

@@ -31,12 +31,11 @@ export function TablaOfertas({ ofertas, mostrar, permisos }: { ofertas: OfertaLi
         <tr>
           {mostrar !== "proveedor" && <th>Producto</th>}
           {mostrar !== "producto" && <th>Proveedor</th>}
-          <th>Presentación</th>
+          <th>Envase</th>
           <th>Precio</th>
-          <th>Costo</th>
-          <th>vs. mejor</th>
+          <th>Por kilo o unidad</th>
+          <th>Contra el más barato</th>
           <th>Actualizado</th>
-          {permisos.editarPrecio && <th>Precio nuevo</th>}
           <th></th>
         </tr>
       </thead>
@@ -91,27 +90,23 @@ export function TablaOfertas({ ofertas, mostrar, permisos }: { ofertas: OfertaLi
                 {o.actualizadoPor && ` · ${o.actualizadoPor}`}
               </span>
             </td>
-            {permisos.editarPrecio && (
-              <td className="min-w-56">
-                <FormularioAccion accion={actualizarPrecioAccion} boton="Guardar" variante="secundario" enLinea>
-                  <input type="hidden" name="ofertaId" value={o.id} />
-                  <input
-                    name="precio"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    aria-label={`Precio nuevo de ${o.producto} en ${o.proveedor}`}
-                    placeholder={formatearMoneda(o.precioVigente).replace(",00", "")}
-                    className="h-11 w-32 rounded-lg border border-borde bg-superficie px-3 text-base"
-                  />
-                </FormularioAccion>
-              </td>
-            )}
             <td>
               <details>
-                <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Más</summary>
-                <div className="flex flex-col gap-2 py-2">
+                <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium whitespace-nowrap">{permisos.editarPrecio ? "✏️ Cambiar" : "Más"}</summary>
+                <div className="flex min-w-56 flex-col gap-2 py-2">
                   {permisos.editarPrecio && (
                     <>
+                      <FormularioAccion accion={actualizarPrecioAccion} boton="Guardar precio" variante="principal" enLinea>
+                        <input type="hidden" name="ofertaId" value={o.id} />
+                        <input
+                          name="precio"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          aria-label={`Precio nuevo de ${o.producto} en ${o.proveedor}`}
+                          placeholder={formatearMoneda(o.precioVigente)}
+                          className="h-11 w-32 rounded-lg border border-borde bg-superficie px-3 text-base"
+                        />
+                      </FormularioAccion>
                       <FormularioAccion accion={confirmarSinCambiosAccion} boton="Sin cambios hoy" variante="secundario">
                         <input type="hidden" name="ofertaId" value={o.id} />
                       </FormularioAccion>

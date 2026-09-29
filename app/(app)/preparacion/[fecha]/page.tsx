@@ -8,7 +8,7 @@ import { formatearCantidad, type UnidadMedida } from "@/dominio/dinero/formato";
 import { sumarDias } from "@/dominio/fechas/fechas";
 import { obtenerPreparacion } from "@/modulos/entregas/preparacion";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { ESTADOS_ENTREGA, ESTADOS_JORNADA, fechaConDia } from "@/ui/etiquetas";
+import { ESTADOS_ENTREGA, fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Encabezado, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
@@ -34,7 +34,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
     <section className="flex max-w-4xl flex-col gap-5">
       <Encabezado
         titulo="Preparación"
-        descripcion={`Entrega del ${fechaConDia(fecha)}${p.jornada ? ` · jornada ${ESTADOS_JORNADA[p.jornada.estado]?.toLowerCase()}` : ""}.`}
+        descripcion={`Armá el pedido de cada cliente para la entrega del ${fechaConDia(fecha)} y marcalo como preparado: su remito se hace solo.`}
       >
         {p.entregas.length > 0 && sesion.permisos.includes("documentos.imprimir_entrega") && (
           <Link href={`/preparacion/${fecha}/imprimir${porProducto ? "?vista=producto" : ""}`} className={clasesBoton("secundario")}>
@@ -78,9 +78,9 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
                   {p.pedidosSinEntrega > 0 && <b className="text-texto"> Hay {p.pedidosSinEntrega} pedido(s) nuevo(s) sin entrega: actualizá.</b>}
                 </p>
               ) : (
-                <p>Arma una entrega por cliente con los pedidos confirmados y propone cuánto preparar de cada cosa según lo que se compró.</p>
+                <p>Al empezar, el sistema arma una tarjeta por cliente con lo que pidió y propone cuánto prepararle de cada cosa según lo que se compró. Si algo no alcanza, lo reparte empezando por los pedidos urgentes.</p>
               )}
-              <FormularioAccion accion={iniciarPreparacionAccion} boton={iniciada ? "Actualizar con pedidos nuevos" : "Iniciar preparación"} variante={iniciada && !p.pedidosSinEntrega ? "secundario" : "principal"}>
+              <FormularioAccion accion={iniciarPreparacionAccion} boton={iniciada ? "Sumar los pedidos nuevos" : "Empezar a preparar"} variante={iniciada && !p.pedidosSinEntrega ? "secundario" : "principal"}>
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
             </Tarjeta>

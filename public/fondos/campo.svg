@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <title>Campo al amanecer</title>
+  <defs>
+    <linearGradient id="cielo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5b8fc7"/>
+      <stop offset="0.45" stop-color="#9cc3de"/>
+      <stop offset="0.75" stop-color="#f3d9a4"/>
+      <stop offset="1" stop-color="#f6c98a"/>
+    </linearGradient>
+    <radialGradient id="sol" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff7d6"/>
+      <stop offset="0.35" stop-color="#ffe7a3" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffd27a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lejos" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fa3a8"/>
+      <stop offset="1" stop-color="#9dbba6"/>
+    </linearGradient>
+    <linearGradient id="medio" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6f9f55"/>
+      <stop offset="1" stop-color="#4f8a3f"/>
+    </linearGradient>
+    <linearGradient id="cerca" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f7d34"/>
+      <stop offset="1" stop-color="#2c5e27"/>
+    </linearGradient>
+    <linearGradient id="surcos" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a8a3a"/>
+      <stop offset="1" stop-color="#2f5a24"/>
+    </linearGradient>
+    <linearGradient id="tierra" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a6a45"/>
+      <stop offset="1" stop-color="#5e452c"/>
+    </linearGradient>
+    <filter id="suave" x="-20%" y="-50%" width="140%" height="200%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#cielo)"/>
+  <circle cx="1130" cy="420" r="210" fill="url(#sol)"/>
+  <circle cx="1130" cy="420" r="62" fill="#fff4cf"/>
+
+  <g fill="#ffffff" opacity="0.85" filter="url(#suave)">
+    <ellipse cx="260" cy="170" rx="120" ry="26"/>
+    <ellipse cx="340" cy="152" rx="80" ry="28"/>
+    <ellipse cx="760" cy="110" rx="150" ry="22"/>
+    <ellipse cx="850" cy="96" rx="90" ry="24"/>
+    <ellipse cx="1380" cy="200" rx="130" ry="22"/>
+  </g>
+
+  <path d="M0 470 C 180 400 330 430 470 410 C 640 385 760 440 930 420 C 1110 398 1260 430 1420 405 C 1500 393 1560 400 1600 410 L1600 900 L0 900 Z" fill="url(#lejos)"/>
+  <path d="M0 540 C 220 480 420 520 610 495 C 820 468 980 530 1200 505 C 1380 485 1500 500 1600 490 L1600 900 L0 900 Z" fill="url(#medio)"/>
+
+  <g fill="#3d6f35" opacity="0.9">
+    <circle cx="180" cy="505" r="22"/><rect x="176" y="515" width="8" height="22" fill="#4a3727"/>
+    <circle cx="214" cy="510" r="17"/>
+    <circle cx="1320" cy="492" r="24"/><rect x="1316" y="503" width="8" height="24" fill="#4a3727"/>
+    <circle cx="1356" cy="498" r="18"/>
+    <circle cx="1500" cy="488" r="20"/>
+  </g>
+
+  <path d="M0 610 C 260 570 520 600 800 585 C 1080 570 1340 600 1600 580 L1600 900 L0 900 Z" fill="url(#cerca)"/>
+
+  <path d="M-200 900 L700 640 L900 640 L1800 900 Z" fill="url(#tierra)"/>
+  <g fill="url(#surcos)">
+    <path d="M-200 900 L700 640 L716 640 L-120 900 Z"/>
+    <path d="M-40 900 L732 640 L748 640 L40 900 Z"/>
+    <path d="M120 900 L764 640 L780 640 L200 900 Z"/>
+    <path d="M280 900 L796 640 L812 640 L360 900 Z"/>
+    <path d="M440 900 L828 640 L844 640 L520 900 Z"/>
+    <path d="M600 900 L860 640 L876 640 L680 900 Z"/>
+    <path d="M760 900 L884 640 L900 640 L840 900 Z"/>
+    <path d="M920 900 L900 640 L912 640 L1000 900 Z"/>
+    <path d="M1080 900 L912 640 L924 640 L1160 900 Z"/>
+    <path d="M1240 900 L924 640 L936 640 L1320 900 Z"/>
+    <path d="M1400 900 L936 640 L948 640 L1480 900 Z"/>
+    <path d="M1560 900 L948 640 L960 640 L1640 900 Z"/>
+  </g>
+  <path d="M0 640 C 300 625 600 640 900 632 C 1200 624 1400 640 1600 630 L1600 660 C 1300 668 1000 650 700 660 C 400 670 200 655 0 665 Z" fill="#35692e" opacity="0.8"/>
+</svg>

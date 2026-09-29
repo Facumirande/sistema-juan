@@ -71,7 +71,7 @@ function Linea({ l, ofertas, puedeEditar }: { l: LineaDeLista; ofertas: { oferta
       ))}
       {puedeEditar && l.estado !== "COMPRADO" && (
         <details>
-          <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Cambiar</summary>
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Cambiar cantidad o puesto, o marcar que no se consiguió</summary>
           <div className="flex flex-col gap-3 pb-2">
             <FormularioAccion accion={cambiarCantidadAccion} boton="Guardar cantidad" variante="secundario">
               <input type="hidden" name="itemId" value={l.id} />
@@ -123,7 +123,7 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado titulo="Lista de compra" descripcion={`Para la entrega del ${fechaConDia(fecha)}.`}>
+      <Encabezado titulo="Lista de compra" descripcion={`Todo lo que hay que comprar para la entrega del ${fechaConDia(fecha)}, ordenado por puesto. Cuando compres, tocá “Registrar compra” en ese puesto: la lista se tacha sola.`}>
         {lista && sesion.permisos.includes("documentos.imprimir_compra") && (
           <Link href={`/lista-compra/imprimir?fecha=${fecha}`} className={clasesBoton("secundario")}>
             Imprimir
@@ -165,11 +165,11 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
         <>
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-texto-suave">
-              {lista.numero} · versión {lista.version} · armada {formatearFechaHora(lista.generadaEn, sesion.zonaHoraria)}
-              {lista.costoEstimadoTotal && ` · total estimado ${formatearMoneda(lista.costoEstimadoTotal)}`}
+              Armada el {formatearFechaHora(lista.generadaEn, sesion.zonaHoraria)}
+              {lista.costoEstimadoTotal && ` · se calcula gastar ${formatearMoneda(lista.costoEstimadoTotal)}`}
             </p>
             {puedeGenerar && (
-              <FormularioAccion accion={generarListaAccion} boton={lista.desactualizada ? "Actualizar la lista" : "Volver a armar"} variante={lista.desactualizada ? "principal" : "secundario"}>
+              <FormularioAccion accion={generarListaAccion} boton={lista.desactualizada ? "Actualizar la lista" : "Recalcular con los pedidos de ahora"} variante={lista.desactualizada ? "principal" : "secundario"}>
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
             )}

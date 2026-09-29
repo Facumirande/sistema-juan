@@ -157,6 +157,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 |---|---|---|---|
 | RN-076 | Precio de venta = costo de referencia × (1 + recargo ÷ 100), redondeado según la empresa. El "porcentaje de ganancia" es un recargo sobre el costo. | Todo cálculo de precio | CALCULA |
 | RN-077 | Precedencia de 7 niveles: precio fijo cliente + producto; recargo cliente + producto; recargo cliente + categoría; recargo del cliente; recargo del producto; recargo de la categoría; recargo global. Siempre se muestra el origen. | Todo cálculo de precio | CALCULA |
+| RN-077b | **Ganancias especiales (29/09/2026):** la pantalla de precios de venta muestra solo los clientes, productos y categorías que tienen una ganancia propia (para cambiarla o quitarla) y un botón para dársela a otro; lo demás usa la general. Las reglas de precedencia (RN-077) no cambian. | Precios de venta | CALCULA |
 | RN-078 | La vigencia de las reglas se evalúa con la fecha de la jornada (fecha de entrega). | Todo cálculo de precio | CALCULA |
 | RN-079 | No puede haber dos reglas del mismo tipo con vigencias superpuestas para el mismo cliente y el mismo producto (o categoría). | Alta y edición de `regla_precio` | BLOQUEA |
 | RN-080 | El costo de referencia sale de la estrategia de la empresa (`PREFERIDO`, `MINIMO`, `ULTIMO_COSTO_REAL`); si la jornada ya tiene compras del producto, se usa el costo real (promedio ponderado). | Todo cálculo de precio | CALCULA |

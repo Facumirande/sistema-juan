@@ -66,7 +66,7 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
-      <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende, agrupado por categoría.">
+      <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende. Tocá un producto para ver qué puestos lo venden y a qué precio.">
         {puedeEditar && categorias.some((c) => c.activo) && (
           <Link href="/productos/nuevo" className={clasesBoton("principal")}>
             + Nuevo producto

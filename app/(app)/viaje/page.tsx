@@ -32,7 +32,7 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado titulo="Viaje de entrega" descripcion={`Entregas del ${fechaConDia(fecha)} que falta llevar: el mejor orden y el GPS para ir.`}>
+      <Encabezado titulo="Viaje de entrega" descripcion={`Las entregas del ${fechaConDia(fecha)} que faltan llevar. El sistema calcula el orden con menos kilómetros; tocá “Ir” para abrir el GPS en cada parada.`}>
         <Link href={`/inicio?fecha=${fecha}`} className={clasesBoton("secundario")}>
           Volver al tablero
         </Link>

@@ -15,28 +15,16 @@ import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { listarProveedores, obtenerProveedor } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
-import { CONDICIONES_COMPRA, MEDIOS_PAGO, fechaConDia, opciones } from "@/ui/etiquetas";
-import { FormularioAccion } from "@/ui/formulario-accion";
-import { AreaTexto, Campo, CampoNumero, Casilla, Encabezado, Selector } from "@/ui/formularios";
+import { fechaConDia } from "@/ui/etiquetas";
+import { Encabezado } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
-import { registrarCompraAccion } from "../acciones";
+import { FormularioCompra } from "./formulario-compra";
 
 export const metadata: Metadata = { title: "Registrar compra · Sistema Juan" };
 
 const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: true });
-const RENGLONES_LIBRES = 3;
-
-interface Renglon {
-  productoId: string;
-  presentacionId: string;
-  producto: string;
-  presentacion: string;
-  cantidad: string;
-  precio: string;
-  delPlan: boolean;
-}
 
 /** P-55 Registrar compra (04 §5.d.1): proveedor, lo que se compró, cómo se paga. */
 export default async function NuevaCompra({ searchParams }: PageProps<"/compras/nueva">) {
@@ -51,21 +39,36 @@ export default async function NuevaCompra({ searchParams }: PageProps<"/compras/
   if (!proveedorId) {
     const proveedores = await listarProveedores(db, sesion.authUserId);
     const pendientes = new Map((lista?.plan ?? []).map((p) => [p.proveedorId, p.lineas.filter((l) => l.estado !== "COMPRADO").length]));
+    // Primero los puestos donde la lista dice comprar algo.
+    const ordenados = [...proveedores].sort((a, b) => (pendientes.get(b.id) ?? 0) - (pendientes.get(a.id) ?? 0));
     return (
-      <section className="flex max-w-md flex-col gap-4">
-        <Encabezado titulo="Registrar compra" volver={{ ruta: `/compras?fecha=${fecha}`, texto: "Compras del día" }} descripcion={`Para la entrega del ${fechaConDia(fecha)}. ¿En qué puesto compraste?`} />
-        <ul className="flex flex-col gap-2">
-          {proveedores.map((p) => (
-            <li key={p.id}>
-              <Link href={`/compras/nueva?fecha=${fecha}&proveedor=${p.id}`} className="flex min-h-14 items-center justify-between gap-2 rounded-lg border border-borde bg-superficie px-4 py-2">
-                <span>
-                  <span className="font-semibold">{p.nombre}</span>
-                  {p.ubicacionMercado && <span className="block text-sm text-texto-suave">{p.ubicacionMercado}</span>}
-                </span>
-                {(pendientes.get(p.id) ?? 0) > 0 && <span className="text-sm text-texto-suave">{pendientes.get(p.id)} de la lista</span>}
-              </Link>
-            </li>
-          ))}
+      <section className="flex max-w-3xl flex-col gap-5">
+        <Encabezado
+          titulo="Registrar una compra"
+          volver={{ ruta: `/compras?fecha=${fecha}`, texto: "Compras del día" }}
+          descripcion={`Para la entrega del ${fechaConDia(fecha)}. Tocá el puesto donde compraste: vas a ver lo que la lista dice comprarle ahí, ya con cantidades y precios.`}
+        />
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {ordenados.map((p) => {
+            const faltan = pendientes.get(p.id) ?? 0;
+            return (
+              <li key={p.id}>
+                <Link
+                  href={`/compras/nueva?fecha=${fecha}&proveedor=${p.id}`}
+                  className={`flex min-h-20 items-center gap-3 rounded-2xl border-2 bg-superficie px-4 py-3 hover:border-marca ${faltan > 0 ? "border-marca/60" : "border-borde"}`}
+                >
+                  <span aria-hidden className="text-3xl">
+                    🏪
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-lg font-semibold">{p.nombre}</span>
+                    {p.ubicacionMercado && <span className="block text-texto-suave">{p.ubicacionMercado}</span>}
+                  </span>
+                  {faltan > 0 && <span className="rounded-full bg-marca px-3 py-1 text-sm font-semibold text-marca-texto">{faltan} de la lista</span>}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </section>
     );
@@ -79,93 +82,49 @@ export default async function NuevaCompra({ searchParams }: PageProps<"/compras/
     listarPresentacionesDeCompra(db, sesion.authUserId),
   ]);
 
-  // Renglones: primero lo que la lista dice comprarle a este puesto, después el resto de sus productos.
-  const delPlan = (lista?.plan.find((p) => p.proveedorId === id)?.lineas ?? []).filter((l) => l.estado !== "COMPRADO" && l.presentacionId);
-  const renglones: Renglon[] = delPlan.map((l) => {
-    // Si ya se compró una parte, se propone solo lo que falta (en bultos completos).
-    const cantidad = l.estado === "PARCIAL" ? presentacionesNecesarias(l.pendienteBase, l.factor).cantidad : dec(l.cantidadPresentaciones ?? "0");
-    return {
-      productoId: l.productoId,
-      presentacionId: l.presentacionId!,
-      producto: l.producto,
-      presentacion: l.presentacion ?? "",
-      cantidad: cantidad.gt(0) ? num(cantidad.toString()) : "",
-      precio: l.precioSugerido ? num(dec(l.precioSugerido).toString()) : "",
-      delPlan: true,
-    };
-  });
-  for (const o of ofertas) {
-    if (renglones.some((r) => r.productoId === o.productoId && r.presentacionId === o.presentacionId)) continue;
-    renglones.push({ productoId: o.productoId, presentacionId: o.presentacionId, producto: o.producto, presentacion: o.presentacion, cantidad: "", precio: num(dec(o.precioVigente).toString()), delPlan: false });
-  }
-  const opcionesLibres = presentaciones.map((p) => ({ valor: `${p.productoId}:${p.presentacionId}`, etiqueta: `${p.producto} · ${p.presentacion}` }));
+  // Lo que la lista dice comprarle a este puesto; si ya se compró una parte, solo lo que falta (en bultos completos).
+  const delPlan = (lista?.plan.find((p) => p.proveedorId === id)?.lineas ?? [])
+    .filter((l) => l.estado !== "COMPRADO" && l.presentacionId)
+    .map((l) => {
+      const cantidad = l.estado === "PARCIAL" ? presentacionesNecesarias(l.pendienteBase, l.factor).cantidad : dec(l.cantidadPresentaciones ?? "0");
+      return {
+        productoId: l.productoId,
+        presentacionId: l.presentacionId!,
+        producto: l.producto,
+        presentacion: l.presentacion ?? "",
+        cantidad: cantidad.gt(0) ? num(cantidad.toString()) : "",
+        precio: l.precioSugerido ? num(dec(l.precioSugerido).toString()) : "",
+      };
+    });
+  const delPuesto = ofertas.map((o) => ({ productoId: o.productoId, presentacionId: o.presentacionId, producto: o.producto, presentacion: o.presentacion, precio: num(dec(o.precioVigente).toString()) }));
 
   return (
-    <section className="flex max-w-xl flex-col gap-4">
+    <section className="flex max-w-2xl flex-col gap-5">
       <Encabezado
-        titulo={prov.nombre}
-        volver={{ ruta: `/compras/nueva?fecha=${fecha}`, texto: "Otro puesto" }}
-        descripcion={`Compra para la entrega del ${fechaConDia(fecha)}.${prov.ubicacionMercado ? ` ${prov.ubicacionMercado}.` : ""}`}
+        titulo={`Compra en ${prov.nombre}`}
+        volver={{ ruta: `/compras/nueva?fecha=${fecha}`, texto: "Elegir otro puesto" }}
+        descripcion={`Para la entrega del ${fechaConDia(fecha)}.${prov.ubicacionMercado ? ` ${prov.ubicacionMercado}.` : ""} Si el precio cambió, corregilo: queda guardado como el nuevo precio del puesto.`}
       />
       {cuenta && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-borde bg-superficie p-3">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-borde bg-superficie p-3">
           <SemaforoCredito semaforo={cuenta.indicadores.semaforo} usoPct={cuenta.indicadores.usoPct?.toString()} />
           <span>
             Se le debe <b>{formatearMoneda(cuenta.indicadores.saldoPendiente)}</b>
-            {cuenta.indicadores.disponible !== null && ` · disponible ${formatearMoneda(cuenta.indicadores.disponible)}`}
+            {cuenta.indicadores.disponible !== null && ` · todavía se le puede deber ${formatearMoneda(cuenta.indicadores.disponible)}`}
             {cuenta.indicadores.saldoAFavor.gt(0) && ` · a favor ${formatearMoneda(cuenta.indicadores.saldoAFavor)}`}
           </span>
         </div>
       )}
-
-      <FormularioAccion accion={registrarCompraAccion} boton="Registrar compra">
-        <input type="hidden" name="fecha" value={fecha} />
-        <input type="hidden" name="proveedorId" value={id} />
-        <input type="hidden" name="claveIdempotencia" value={randomUUID()} />
-        <p className="text-texto-suave">Escribí cuántos bultos compraste y a cuánto cada uno. Los renglones vacíos no se cargan.</p>
-        <ul className="flex flex-col gap-3">
-          {renglones.map((r, n) => (
-            <li key={`${r.productoId}:${r.presentacionId}`} className={`flex flex-col gap-2 rounded-lg border p-3 ${r.delPlan ? "border-marca" : "border-borde"}`}>
-              <input type="hidden" name={`item_${n}_producto`} value={r.productoId} />
-              <input type="hidden" name={`item_${n}_presentacion`} value={r.presentacionId} />
-              <p className="font-semibold">
-                {r.producto} · <span className="font-normal">{r.presentacion}</span>
-                {r.delPlan && <span className="text-sm font-normal text-texto-suave"> (de la lista)</span>}
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <CampoNumero etiqueta="Cantidad" name={`item_${n}_cantidad`} defaultValue={r.cantidad} placeholder="0" />
-                <CampoNumero etiqueta="Precio c/u" name={`item_${n}_precio`} defaultValue={r.precio} />
-              </div>
-            </li>
-          ))}
-          {Array.from({ length: RENGLONES_LIBRES }, (_, k) => renglones.length + k).map((n) => (
-            <li key={n} className="flex flex-col gap-2 rounded-lg border border-dashed border-borde p-3">
-              <Selector etiqueta="Otro producto" name={`item_${n}_pp`} opciones={opcionesLibres} vacia="—" />
-              <div className="grid grid-cols-2 gap-2">
-                <CampoNumero etiqueta="Cantidad" name={`item_${n}_cantidad`} placeholder="0" />
-                <CampoNumero etiqueta="Precio c/u" name={`item_${n}_precio`} />
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Selector etiqueta="Cómo se paga" name="condicion" opciones={opciones(CONDICIONES_COMPRA)} defaultValue={prov.condicionPagoHabitual} />
-          <Selector etiqueta="Medio de pago" name="medioPago" opciones={opciones(MEDIOS_PAGO)} defaultValue="EFECTIVO" />
-          <CampoNumero etiqueta="Si es parte y parte: cuánto se paga ahora" name="pagadoEnElActo" />
-          <Campo etiqueta="N.º de boleta (opcional)" name="numeroComprobante" />
-        </div>
-        <AreaTexto etiqueta="Notas (opcional)" name="observaciones" />
-        {sesion.permisos.includes("compras.exceder_limite") && (
-          <details className="rounded-lg border border-borde p-3">
-            <summary className="cursor-pointer font-medium">Si supera el límite de crédito</summary>
-            <div className="flex flex-col gap-2 pt-2">
-              <Casilla etiqueta="Registrarla igual" name="exceder" />
-              <Campo etiqueta="Por qué" name="motivoExceso" placeholder="Ej. hay que abastecer al hospital" />
-            </div>
-          </details>
-        )}
-      </FormularioAccion>
+      <FormularioCompra
+        fecha={fecha}
+        proveedorId={id}
+        claveIdempotencia={randomUUID()}
+        condicionHabitual={prov.condicionPagoHabitual === "CONTADO" ? "CONTADO" : "CREDITO"}
+        delPlan={delPlan}
+        delPuesto={delPuesto}
+        todos={presentaciones.map((p) => ({ productoId: p.productoId, presentacionId: p.presentacionId, producto: p.producto, presentacion: p.presentacion }))}
+        puedeExceder={sesion.permisos.includes("compras.exceder_limite")}
+      />
     </section>
   );
 }

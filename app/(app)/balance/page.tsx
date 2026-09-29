@@ -82,7 +82,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Balance" descripcion={`Del ${formatearFecha(desde)} al ${formatearFecha(hasta)}. Lo vendido cuenta las entregas confirmadas, por su día de entrega.`}>
+      <Encabezado titulo="Balance" descripcion={`Del ${formatearFecha(desde)} al ${formatearFecha(hasta)}: cuánto se vendió, se compró y se ganó. Lo vendido son las entregas confirmadas, contadas en su día de entrega. Pasá el dedo o el mouse por los gráficos para ver cada valor.`}>
         <Link href={`/balance/movimientos?desde=${desde}&hasta=${hasta}`} className={clasesBoton("secundario")}>
           Movimientos
         </Link>

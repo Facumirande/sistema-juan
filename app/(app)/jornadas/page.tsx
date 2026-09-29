@@ -18,7 +18,7 @@ export default async function PaginaJornadas() {
 
   return (
     <section className="flex max-w-3xl flex-col gap-6">
-      <Encabezado titulo="Jornadas" descripcion="Cada día de entrega: sus pedidos y, más adelante, la compra, la preparación y el reparto.">
+      <Encabezado titulo="Jornadas" descripcion="Todos los días de entrega, con sus pedidos y en qué etapa están. Tocá un día para ver su detalle.">
         <Link href={`/pedidos?fecha=${sugerida}`} className={clasesBoton("principal")}>
           Pedidos de mañana
         </Link>

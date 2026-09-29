@@ -26,7 +26,7 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Entregas" descripcion={`Entrega del ${fechaConDia(fecha)}.`}>
+      <Encabezado titulo="Entregas" descripcion={`Lo que se le lleva a cada cliente el ${fechaConDia(fecha)}. Cuando el cliente recibe, confirmá la entrega: completa, con diferencias o no recibida.`}>
         <Link href={`/preparacion/${fecha}`} className={clasesBoton("secundario")}>
           Preparación
         </Link>

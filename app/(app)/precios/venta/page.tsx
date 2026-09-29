@@ -6,6 +6,7 @@ import { dec } from "@/dominio/dinero/decimal";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { listaDePreciosCliente, recargosActuales, type AmbitoRecargo } from "@/modulos/precios-venta/reglas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { BotonAccion } from "@/ui/boton-accion";
 import { ALERTAS_PRECIO, ORIGENES_COSTO, ORIGENES_VENTA, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, Encabezado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
@@ -38,6 +39,72 @@ function FormRecargo({ ambito, id, valor, editable }: { ambito: AmbitoRecargo; i
   );
 }
 
+const NOMBRE_AMBITO: Readonly<Record<string, string>> = { CLIENTE: "un cliente", PRODUCTO: "un producto", CATEGORIA: "una categoría" };
+const SINGULAR: Readonly<Record<string, string>> = { CLIENTE: "Cliente", PRODUCTO: "Producto", CATEGORIA: "Categoría" };
+
+/** Los que tienen una ganancia propia (para cambiarla o quitarla) y el botón para agregarle a otro. */
+function Especiales({
+  titulo,
+  ambito,
+  editable,
+  conPropia,
+  sinPropia,
+}: {
+  titulo: string;
+  ambito: AmbitoRecargo;
+  editable: boolean;
+  conPropia: { id: string; nombre: string; detalle?: string; recargo: string | null; extra?: number }[];
+  sinPropia: { valor: string; etiqueta: string }[];
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-borde p-3">
+      <h3 className="font-semibold">{titulo}</h3>
+      {conPropia.length === 0 ? (
+        <p className="text-sm text-texto-suave">Ninguno con ganancia propia: usan la general.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-borde">
+          {conPropia.map((x) => (
+            <li key={x.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+              <span className="min-w-0">
+                <span className="font-medium">{x.nombre}</span>
+                {x.detalle && <span className="block text-sm text-texto-suave">{x.detalle}</span>}
+                {ambito === "CLIENTE" && (
+                  <Link href={`/clientes/${x.id}#precios`} className="block text-sm underline underline-offset-2">
+                    {x.extra ? `${x.extra} precio(s) pactado(s)` : "Pactar un precio"}
+                  </Link>
+                )}
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                {x.recargo === null ? <span className="text-sm text-texto-suave">Usa la general</span> : <FormRecargo ambito={ambito} id={x.id} valor={x.recargo} editable={editable} />}
+                {editable && x.recargo !== null && (
+                  <BotonAccion accion={recargoAccion} datos={{ ambito, id: x.id, valor: "" }} className="min-h-11 rounded-lg px-3 text-sm font-medium text-texto-suave underline underline-offset-2">
+                    Quitar
+                  </BotonAccion>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {editable && sinPropia.length > 0 && (
+        <details>
+          <summary className="min-h-11 cursor-pointer py-2 font-medium">＋ Darle una ganancia propia a {NOMBRE_AMBITO[ambito]}</summary>
+          <FormularioAccion accion={recargoAccion} boton="Guardar" enLinea>
+            <input type="hidden" name="ambito" value={ambito} />
+            <Selector etiqueta={SINGULAR[ambito] ?? titulo} name="id" opciones={sinPropia} />
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">Ganancia</span>
+              <span className="flex items-center gap-1">
+                <input name="valor" inputMode="decimal" placeholder="Ej. 35" aria-label="Ganancia en %" className="h-11 w-24 rounded-lg border border-borde bg-superficie px-2 text-right text-base" />%
+              </span>
+            </label>
+          </FormularioAccion>
+        </details>
+      )}
+    </div>
+  );
+}
+
 /**
  * Precios de venta (P-32 simplificada): los recargos por nivel y la lista de precios de un
  * cliente, con el origen de cada precio (RN-077).
@@ -57,11 +124,44 @@ export default async function PaginaPreciosVenta({ searchParams }: PageProps<"/p
     <section className="flex max-w-5xl flex-col gap-6">
       <Encabezado
         titulo="Precios de venta"
-        descripcion="El precio sale del costo más un recargo. Gana el primero que exista: precio pactado con el cliente, recargo del cliente para el producto o la categoría, recargo del cliente, del producto, de la categoría y, si no hay ninguno, el general."
+        descripcion="Cada producto se vende a lo que cuesta más un porcentaje de ganancia. Si no hacés nada, se usa la ganancia general; si a un producto, una categoría o un cliente le querés cobrar distinto, dale su propio porcentaje."
       />
 
+      <Tarjeta titulo="1. Ganancia general">
+        <p className="text-texto-suave">La que se usa para todo lo que no tenga una propia.</p>
+        <FormRecargo ambito="GLOBAL" valor={recargos.global} editable={editable} />
+      </Tarjeta>
+
+      <Tarjeta titulo="2. Ganancias especiales">
+        <p className="text-texto-suave">
+          Solo si a algo le querés cobrar distinto que la general. Si hay varias, gana la más específica: la del cliente, después la del producto y después la de la categoría. Los precios fijos pactados con un cliente se cargan en su ficha y le ganan a todo.
+        </p>
+        <Especiales
+          titulo="Clientes"
+          ambito="CLIENTE"
+          editable={editable}
+          conPropia={recargos.clientes.filter((c) => c.recargo !== null || c.reglas > 0).map((c) => ({ id: c.id, nombre: c.nombre, recargo: c.recargo, extra: c.reglas }))}
+          sinPropia={recargos.clientes.filter((c) => c.recargo === null).map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+        />
+        <Especiales
+          titulo="Productos"
+          ambito="PRODUCTO"
+          editable={editable}
+          conPropia={recargos.productos.filter((p) => p.recargo !== null).map((p) => ({ id: p.id, nombre: p.nombre, detalle: p.categoria, recargo: p.recargo }))}
+          sinPropia={recargos.productos.filter((p) => p.recargo === null).map((p) => ({ valor: p.id, etiqueta: p.nombre }))}
+        />
+        <Especiales
+          titulo="Categorías"
+          ambito="CATEGORIA"
+          editable={editable}
+          conPropia={recargos.categorias.filter((c) => c.recargo !== null).map((c) => ({ id: c.id, nombre: c.nombre, recargo: c.recargo }))}
+          sinPropia={recargos.categorias.filter((c) => c.recargo === null).map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+        />
+      </Tarjeta>
+
       {lista && (
-        <Tarjeta titulo="Lista de precios de un cliente">
+        <Tarjeta titulo="Consultar los precios de un cliente">
+          <p className="text-texto-suave">Elegí un cliente para ver a cuánto le queda cada producto y de dónde sale ese precio.</p>
           <form method="get" className="flex flex-wrap items-end gap-3">
             <Selector etiqueta="Cliente" name="cliente" opciones={recargos.clientes.map((c) => ({ valor: c.id, etiqueta: c.nombre }))} defaultValue={clienteId} />
             <Campo etiqueta="Para el día" name="fecha" type="date" defaultValue={lista.fecha} />
@@ -133,83 +233,6 @@ export default async function PaginaPreciosVenta({ searchParams }: PageProps<"/p
         </Tarjeta>
       )}
 
-      <Tarjeta titulo="Recargo general">
-        <p className="text-texto-suave">Se usa cuando no hay otro recargo para el cliente, el producto o la categoría.</p>
-        <FormRecargo ambito="GLOBAL" valor={recargos.global} editable={editable} />
-      </Tarjeta>
-
-      <Tarjeta titulo="Por cliente">
-        <p className="text-texto-suave">Vacío = usa el del producto o la categoría. Los precios pactados y excepciones se cargan en la ficha del cliente.</p>
-        <Tabla>
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Recargo</th>
-              <th>Excepciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recargos.clientes.map((c) => (
-              <tr key={c.id}>
-                <td className="font-medium">{c.nombre}</td>
-                <td>
-                  <FormRecargo ambito="CLIENTE" id={c.id} valor={c.recargo} editable={editable} />
-                </td>
-                <td>
-                  <Link href={`/clientes/${c.id}#precios`} className="underline">
-                    {c.reglas === 0 ? "Agregar" : `${c.reglas} vigente(s)`}
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Tabla>
-      </Tarjeta>
-
-      <Tarjeta titulo="Por producto">
-        <Tabla>
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th>Recargo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recargos.productos.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  {p.nombre}
-                  <span className="block text-sm text-texto-suave">{p.categoria}</span>
-                </td>
-                <td>
-                  <FormRecargo ambito="PRODUCTO" id={p.id} valor={p.recargo} editable={editable} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Tabla>
-      </Tarjeta>
-
-      <Tarjeta titulo="Por categoría">
-        <Tabla>
-          <thead>
-            <tr>
-              <th>Categoría</th>
-              <th>Recargo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recargos.categorias.map((c) => (
-              <tr key={c.id}>
-                <td>{c.nombre}</td>
-                <td>
-                  <FormRecargo ambito="CATEGORIA" id={c.id} valor={c.recargo} editable={editable} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Tabla>
-      </Tarjeta>
     </section>
   );
 }

@@ -26,7 +26,7 @@ export default async function PaginaUsuarios() {
 
   return (
     <section className="flex max-w-2xl flex-col gap-6">
-      <Encabezado titulo="Usuarios" descripcion="Quiénes pueden entrar al sistema. Todos los habilitados pueden hacer todo." />
+      <Encabezado titulo="Usuarios" descripcion="Quiénes pueden entrar al sistema. Cada persona se crea su cuenta y acá la habilitás; todos los habilitados pueden hacer todo." />
 
       {!cuentasListas && <Aviso>{MENSAJE_FALTA_CLAVE_SECRETA}</Aviso>}
 

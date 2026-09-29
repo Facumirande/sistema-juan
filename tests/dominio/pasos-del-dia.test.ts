@@ -18,8 +18,12 @@ const listaArmada = { armada: true, desactualizada: false, lineas: 5, resueltas:
 const comprado = { ...listaArmada, resueltas: 5 };
 
 describe("el día de trabajo paso a paso", () => {
+  it("son seis pasos: los remitos van dentro de la preparación", () => {
+    expect(pasosDelDia(vacio).pasos.map((p) => p.clave)).toEqual(["pedidos", "lista", "compras", "preparacion", "entregas", "cierre"]);
+  });
+
   it("sin pedidos, lo primero es cargarlos; un borrador deja los pedidos en curso", () => {
-    expect(pasosDelDia(vacio)).toMatchObject({ actual: "pedidos", hechos: 0 });
+    expect(pasosDelDia(vacio)).toMatchObject({ actual: "pedidos", hechos: 0, atrasados: [] });
     expect(estados(con({ jornada: "ABIERTA", pedidos: { confirmados: 0, borradores: 1 } })).pedidos).toBe("en_curso");
   });
 
@@ -28,22 +32,22 @@ describe("el día de trabajo paso a paso", () => {
     expect(pasosDelDia(con({ jornada: "COMPRANDO", pedidos: confirmados, lista: listaArmada }))).toMatchObject({ actual: "compras", hechos: 2 });
   });
 
-  it("un pedido nuevo después de armar la lista: la lista queda desactualizada y es lo que toca", () => {
-    const d = con({ jornada: "COMPRANDO", pedidos: confirmados, lista: { ...listaArmada, desactualizada: true, resueltas: 2 }, compras: 2 });
-    expect(estados(d)).toMatchObject({ lista: "en_curso", compras: "en_curso" });
-    expect(pasosDelDia(d).actual).toBe("lista");
+  it("con las compras empezadas, lo que quedó a medias antes es pendiente de atrás, no el paso que toca", () => {
+    // Un pedido nuevo cambió la lista, otro quedó afuera y hay un borrador sin confirmar, pero ya se está comprando.
+    const d = con({
+      jornada: "COMPRANDO",
+      pedidos: { confirmados: 4, borradores: 1 },
+      lista: { ...listaArmada, desactualizada: true, resueltas: 2, fueraDeLista: 1 },
+      compras: 2,
+    });
+    expect(estados(d)).toMatchObject({ pedidos: "en_curso", lista: "en_curso", compras: "en_curso" });
+    expect(pasosDelDia(d)).toMatchObject({ actual: "compras", atrasados: ["pedidos", "lista"] });
   });
 
-  it("un pedido confirmado que no se agregó a la lista la deja en curso", () => {
+  it("antes de empezar a comprar, un pedido confirmado que no se agregó a la lista hace que toque la lista", () => {
     const d = con({ jornada: "COMPRANDO", pedidos: { confirmados: 4, borradores: 0 }, lista: { ...listaArmada, fueraDeLista: 1 } });
     expect(estados(d).lista).toBe("en_curso");
-    expect(pasosDelDia(d).actual).toBe("lista");
-  });
-
-  it("un borrador que quedó colgado no frena el día si la lista ya está armada", () => {
-    const d = con({ jornada: "COMPRANDO", pedidos: { confirmados: 3, borradores: 1 }, lista: listaArmada });
-    expect(estados(d).pedidos).toBe("en_curso");
-    expect(pasosDelDia(d).actual).toBe("compras");
+    expect(pasosDelDia(d)).toMatchObject({ actual: "lista", atrasados: [] });
   });
 
   it("compras en curso y terminadas", () => {
@@ -52,7 +56,7 @@ describe("el día de trabajo paso a paso", () => {
     expect(pasosDelDia({ ...d, lista: comprado }).actual).toBe("preparacion");
   });
 
-  it("preparación, remitos, reparto y entrega, cierre", () => {
+  it("preparación (con sus remitos), reparto y entrega, cierre", () => {
     const d = con({
       jornada: "PREPARANDO",
       pedidos: confirmados,
@@ -60,28 +64,30 @@ describe("el día de trabajo paso a paso", () => {
       compras: 4,
       entregas: { total: 3, preparadas: 1, conDocumentos: 1, enCamino: 0, entregadas: 0 },
     });
-    // Se preparan y se emiten remitos de a un cliente: toca seguir preparando.
-    expect(estados(d)).toMatchObject({ preparacion: "en_curso", remitos: "en_curso", entregas: "pendiente" });
+    expect(estados(d)).toMatchObject({ preparacion: "en_curso", entregas: "pendiente" });
     expect(pasosDelDia(d).actual).toBe("preparacion");
-    const preparado = { ...d, entregas: { ...d.entregas, preparadas: 3 } };
-    expect(pasosDelDia(preparado).actual).toBe("remitos");
+    // Todo preparado pero a un cliente le falta el remito (por ejemplo, una línea sin precio): sigue la preparación.
+    const sinRemito = { ...d, entregas: { ...d.entregas, preparadas: 3, conDocumentos: 2 } };
+    expect(pasosDelDia(sinRemito).actual).toBe("preparacion");
+    const preparado = { ...d, entregas: { ...d.entregas, preparadas: 3, conDocumentos: 3 } };
+    expect(pasosDelDia(preparado)).toMatchObject({ actual: "entregas", hechos: 4 });
     const enCamino = { ...d, jornada: "REPARTIENDO", repartos: 1, entregas: { total: 3, preparadas: 3, conDocumentos: 3, enCamino: 3, entregadas: 1 } };
-    expect(pasosDelDia(enCamino)).toMatchObject({ actual: "entregas", hechos: 5 });
+    expect(pasosDelDia(enCamino)).toMatchObject({ actual: "entregas", hechos: 4 });
     const entregado = { ...enCamino, entregas: { ...enCamino.entregas, entregadas: 3 } };
-    expect(pasosDelDia(entregado)).toMatchObject({ actual: "cierre", hechos: 6 });
-    expect(pasosDelDia({ ...entregado, jornada: "CERRADA" })).toMatchObject({ actual: null, hechos: 7 });
+    expect(pasosDelDia(entregado)).toMatchObject({ actual: "cierre", hechos: 5 });
+    expect(pasosDelDia({ ...entregado, jornada: "CERRADA" })).toMatchObject({ actual: null, hechos: 6, atrasados: [] });
   });
 
-  it("lo que no se compró no traba el día una vez que se preparó todo", () => {
+  it("lo que no se compró no traba el día: queda pendiente de atrás mientras se prepara", () => {
     const d = con({
       jornada: "PREPARANDO",
       pedidos: confirmados,
       lista: { ...listaArmada, resueltas: 4 },
       compras: 3,
-      entregas: { total: 2, preparadas: 2, conDocumentos: 0, enCamino: 0, entregadas: 0 },
+      entregas: { total: 2, preparadas: 2, conDocumentos: 2, enCamino: 0, entregadas: 0 },
     });
     expect(estados(d).compras).toBe("en_curso");
-    expect(pasosDelDia(d).actual).toBe("remitos");
+    expect(pasosDelDia(d)).toMatchObject({ actual: "entregas", atrasados: ["compras"] });
   });
 
   it("si se preparó sin armar la lista ni comprar, esos pasos quedan salteados", () => {

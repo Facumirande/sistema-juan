@@ -38,7 +38,7 @@ export default async function PaginaFacturacion({ searchParams }: PageProps<"/fa
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Facturación" descripcion="Comprobantes internos (no fiscales) de lo que se entregó.">
+      <Encabezado titulo="Facturación" descripcion="Los comprobantes de venta de lo que se entregó (son internos, no son factura fiscal). A los clientes de “en cada entrega” se les hace solo al confirmar la entrega; a los de semana, quincena o mes, hacéselo desde “Sin facturar”.">
         {sesion.permisos.includes("facturacion.exportar") && (
           <Link href={`/facturacion/exportar?desde=${desde}&hasta=${hasta}`} className={clasesBoton("secundario")}>
             Exportar para el contador

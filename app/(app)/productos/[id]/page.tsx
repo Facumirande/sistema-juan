@@ -154,7 +154,9 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
       </Tarjeta>
 
       {puedeEditar && (
-        <Tarjeta titulo="Datos del producto">
+        <details className="rounded-lg border border-borde bg-superficie p-4">
+          <summary className="min-h-11 cursor-pointer text-lg font-semibold">✏️ Editar los datos del producto (o darlo de baja)</summary>
+          <div className="mt-4 flex flex-col gap-3">
           <FormularioAccion accion={editarProductoAccion} boton="Guardar cambios">
             <input type="hidden" name="id" value={p.id} />
             <div className="grid gap-4 sm:grid-cols-2">
@@ -191,7 +193,8 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
             <input type="hidden" name="id" value={p.id} />
             <input type="hidden" name="activo" value={String(!p.activo)} />
           </FormularioAccion>
-        </Tarjeta>
+          </div>
+        </details>
       )}
     </section>
   );

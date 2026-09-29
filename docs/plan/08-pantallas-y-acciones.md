@@ -235,6 +235,13 @@ Formato de cada pantalla: **quién la usa**, **qué muestra** y una tabla de **a
 
 #### P-02 Hoy (día de trabajo paso a paso)
 
+**Revisión integral (29/09/2026, pedido del usuario):**
+
+- **Fondo:** el tablero y el paso a paso van sobre una imagen genérica de campo (`public/fondos/campo.svg`, con un velo para que el texto blanco se lea); cada columna del tablero tiene arriba una franja del color de su etapa.
+- **Paso a paso en seis pasos y en tarjetas de colores pastel** (los suaves de las etiquetas de Trello; en modo oscuro, sus tonos oscuros): 📝 Pedidos (azul) · 🛒 Lista de compra (violeta) · 🧺 Compras en el mercado (naranja) · 📦 Preparación y remitos (amarillo) · 🚚 Reparto y entrega (verde) · 🔒 Cierre del día (rosa). **Los remitos dejaron de ser un paso aparte**: se hacen solos al marcar preparado cada cliente, así que van dentro de la preparación (terminada cuando todos están preparados y con su remito); imprimirlos es parte del reparto.
+- **"Ahora toca" es el paso más avanzado sin terminar.** Lo que quedó a medias en un paso anterior (un borrador sin confirmar, un pedido afuera de la lista, la lista desactualizada, un producto sin comprar) ya no vuelve a ser el paso que toca: aparece como **"Quedó pendiente de antes"** dentro del paso actual, con el botón para resolverlo. Antes de empezar a comprar, un pedido afuera de la lista sí hace que toque la lista.
+- Cada paso dice **qué hay que hacer** como una indicación ("Registrá cada compra en el puesto donde la hiciste…"). Se sacó el recuadro que repetía el título del día; arriba queda "Ahora toca: …" y la barra de avance.
+
 **Más grande y despejado (29/09/2026):** es la pantalla principal ("Tablero de pedidos" en el menú). Listas de 340 px con tarjetas grandes: dibujo del tipo de cliente, nombre en letra grande, **lo que lleva a la vista** (hasta 4 productos con su dibujo y cantidad, "y N más") y los indicadores más grandes; una tarjeta sin productos lo dice ("Sin productos todavía · tocá para cargarlos") y lleva directo a cargarlos. Arriba, el botón **＋ Nuevo pedido** (en el celular, flotante abajo a la derecha) y los avisos como píldoras compactas. La tarjeta abierta ocupa más (hasta 1024 px): primero **Lo que lleva** en recuadros con **✏️ Cambiar productos**, después dónde se entrega, la nota, las notas entre ustedes y el historial; al costado, botones grandes (confirmar, cambiar productos, agregar a la lista, prioridad, quién se encarga y horario).
 
 **Tablero de pedidos (28/09/2026, segunda versión, pedido del usuario: "tipo Trello").** "Hoy" abre en el **tablero**; la pestaña "☰ Paso a paso" muestra los siete pasos de abajo. El tablero imita la presentación y la mecánica de Trello: fondo de color, listas grises con tarjetas blancas, etiquetas de colores, fecha de vencimiento, miembros y la tarjeta que se abre encima.
@@ -304,6 +311,8 @@ El paso que toca ("Ahora") se muestra abierto, con una explicación corta y sus 
 
 #### P-10 Productos
 
+**Alta simplificada (29/09/2026):** tres preguntas a la vista (qué es y su categoría; cómo se vende —kilo, unidad, atado o docena, y "otra forma" para el resto—; en qué envase se compra, con "Suelto" y "Otro envase…"). La ganancia con su cuenta de ejemplo, si se pide en partes, el código y las notas quedan en "Más opciones". La ficha deja la edición de datos plegada en "✏️ Editar los datos del producto".
+
 **Construida (28/09/2026):** tarjetas agrupadas por categoría ("▦ Tarjetas | ☰ Lista"): dibujo del producto, código, en qué se cuenta, envase de compra, "Desde $X el kg" y cuántos proveedores (con `precios.ver_costos`) y el preferido. **+ Nuevo producto** abre P-10b.
 
 #### P-10b Nuevo producto (guiado, 28/09/2026)
@@ -349,6 +358,8 @@ Lista con nombre, grupo, orden (define el orden de recorrido en el mercado y en 
 
 #### P-15 Clientes
 
+**Alta guiada (29/09/2026, `/clientes/nuevo`):** tres preguntas: cómo se llama y qué es (botones con dibujo), dónde se le entrega y a qué hora recibe (Cuando sea, Temprano, A la mañana, A la tarde u Otro horario), y el teléfono. En "Más opciones": a quién se le completa primero si falta mercadería (Primero / Normal / Al final), cada cuánto se le hace el comprobante, cambios de producto, remito firmado, orden de compra, contacto, cómo llegar y datos fiscales. Al costado, "Así va a quedar". En la ficha, los datos se editan desde "✏️ Editar los datos del cliente" (plegado), "Puntos de entrega" pasa a "Dónde se le entrega" y el recargo, a "Ganancia propia".
+
 **Construida (28/09/2026):** tarjetas agrupadas por tipo (hospital, restaurante, comercio…) con dirección, "Sin ubicación en el mapa" si falta, horario, teléfono y el próximo pedido; también como lista. En la ficha, cada punto de entrega tiene **Cómo llegar** (Google Maps y Waze) y **Marcar en el mapa** ("Estoy en el lugar" con el GPS, buscar la dirección o pegar un enlace de Google Maps), y la ficha tiene notas.
 
 Plan original — lista (tarjetas en el celular): nombre, tipo, puntos de entrega, prioridad para faltantes, periodicidad de facturación, último pedido, estado. Búsqueda por nombre o identificador fiscal. **+ Nuevo cliente** con `clientes.editar`.
@@ -376,6 +387,8 @@ Plan original — lista (tarjetas en el celular): nombre, tipo, puntos de entreg
 ### 5.4 Proveedores
 
 #### P-20 Proveedores
+
+**Alta guiada (29/09/2026, `/proveedores/nuevo`):** tres preguntas: nombre y dónde está en el mercado; cómo se le paga (En el momento / A cuenta, con "hasta cuánto se le puede deber" y el plazo: a la semana, 15 o 30 días); y el teléfono. Contacto, CBU, CUIT y demás, en "Más datos". En la ficha, la tabla de productos y precios ya no tiene un campo "Precio nuevo" en cada fila: se cambia desde "✏️ Cambiar"; las "Últimas compras" solo aparecen si no se ve la cuenta (que ya las lista), y la edición de datos queda plegada.
 
 **Construida (28/09/2026):** tarjetas separadas en "Con deuda" y "Al día", con una franja arriba del color del semáforo de crédito, lugar en el mercado, condición de pago, cuántos productos vende y "Se le debe $X" con el semáforo y el % de uso; también como lista. La ficha tiene notas.
 
@@ -664,6 +677,10 @@ Tabla por producto: necesidad antes y ahora, diferencia, ya comprado, a comprar 
 Por producto: necesidad, comprado, diferencia, estado. Para cada línea `PENDIENTE` o `PARCIAL`: **No conseguido** (motivo) o **Dejar pendiente**. Destaca excedentes mayores a un bulto y compras sin pedido (RN-060, RN-061). Resultado: la preparación ya sabe qué repartir.
 
 #### P-55 Registrar compra (celular)
+
+**Simplificada (29/09/2026, pedido del usuario: "quitá cosas vacías de relleno repetidas; dejá agregarlas si hace falta"):** primero se elige el puesto (tarjetas, con los que tienen algo de la lista arriba). Después se ve solo lo que la lista dice comprarle ahí, con cantidad y precio; ya no aparecen los demás productos del puesto con cantidad vacía ni tres renglones vacíos de "otro producto": se agregan con **＋ Agregar otro producto** (primero los que vende ese puesto, con su último precio, o cualquier otro). Cada renglón se saca con ✕ y muestra su subtotal; abajo, el total de la compra. **¿Cómo pagaste?** con tres botones (Pagué todo / Queda a cuenta / Pagué una parte), el medio solo si se pagó algo y "cuánto pagaste ahora" solo en parte y parte; boleta, notas y el permiso para pasar el límite, plegados en "Más datos".
+
+Plan original:
 
 Proceso en `04-procesos-y-flujos.md` §5.d.1; control de crédito en `06-creditos-y-pagos.md` §9.
 

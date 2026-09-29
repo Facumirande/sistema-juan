@@ -41,6 +41,16 @@ interface Props {
   enlaces: Partial<Record<ClaveColumna, { href: string; texto: string }>>;
 }
 
+/** El color de cada columna, el mismo de su paso en "Paso a paso". */
+const COLOR_COLUMNA: Record<ClaveColumna, string> = {
+  por_confirmar: "var(--pastel-azul)",
+  confirmados: "var(--pastel-azul)",
+  en_lista: "var(--pastel-violeta)",
+  preparando: "var(--pastel-amarillo)",
+  en_camino: "var(--pastel-verde)",
+  entregados: "var(--pastel-rosa)",
+};
+
 const DESTINO_PERMITIDO = (desde: ClaveColumna | null, hacia: ClaveColumna) => (desde ? accionAlMover(desde, hacia) !== null : false);
 const PRODUCTOS_A_LA_VISTA = 4;
 
@@ -347,6 +357,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
                 e.preventDefault();
                 soltar(col.clave);
               }}
+              style={{ borderTop: `8px solid ${COLOR_COLUMNA[col.clave]}` }}
               className={`flex max-h-[calc(100dvh-230px)] w-[88vw] max-w-[380px] shrink-0 snap-start flex-col rounded-2xl bg-lista text-lista-texto shadow-sm sm:w-[340px] ${sobre === col.clave ? "outline-3 outline-offset-2 outline-white" : ""} ${aceptaSoltar && sobre !== col.clave ? "outline-2 outline-dashed outline-white/70" : ""}`}
             >
               <header className="flex items-start justify-between gap-2 px-4 pt-3 pb-2">

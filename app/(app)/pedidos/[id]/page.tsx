@@ -5,7 +5,6 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
 import { formatearCantidad, formatearMoneda, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { sumarDias } from "@/dominio/fechas/fechas";
-import { listarPresentacionesDeVenta } from "@/modulos/catalogo/productos";
 import { obtenerCliente } from "@/modulos/clientes/clientes";
 import { obtenerPedido, type LineaDePedido } from "@/modulos/pedidos/pedidos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
@@ -15,7 +14,6 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { AreaTexto, Aviso, Campo, CampoNumero, Encabezado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 
 import {
-  agregarLineaAccion,
   cambiarLineaAccion,
   cancelarPedidoAccion,
   confirmarPedidoAccion,
@@ -61,15 +59,8 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
   const id = idDeRuta((await params).id);
   const db = obtenerBaseDatos();
   const p = await cargarFicha(obtenerPedido(db, sesion.authUserId, id));
-  const [productos, cliente] = await Promise.all([
-    p.editable ? listarPresentacionesDeVenta(db, sesion.authUserId) : Promise.resolve([]),
-    p.editable ? obtenerCliente(db, sesion.authUserId, p.clienteId) : Promise.resolve(null),
-  ]);
+  const cliente = p.editable ? await obtenerCliente(db, sesion.authUserId, p.clienteId) : null;
   const puntos = cliente?.puntosEntrega.filter((x) => x.activo || x.id === p.puntoEntregaId) ?? [];
-  const opcionesProducto = productos.map((x) => ({
-    valor: `${x.productoId}:${x.esUnidadBase ? "" : x.presentacionId}`,
-    etiqueta: x.esUnidadBase ? `${x.producto} · por ${UNIDADES_CORTAS[x.unidadBase]}` : `${x.producto} · ${x.presentacion}`,
-  }));
   const vivas = p.lineas.filter((l) => !l.cancelado);
   const alertas = [...new Set(vivas.flatMap((l) => l.precio?.alertas ?? []))];
   const puedeOverride = sesion.permisos.includes("precios.override_linea");
@@ -213,27 +204,9 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
         {alertas.length > 0 && <p className="text-sm text-error">Hay precios para revisar: {alertas.map((a) => ALERTAS_PRECIO[a]).join(" · ")}.</p>}
 
         {p.editable && (
-          <div className="rounded-lg border border-borde p-3">
-            <h3 className="mb-3 font-semibold">Agregar producto</h3>
-            {opcionesProducto.length === 0 ? (
-              <p className="text-texto-suave">
-                No hay productos para vender. Cargalos en{" "}
-                <Link href="/productos" className="underline">
-                  Productos
-                </Link>
-                .
-              </p>
-            ) : (
-              <FormularioAccion accion={agregarLineaAccion} boton="Agregar" className="flex flex-col gap-3">
-                <input type="hidden" name="pedidoId" value={p.id} />
-                <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
-                  <Selector etiqueta="Producto" name="productoPresentacion" opciones={opcionesProducto} />
-                  <CampoNumero etiqueta="Cantidad" name="cantidad" placeholder="Ej. 36" />
-                </div>
-                <Campo etiqueta="Nota para preparar (opcional)" name="observaciones" placeholder="Ej. bien maduro, sin raíz" />
-              </FormularioAccion>
-            )}
-          </div>
+          <Link href={`/pedidos/${p.id}/cambiar`} className={`${clasesBoton("secundario")} self-start`}>
+            ＋ Agregar o cambiar productos
+          </Link>
         )}
       </Tarjeta>
 

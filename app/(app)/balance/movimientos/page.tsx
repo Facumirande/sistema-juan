@@ -36,7 +36,7 @@ export default async function PaginaMovimientos({ searchParams }: PageProps<"/ba
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Movimientos" descripcion={`Del ${formatearFecha(desde)} al ${formatearFecha(hasta)}. Sin lo anulado.`} volver={{ ruta: `/balance?desde=${desde}&hasta=${hasta}`, texto: "Balance" }}>
+      <Encabezado titulo="Movimientos" descripcion={`Del ${formatearFecha(desde)} al ${formatearFecha(hasta)}: cada venta, compra, pago y ajuste, del más nuevo al más viejo (sin lo anulado).`} volver={{ ruta: `/balance?desde=${desde}&hasta=${hasta}`, texto: "Balance" }}>
         <BotonImprimir />
       </Encabezado>
 

@@ -43,7 +43,7 @@ export default async function PaginaCuentasProveedores({ searchParams }: PagePro
           <>
             Se les debe {formatearMoneda(deudaTotal)}
             {vencida.gt(0) && <span className="text-error"> · vencido {formatearMoneda(vencida)}</span>}
-            {porVencer.gt(0) && ` · vence en los próximos días ${formatearMoneda(porVencer)}`}.
+            {porVencer.gt(0) && ` · vence en los próximos días ${formatearMoneda(porVencer)}`}. El color muestra cuánto del límite de crédito se usa con cada uno (verde tranquilo, amarillo cerca, rojo al límite). Tocá “Pagar” para anotar un pago.
           </>
         }
       />

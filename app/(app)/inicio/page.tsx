@@ -15,11 +15,10 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { contarPedidosPendientes } from "@/modulos/usuarios/acceso";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { enlaceDeEntidad } from "@/ui/enlaces";
-import { ESTADOS_JORNADA } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 
 import { Modal } from "./modal";
-import { DiaPasoAPaso, nombreDelDia, plural, tituloDelDia } from "./paso-a-paso";
+import { DiaPasoAPaso, TITULOS, nombreDelDia, plural, tituloDelDia } from "./paso-a-paso";
 import { TableroTrello } from "./tablero";
 import { TarjetaAbierta } from "./tarjeta-abierta";
 
@@ -102,7 +101,8 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
     }
   }
 
-  const sobre = enTablero;
+  // El fondo con la imagen va en las dos vistas del día (tablero y paso a paso).
+  const sobre = dia !== null;
   const aviso = sobre
     ? "flex min-h-11 items-center gap-2 rounded-full bg-white/95 px-4 text-sm font-semibold text-[#172b4d] shadow-sm hover:bg-white"
     : "flex min-h-11 items-center gap-2 rounded-full border border-borde bg-superficie px-4 text-sm font-semibold";
@@ -112,11 +112,10 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
     <div className={sobre ? "-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col gap-4 p-4 [background:var(--tablero-fondo)] sm:px-5" : "flex max-w-3xl flex-col gap-5"}>
       <header className={`flex flex-wrap items-center justify-between gap-3 ${sobre ? "text-white" : ""}`}>
         <div>
-          <h1 className="text-2xl font-semibold sm:text-3xl">{dia ? (sobre ? `Pedidos · ${tituloDelDia(dia.fecha, dia.hoy)}` : tituloDelDia(dia.fecha, dia.hoy)) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
+          <h1 className="text-2xl font-semibold sm:text-3xl">{dia ? (enTablero ? `Pedidos · ${tituloDelDia(dia.fecha, dia.hoy)}` : tituloDelDia(dia.fecha, dia.hoy)) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
           {dia && (
             <p className={`hidden sm:block ${sobre ? "text-white/85" : "text-texto-suave"}`}>
-              {dia.panel.estado ? `Jornada ${ESTADOS_JORNADA[dia.panel.estado]?.toLowerCase()}` : "Todavía sin pedidos"} ·{" "}
-              {dia.pasos.actual ? `${dia.pasos.hechos} de ${dia.pasos.pasos.length} pasos listos` : "día terminado"}
+              {!dia.panel.estado ? "Todavía sin pedidos para este día" : dia.pasos.actual ? `Ahora toca: ${TITULOS[dia.pasos.actual].toLowerCase()}` : "Día terminado"}
               {tablero?.lista.numero && ` · lista de compra ${tablero.lista.numero}`}
             </p>
           )}
@@ -127,7 +126,7 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
               <Link href={`/inicio?fecha=${dia.fecha}`} role="tab" aria-selected={vista === "tablero"} className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold ${vista === "tablero" ? "bg-white text-[#172b4d]" : sobre ? "text-white" : ""}`}>
                 ▦ Tablero
               </Link>
-              <Link href={`/inicio?fecha=${dia.fecha}&vista=pasos`} role="tab" aria-selected={vista === "pasos"} className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold ${vista === "pasos" ? "bg-marca text-marca-texto" : sobre ? "text-white" : ""}`}>
+              <Link href={`/inicio?fecha=${dia.fecha}&vista=pasos`} role="tab" aria-selected={vista === "pasos"} className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold ${vista === "pasos" ? "bg-white text-[#172b4d]" : sobre ? "text-white" : ""}`}>
                 ☰ Paso a paso
               </Link>
             </div>

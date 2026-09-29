@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import type { LineaElegida } from "@/dominio/pedidos/carga";
 import type { PrioridadPedido } from "@/dominio/pedidos/tablero";
 import {
-  agregarLinea,
   cambiarDatosPedido,
   cambiarProductosDePedido,
   cargarPedido,
@@ -25,21 +24,6 @@ import { campo, type EstadoAccion } from "@/ui/estado-accion";
 // Acciones de P-40, P-41 y P-42. Los permisos los verifica cada caso de uso.
 
 const canal = (datos: FormData) => (campo(datos, "canal") || null) as CanalPedido | null;
-
-export async function agregarLineaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    // El selector trae "productoId:presentacionId" (vacío = unidad base).
-    const [productoId = "", presentacionId = ""] = campo(datos, "productoPresentacion").split(":");
-    const r = await agregarLinea(db, authUserId, {
-      pedidoId: campo(datos, "pedidoId"),
-      productoId,
-      presentacionId: presentacionId || null,
-      cantidad: campo(datos, "cantidad"),
-      observaciones: campo(datos, "observaciones"),
-    });
-    return { ok: true, mensaje: r.sumada ? "Ya estaba en el pedido: se sumó la cantidad." : null };
-  });
-}
 
 export async function cambiarLineaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {

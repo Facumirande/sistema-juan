@@ -52,7 +52,7 @@ export default async function PaginaActividad({ searchParams }: PageProps<"/acti
 
   return (
     <section className="flex max-w-3xl flex-col gap-6">
-      <Encabezado titulo="Actividad y notas" descripcion="Lo que hizo cada uno en el sistema y las notas que se dejaron.">
+      <Encabezado titulo="Actividad y notas" descripcion="Lo que hizo cada uno en el sistema, día por día, y las notas que se dejaron. Tocá una línea para ir a lo que nombra.">
         <BotonAccion accion={marcarTodasLeidasAccion} datos={{}} className="min-h-11 rounded-lg border border-borde px-3 font-semibold">
           Marcar todas las notas como leídas
         </BotonAccion>

@@ -16,7 +16,8 @@
   --grilla: #e1e0d9;
   --base-grafico: #c3c2b7;
   /* Tablero de tarjetas (estilo Trello): fondo de color, columnas grises y tarjetas blancas. */
-  --tablero-fondo: linear-gradient(135deg, #17532e 0%, #226b37 55%, #2f7d32 100%);
+  /* Fondo del tablero y del paso a paso: una imagen de campo con un velo para que el texto blanco se lea. */
+  --tablero-fondo: linear-gradient(rgb(10 28 18 / 0.3), rgb(10 28 18 / 0.5)), url("/fondos/campo.svg") center / cover no-repeat, #2f6b3a;
   --lista-fondo: #f1f2f4;
   --lista-texto: #172b4d;
   --tarjeta-fondo: #ffffff;
@@ -40,6 +41,19 @@
   --pronto-texto: #172b4d;
   --listo-fondo: #1f845a;
   --listo-texto: #ffffff;
+  /* Colores pastel de las tarjetas del paso a paso (los suaves de las etiquetas de Trello). */
+  --pastel-azul: #cce0ff;
+  --pastel-azul-texto: #09326c;
+  --pastel-violeta: #dfd8fd;
+  --pastel-violeta-texto: #352c63;
+  --pastel-naranja: #fedec8;
+  --pastel-naranja-texto: #702e00;
+  --pastel-amarillo: #f8e6a0;
+  --pastel-amarillo-texto: #533f04;
+  --pastel-verde: #baf3db;
+  --pastel-verde-texto: #164b35;
+  --pastel-rosa: #fdd0ec;
+  --pastel-rosa-texto: #50253f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -57,7 +71,7 @@
     --serie-negativa: #e66767;
     --grilla: #2c2c2a;
     --base-grafico: #383835;
-    --tablero-fondo: linear-gradient(135deg, #0d2716 0%, #123a20 55%, #184a27 100%);
+    --tablero-fondo: linear-gradient(rgb(4 10 7 / 0.62), rgb(4 10 7 / 0.78)), url("/fondos/campo.svg") center / cover no-repeat, #0d2716;
     --lista-fondo: #101204;
     --lista-texto: #b6c2cf;
     --tarjeta-fondo: #22272b;
@@ -77,6 +91,18 @@
     --etiqueta-gris: #454f59;
     --pronto-fondo: #7f5f01;
     --pronto-texto: #ffffff;
+    --pastel-azul: #09326c;
+    --pastel-azul-texto: #cce0ff;
+    --pastel-violeta: #352c63;
+    --pastel-violeta-texto: #dfd8fd;
+    --pastel-naranja: #702e00;
+    --pastel-naranja-texto: #fedec8;
+    --pastel-amarillo: #533f04;
+    --pastel-amarillo-texto: #f8e6a0;
+    --pastel-verde: #164b35;
+    --pastel-verde-texto: #baf3db;
+    --pastel-rosa: #50253f;
+    --pastel-rosa-texto: #fdd0ec;
   }
 }
 

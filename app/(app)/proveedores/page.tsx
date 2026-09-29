@@ -9,13 +9,9 @@ import { listarProveedores, type ProveedorListado } from "@/modulos/proveedores/
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
 import { CONDICIONES_PAGO } from "@/ui/etiquetas";
-import { FormularioAccion } from "@/ui/formulario-accion";
-import { Campo, Desplegable, Encabezado, Estado, Filtros, Selector, Tabla } from "@/ui/formularios";
+import { Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
-
-import { crearProveedorAccion } from "./acciones";
-import { CamposProveedor } from "./campos-proveedor";
 
 export const metadata: Metadata = { title: "Proveedores · Sistema Juan" };
 
@@ -68,15 +64,14 @@ export default async function PaginaProveedores({ searchParams }: PageProps<"/pr
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
-      <Encabezado titulo="Proveedores" descripcion="Puestos y mayoristas donde se compra. El color de arriba es el semáforo de crédito." />
+      <Encabezado titulo="Proveedores" descripcion="Los puestos y mayoristas donde se compra. El color de arriba de cada tarjeta muestra cuánto se le debe comparado con su límite: verde tranquilo, amarillo cerca del límite, rojo al límite.">
+        {sesion.permisos.includes("proveedores.editar") && (
+          <Link href="/proveedores/nuevo" className={clasesBoton("principal")}>
+            ＋ Nuevo proveedor
+          </Link>
+        )}
+      </Encabezado>
 
-      {sesion.permisos.includes("proveedores.editar") && (
-        <Desplegable titulo="+ Nuevo proveedor" abierto={proveedores.length === 0 && !texto}>
-          <FormularioAccion accion={crearProveedorAccion} boton="Crear proveedor">
-            <CamposProveedor editarCredito={sesion.permisos.includes("proveedores.editar_limite")} />
-          </FormularioAccion>
-        </Desplegable>
-      )}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Filtros>

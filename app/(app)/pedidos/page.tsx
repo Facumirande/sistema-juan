@@ -29,7 +29,7 @@ export default async function PaginaPedidos({ searchParams }: PageProps<"/pedido
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Pedidos" descripcion="Lo que pidió cada cliente para un día de entrega." />
+      <Encabezado titulo="Pedidos" descripcion="Los pedidos de un día, en forma de lista. Para confirmarlos, armar la lista de compra o ver cómo avanzan, es más cómodo el tablero." />
 
       <nav aria-label="Día de entrega" className="flex flex-wrap items-center gap-2">
         <Link href={`/pedidos?fecha=${sumarDias(fecha, -1)}`} className={clasesBoton("secundario")} aria-label="Día anterior">

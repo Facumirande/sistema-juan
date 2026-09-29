@@ -43,7 +43,7 @@ export default async function PanelJornada({ params }: PageProps<"/jornadas/[fec
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado titulo={`Jornada del ${fechaConDia(fecha)}`} volver={{ ruta: "/jornadas", texto: "Jornadas" }} />
+      <Encabezado titulo={`Día del ${fechaConDia(fecha)}`} volver={{ ruta: "/jornadas", texto: "Todos los días" }} descripcion="Cómo va este día: pedidos, compra, preparación y reparto. Para trabajarlo paso a paso, usá el tablero." />
       <nav aria-label="Día" className="flex gap-2">
         <Link href={`/jornadas/${sumarDias(fecha, -1)}`} className={clasesBoton("secundario")} aria-label="Día anterior">
           ←

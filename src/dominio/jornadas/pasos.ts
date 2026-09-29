@@ -1,12 +1,16 @@
-// El día de trabajo paso a paso (pantalla "Hoy"): en qué quedó cada etapa de la jornada y cuál
-// toca ahora. Un paso que nunca se empezó cuando ya arrancó uno posterior figura como salteado;
-// uno que quedó a medias sigue en curso, pero deja de ser "el que toca" si ya se terminó uno
-// posterior (por ejemplo, un producto que no se compró cuando ya se preparó todo).
+// El día de trabajo paso a paso: en qué quedó cada etapa de la jornada y cuál toca ahora.
+//
+// Revisado el 29/09/2026: los remitos van dentro de la preparación (se hacen solos al marcar
+// preparado cada cliente, no son un paso aparte), y "el que toca" es siempre el paso más
+// avanzado que no está terminado. Lo que quedó a medias en un paso anterior (un borrador sin
+// confirmar, un pedido afuera de la lista, un producto sin comprar) no lo vuelve a ser: queda
+// como pendiente de atrás, para resolverlo sin frenar el día. Un paso que nunca se empezó cuando
+// ya arrancó uno posterior figura como salteado.
 
-export type ClavePaso = "pedidos" | "lista" | "compras" | "preparacion" | "remitos" | "entregas" | "cierre";
+export type ClavePaso = "pedidos" | "lista" | "compras" | "preparacion" | "entregas" | "cierre";
 export type EstadoPaso = "hecho" | "en_curso" | "pendiente" | "salteado";
 
-export const ORDEN_PASOS: readonly ClavePaso[] = ["pedidos", "lista", "compras", "preparacion", "remitos", "entregas", "cierre"];
+export const ORDEN_PASOS: readonly ClavePaso[] = ["pedidos", "lista", "compras", "preparacion", "entregas", "cierre"];
 
 export interface DatosDelDia {
   /** Estado de la jornada; nulo si todavía no hay pedidos. */
@@ -24,6 +28,8 @@ export interface PasosDelDia {
   pasos: { clave: ClavePaso; estado: EstadoPaso }[];
   /** El paso que toca; nulo si el día está terminado. */
   actual: ClavePaso | null;
+  /** Pasos anteriores al actual que quedaron a medias (pendientes de atrás). */
+  atrasados: ClavePaso[];
   hechos: number;
 }
 
@@ -42,9 +48,8 @@ function estadoPropio(clave: ClavePaso, d: DatosDelDia): EstadoPropio {
     case "compras":
       return segun(d.lista.lineas > 0 && d.lista.resueltas === d.lista.lineas, d.compras > 0 || d.lista.resueltas > 0);
     case "preparacion":
-      return segun(hay && e.preparadas === e.total, hay);
-    case "remitos":
-      return segun(hay && e.conDocumentos === e.total, e.conDocumentos > 0);
+      // Terminada cuando todos los clientes están preparados y con sus remitos hechos.
+      return segun(hay && e.preparadas === e.total && e.conDocumentos === e.total, hay);
     case "entregas":
       return segun(hay && e.entregadas === e.total, d.repartos > 0 || e.enCamino > 0);
     case "cierre":
@@ -55,11 +60,10 @@ function estadoPropio(clave: ClavePaso, d: DatosDelDia): EstadoPropio {
 export function pasosDelDia(d: DatosDelDia): PasosDelDia {
   const cerrada = d.jornada === "CERRADA";
   const propios = ORDEN_PASOS.map((clave) => ({ clave, estado: cerrada ? ("hecho" as const) : estadoPropio(clave, d) }));
-  const despues = (i: number) => propios.slice(i + 1);
-  const pasos = propios.map((p, i) => ({
-    clave: p.clave,
-    estado: p.estado === "pendiente" && despues(i).some((q) => q.estado !== "pendiente") ? ("salteado" as const) : p.estado,
-  }));
-  const actual = pasos.find((p, i) => (p.estado === "en_curso" || p.estado === "pendiente") && !despues(i).some((q) => q.estado === "hecho"))?.clave ?? null;
-  return { pasos, actual, hechos: pasos.filter((p) => p.estado === "hecho").length };
+  // Un paso queda superado cuando ya se empezó alguno posterior.
+  const superado = (i: number) => propios.slice(i + 1).some((q) => q.estado !== "pendiente");
+  const pasos = propios.map((p, i) => ({ clave: p.clave, estado: p.estado === "pendiente" && superado(i) ? ("salteado" as const) : p.estado }));
+  const actual = propios.find((p, i) => p.estado !== "hecho" && !superado(i))?.clave ?? null;
+  const atrasados = propios.filter((p, i) => p.estado === "en_curso" && superado(i)).map((p) => p.clave);
+  return { pasos, actual, atrasados, hechos: pasos.filter((p) => p.estado === "hecho").length };
 }

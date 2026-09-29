@@ -74,9 +74,10 @@ export function PreciosDelCliente({
 }) {
   return (
     <section id="precios" className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-4">
-      <h2 className="text-lg font-semibold">Precios</h2>
+      <h2 className="text-lg font-semibold">Precios especiales</h2>
+      <p className="text-sm text-texto-suave">Solo si a este cliente le cobrás distinto: una ganancia propia para todo, o un precio fijo pactado para algún producto.</p>
       <div className="flex flex-wrap items-end gap-3">
-        <p className="py-2">Recargo del cliente:</p>
+        <p className="py-2">Ganancia propia:</p>
         {objetivos ? (
           <FormularioAccion accion={recargoAccion} boton="Guardar" variante="secundario" enLinea>
             <input type="hidden" name="ambito" value="CLIENTE" />
@@ -87,7 +88,7 @@ export function PreciosDelCliente({
                 inputMode="decimal"
                 defaultValue={recargoCliente === null ? "" : pct(recargoCliente)}
                 placeholder="—"
-                aria-label="Recargo del cliente en %"
+                aria-label="Ganancia propia del cliente en %"
                 className="h-11 w-20 rounded-lg border border-borde bg-superficie px-2 text-right text-base"
               />
               %
@@ -97,7 +98,7 @@ export function PreciosDelCliente({
           <b className="py-2">{recargoCliente === null ? "—" : `${pct(recargoCliente)} %`}</b>
         )}
       </div>
-      <p className="text-sm text-texto-suave">Vacío = usa el recargo del producto, de la categoría o el general.</p>
+      <p className="text-sm text-texto-suave">Vacío = se le cobra como a todos (la ganancia del producto, de la categoría o la general).</p>
 
       {reglas.length > 0 && (
         <Tabla>
@@ -138,7 +139,7 @@ export function PreciosDelCliente({
 
       {objetivos && (
         <details>
-          <summary className="min-h-11 cursor-pointer py-2 font-medium">+ Precio pactado o excepción</summary>
+          <summary className="min-h-11 cursor-pointer py-2 font-medium">＋ Pactarle un precio o una ganancia para un producto</summary>
           <FormularioAccion accion={nuevaReglaAccion} boton="Guardar">
             <input type="hidden" name="clienteId" value={clienteId} />
             <div className="grid gap-4 sm:grid-cols-2">

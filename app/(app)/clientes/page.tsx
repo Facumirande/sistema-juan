@@ -7,12 +7,8 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
 import { PERIODICIDADES, TIPOS_CLIENTE, fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente, etiquetaDeTipo } from "@/ui/etiquetas-tablero";
-import { FormularioAccion } from "@/ui/formulario-accion";
-import { Campo, Desplegable, Encabezado, Estado, Filtros, Selector, Tabla } from "@/ui/formularios";
+import { Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
-
-import { crearClienteAccion } from "./acciones";
-import { CamposCliente, CamposPunto } from "./campos-cliente";
 
 export const metadata: Metadata = { title: "Clientes · Sistema Juan" };
 
@@ -75,20 +71,14 @@ export default async function PaginaClientes({ searchParams }: PageProps<"/clien
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
-      <Encabezado titulo="Clientes" descripcion="A quién se le vende y dónde se entrega, agrupados por tipo." />
+      <Encabezado titulo="Clientes" descripcion="A quién se le vende y dónde se le entrega. Tocá un cliente para ver sus pedidos, marcar su dirección en el mapa o pactarle precios.">
+        {sesion.permisos.includes("clientes.editar") && (
+          <Link href="/clientes/nuevo" className={clasesBoton("principal")}>
+            ＋ Nuevo cliente
+          </Link>
+        )}
+      </Encabezado>
 
-      {sesion.permisos.includes("clientes.editar") && (
-        <Desplegable titulo="+ Nuevo cliente" abierto={clientes.length === 0 && !texto}>
-          <FormularioAccion accion={crearClienteAccion} boton="Crear cliente">
-            <CamposCliente />
-            <fieldset className="flex flex-col gap-4 rounded-lg border border-borde p-3">
-              <legend className="px-1 font-medium">Dónde se entrega</legend>
-              <p className="text-sm text-texto-suave">Sin una dirección de entrega no se le pueden confirmar pedidos. Después podés agregar más y marcarla en el mapa.</p>
-              <CamposPunto prefijo="punto_" />
-            </fieldset>
-          </FormularioAccion>
-        </Desplegable>
-      )}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Filtros>

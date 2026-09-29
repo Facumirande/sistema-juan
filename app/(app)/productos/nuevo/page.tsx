@@ -21,7 +21,7 @@ export default async function NuevoProducto() {
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Nuevo producto" volver={{ ruta: "/productos", texto: "Productos" }} descripcion="Cuatro preguntas y listo. Lo demás (proveedores y precios) se carga en su ficha." />
+      <Encabezado titulo="Nuevo producto" volver={{ ruta: "/productos", texto: "Productos" }} descripcion="Tres preguntas y listo. Los proveedores y los precios se cargan en su ficha o solos con la primera compra." />
       {activas.length === 0 ? (
         <Aviso>
           Primero creá al menos una categoría (ej. Verduras, Frutas) en{" "}

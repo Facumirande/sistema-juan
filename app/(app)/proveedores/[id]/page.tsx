@@ -136,7 +136,8 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
         </Tarjeta>
       )}
 
-      {compras.length > 0 && (
+      {/* Si se ve la cuenta, sus movimientos ya muestran las compras: no se repiten. */}
+      {compras.length > 0 && !cuenta && (
         <Tarjeta titulo="Últimas compras">
           <ul className="flex flex-col">
             {compras.slice(0, 8).map((c) => (
@@ -190,7 +191,9 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
       </Tarjeta>
 
       {puedeEditar && (
-        <Tarjeta titulo="Datos del proveedor">
+        <details className="rounded-lg border border-borde bg-superficie p-4">
+          <summary className="min-h-11 cursor-pointer text-lg font-semibold">✏️ Editar los datos del proveedor (o darlo de baja)</summary>
+          <div className="mt-4 flex flex-col gap-3">
           <FormularioAccion accion={editarProveedorAccion} boton="Guardar cambios">
             <input type="hidden" name="id" value={p.id} />
             <CamposProveedor proveedor={p} editarCredito={sesion.permisos.includes("proveedores.editar_limite")} />
@@ -204,7 +207,8 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
             <input type="hidden" name="id" value={p.id} />
             <input type="hidden" name="activo" value={String(!p.activo)} />
           </FormularioAccion>
-        </Tarjeta>
+          </div>
+        </details>
       )}
     </section>
   );

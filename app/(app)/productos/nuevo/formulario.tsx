@@ -5,10 +5,12 @@ import { useMemo, useState } from "react";
 import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envasesSugeridos, explicarPresentacion, nombreDePresentacion } from "@/dominio/catalogo/productos";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { FormularioAccion } from "@/ui/formulario-accion";
+import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
 
 import { crearProductoGuiadoAccion } from "../acciones";
 
-// Alta de un producto en cuatro pasos, con la tarjeta de cómo va a quedar y una cuenta de ejemplo.
+// Alta de un producto en tres preguntas (qué es, cómo se vende, en qué envase se compra), con la
+// tarjeta de cómo va a quedar. La ganancia, el código y las notas quedan en "Más opciones".
 
 interface Categoria {
   id: string;
@@ -17,38 +19,17 @@ interface Categoria {
 }
 
 const UNIDADES = [
-  { valor: "KG", icono: "⚖️", nombre: "Por kilo", ejemplo: "tomate, papa, banana", corta: "kg", fraccion: true },
-  { valor: "UNIDAD", icono: "🔢", nombre: "Por unidad", ejemplo: "lechuga, palta, ananá", corta: "u", fraccion: false },
-  { valor: "ATADO", icono: "🌿", nombre: "Por atado", ejemplo: "perejil, acelga, rúcula", corta: "atado", fraccion: false },
-  { valor: "MAPLE", icono: "🥚", nombre: "Por maple", ejemplo: "huevos", corta: "maple", fraccion: false },
-  { valor: "BANDEJA", icono: "🧺", nombre: "Por bandeja", ejemplo: "frutillas, champiñones", corta: "bandeja", fraccion: false },
-  { valor: "DOCENA", icono: "🔟", nombre: "Por docena", ejemplo: "limones, naranjas", corta: "docena", fraccion: false },
-  { valor: "PAQUETE", icono: "📦", nombre: "Por paquete", ejemplo: "hierbas, brotes", corta: "paquete", fraccion: false },
-  { valor: "LITRO", icono: "💧", nombre: "Por litro", ejemplo: "jugos", corta: "l", fraccion: true },
+  { valor: "KG", icono: "⚖️", nombre: "Por kilo", ejemplo: "tomate, papa, banana", corta: "kg", fraccion: true, comun: true },
+  { valor: "UNIDAD", icono: "🔢", nombre: "Por unidad", ejemplo: "lechuga, palta, ananá", corta: "u", fraccion: false, comun: true },
+  { valor: "ATADO", icono: "🌿", nombre: "Por atado", ejemplo: "perejil, acelga, rúcula", corta: "atado", fraccion: false, comun: true },
+  { valor: "DOCENA", icono: "🔟", nombre: "Por docena", ejemplo: "limones, naranjas", corta: "docena", fraccion: false, comun: true },
+  { valor: "MAPLE", icono: "🥚", nombre: "Por maple", ejemplo: "huevos", corta: "maple", fraccion: false, comun: false },
+  { valor: "BANDEJA", icono: "🧺", nombre: "Por bandeja", ejemplo: "frutillas, champiñones", corta: "bandeja", fraccion: false, comun: false },
+  { valor: "PAQUETE", icono: "📦", nombre: "Por paquete", ejemplo: "hierbas, brotes", corta: "paquete", fraccion: false, comun: false },
+  { valor: "LITRO", icono: "💧", nombre: "Por litro", ejemplo: "jugos", corta: "l", fraccion: true, comun: false },
 ] as const;
 
 const FRANJA: Readonly<Record<string, string>> = { VERDURA: "var(--etiqueta-verde)", FRUTA: "var(--etiqueta-naranja)", OTRO: "var(--etiqueta-gris)" };
-
-function Paso({ n, titulo, ayuda, children }: { n: number; titulo: string; ayuda: string; children: React.ReactNode }) {
-  return (
-    <fieldset className="flex flex-col gap-3 rounded-xl border border-borde bg-superficie p-4">
-      <legend className="sr-only">{titulo}</legend>
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marca font-bold text-marca-texto">
-          {n}
-        </span>
-        <div>
-          <p className="text-lg font-semibold">{titulo}</p>
-          <p className="text-sm text-texto-suave">{ayuda}</p>
-        </div>
-      </div>
-      {children}
-    </fieldset>
-  );
-}
-
-const chip = (activo: boolean) =>
-  `flex cursor-pointer items-center gap-2 rounded-lg border-2 px-3 py-2 text-left ${activo ? "border-marca bg-marca/10" : "border-borde bg-superficie hover:border-marca/60"}`;
 
 export function FormularioProducto({
   categorias,
@@ -66,9 +47,11 @@ export function FormularioProducto({
   const [nombre, setNombre] = useState("");
   const [categoriaId, setCategoriaId] = useState(categorias[0]?.id ?? "");
   const [unidad, setUnidad] = useState<(typeof UNIDADES)[number]["valor"]>("KG");
+  const [verTodas, setVerTodas] = useState(false);
   const [fraccion, setFraccion] = useState(true);
   const [envase, setEnvase] = useState("Cajón");
   const [cantidad, setCantidad] = useState("18");
+  const [otroEnvase, setOtroEnvase] = useState(false);
   const [codigoPropio, setCodigoPropio] = useState<string | null>(null);
   const [recargo, setRecargo] = useState("");
   const [precioEjemplo, setPrecioEjemplo] = useState("");
@@ -79,83 +62,64 @@ export function FormularioProducto({
   const presentacion = envase.trim() ? nombreDePresentacion(envase, cantidad, u.corta) : "";
   const explicacion = envase.trim() ? explicarPresentacion(presentacion, cantidad, u.corta) : null;
   const recargoQueAplica = recargo.trim() || recargoPorCategoria[categoriaId] || recargoGlobal;
-  const origenRecargo = recargo.trim() ? "el de este producto" : recargoPorCategoria[categoriaId] ? `el de ${categoria?.nombre ?? "la categoría"}` : "el general";
+  const origenRecargo = recargo.trim() ? "la de este producto" : recargoPorCategoria[categoriaId] ? `la de ${categoria?.nombre ?? "la categoría"}` : "la general";
   const ejemplo = envase.trim() && precioEjemplo ? ejemploDeCostos({ precioEnvase: precioEjemplo, cantidad, recargoPct: recargoQueAplica }) : null;
   const dibujo = dibujoDeProducto(nombre, categoria?.grupo);
+  const unidadesVisibles = UNIDADES.filter((x) => x.comun || verTodas || x.valor === unidad);
+  const elegirUnidad = (x: (typeof UNIDADES)[number]) => {
+    setUnidad(x.valor);
+    setFraccion(x.fraccion);
+    const primero = envasesSugeridos(x.valor)[0];
+    setEnvase(primero?.envase ?? "");
+    setCantidad(primero?.cantidad ?? "");
+    setOtroEnvase(false);
+  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <FormularioAccion accion={crearProductoGuiadoAccion} boton="Crear producto" className="flex flex-col gap-4">
-        <Paso n={1} titulo="¿Qué producto es?" ayuda="El nombre como lo dicen ustedes y en qué categoría va.">
-          <label className="flex flex-col gap-1">
-            <span className="font-medium">Nombre</span>
-            <input name="nombre" required autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Tomate redondo" className="h-12 rounded-lg border border-borde bg-superficie px-3 text-base" />
-          </label>
-          <div className="flex flex-col gap-1">
-            <span className="font-medium">Categoría</span>
-            <div className="flex flex-wrap gap-2">
-              {categorias.map((c) => (
-                <label key={c.id} className={chip(c.id === categoriaId)}>
-                  <input type="radio" name="categoriaId" value={c.id} checked={c.id === categoriaId} onChange={() => setCategoriaId(c.id)} className="sr-only" />
-                  <span aria-hidden>{dibujoDeProducto("", c.grupo)}</span>
-                  {c.nombre}
-                </label>
-              ))}
-            </div>
-          </div>
-          {codigoPropio === null ? (
-            <p className="text-sm text-texto-suave">
-              Código: <b className="text-texto">{codigoAuto}</b> (se arma solo){" "}
-              <button type="button" onClick={() => setCodigoPropio(codigoAuto === "—" ? "" : codigoAuto)} className="font-medium underline underline-offset-2">
-                Poner otro
-              </button>
-            </p>
-          ) : (
-            <label className="flex flex-col gap-1">
-              <span className="font-medium">Código</span>
-              <input name="codigo" value={codigoPropio} onChange={(e) => setCodigoPropio(e.target.value.toUpperCase())} maxLength={20} placeholder="Ej. TOM-R" className="h-12 rounded-lg border border-borde bg-superficie px-3 text-base uppercase" />
-            </label>
-          )}
-        </Paso>
+      <FormularioAccion accion={crearProductoGuiadoAccion} boton="Crear el producto" className="flex flex-col gap-4">
+        <input type="hidden" name="unidadBase" value={unidad} />
+        <input type="hidden" name="categoriaId" value={categoriaId} />
+        {fraccion && <input type="hidden" name="admiteFraccion" value="on" />}
+        <input type="hidden" name="envase" value={envase} />
+        <input type="hidden" name="cantidadEnvase" value={cantidad} />
+        {codigoPropio !== null && <input type="hidden" name="codigo" value={codigoPropio} />}
 
-        <Paso n={2} titulo="¿En qué lo contás?" ayuda="Así se anotan los pedidos y se calcula todo. Después no se cambia.">
+        <Pregunta n={1} titulo="¿Qué producto es?" ayuda="El nombre como lo dicen ustedes y en qué grupo va.">
+          <input name="nombre" required autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Tomate redondo" aria-label="Nombre del producto" className={campoGrande} />
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Categoría">
+            {categorias.map((c) => (
+              <button key={c.id} type="button" onClick={() => setCategoriaId(c.id)} aria-pressed={c.id === categoriaId} className={opcion(c.id === categoriaId)}>
+                <span aria-hidden>{dibujoDeProducto("", c.grupo)}</span>
+                {c.nombre}
+              </button>
+            ))}
+          </div>
+        </Pregunta>
+
+        <Pregunta n={2} titulo="¿Cómo se vende?" ayuda="Así se anotan los pedidos y se calculan los precios. Después no se puede cambiar.">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {UNIDADES.map((x) => (
-              <label key={x.valor} className={`${chip(x.valor === unidad)} flex-col items-start`}>
-                <input
-                  type="radio"
-                  name="unidadBase"
-                  value={x.valor}
-                  checked={x.valor === unidad}
-                  onChange={() => {
-                    setUnidad(x.valor);
-                    setFraccion(x.fraccion);
-                    const primero = envasesSugeridos(x.valor)[0];
-                    setEnvase(primero?.envase ?? "");
-                    setCantidad(primero?.cantidad ?? "");
-                  }}
-                  className="sr-only"
-                />
+            {unidadesVisibles.map((x) => (
+              <button key={x.valor} type="button" onClick={() => elegirUnidad(x)} aria-pressed={x.valor === unidad} className={`${opcion(x.valor === unidad)} flex-col items-start`}>
                 <span className="text-2xl" aria-hidden>
                   {x.icono}
                 </span>
                 <span className="font-semibold">{x.nombre}</span>
                 <span className="text-xs text-texto-suave">{x.ejemplo}</span>
-              </label>
+              </button>
             ))}
           </div>
-          <label className="flex min-h-11 items-center gap-3">
-            <input type="checkbox" name="admiteFraccion" checked={fraccion} onChange={(e) => setFraccion(e.target.checked)} className="size-5" />
-            <span>
-              Se puede pedir en partes <span className="text-texto-suave">(ej. 1,5 {u.corta})</span>
-            </span>
-          </label>
-        </Paso>
+          {!verTodas && (
+            <button type="button" onClick={() => setVerTodas(true)} className="self-start text-sm font-medium underline underline-offset-2">
+              Otra forma (maple, bandeja, paquete, litro)
+            </button>
+          )}
+        </Pregunta>
 
-        <Paso n={3} titulo="¿Cómo lo comprás en el mercado?" ayuda="El envase en que viene y cuánto trae. Si no viene en envase, dejalo vacío.">
+        <Pregunta n={3} titulo="¿En qué envase lo comprás?" ayuda="Para calcular cuánto cuesta cada kilo o unidad. Si se compra suelto, elegí “Suelto”.">
           <div className="flex flex-wrap gap-2">
             {envasesSugeridos(unidad).map((e) => {
-              const activo = envase === e.envase && cantidad === e.cantidad;
+              const activo = !otroEnvase && envase === e.envase && cantidad === e.cantidad;
               return (
                 <button
                   key={`${e.envase}-${e.cantidad}`}
@@ -163,11 +127,12 @@ export function FormularioProducto({
                   onClick={() => {
                     setEnvase(e.envase);
                     setCantidad(e.cantidad);
+                    setOtroEnvase(false);
                   }}
                   aria-pressed={activo}
-                  className={chip(activo)}
+                  className={opcion(activo)}
                 >
-                  {e.envase} {e.cantidad} {u.corta}
+                  {e.envase} de {e.cantidad} {u.corta}
                 </button>
               );
             })}
@@ -176,62 +141,87 @@ export function FormularioProducto({
               onClick={() => {
                 setEnvase("");
                 setCantidad("");
+                setOtroEnvase(false);
               }}
-              aria-pressed={!envase}
-              className={chip(!envase)}
+              aria-pressed={!envase && !otroEnvase}
+              className={opcion(!envase && !otroEnvase)}
             >
-              No viene en envase
+              Suelto (sin envase)
+            </button>
+            <button type="button" onClick={() => setOtroEnvase(true)} aria-pressed={otroEnvase} className={opcion(otroEnvase)}>
+              Otro envase…
             </button>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="font-medium">Envase</span>
-              <input name="envase" value={envase} onChange={(e) => setEnvase(e.target.value)} placeholder="Ej. Cajón, bolsa, jaula" className="h-12 w-44 rounded-lg border border-borde bg-superficie px-3 text-base" />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="font-medium">Trae</span>
-              <span className="flex items-center gap-2">
-                <input name="cantidadEnvase" inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="18" className="h-12 w-24 rounded-lg border border-borde bg-superficie px-3 text-base" />
-                <span className="font-medium">{u.corta}</span>
-              </span>
-            </label>
-          </div>
-          {explicacion && <p className="rounded-lg bg-fondo px-3 py-2 font-medium">👉 {explicacion}</p>}
-        </Paso>
-
-        {verRecargos && (
-          <Paso n={4} titulo="¿Cuánto le ganás?" ayuda="El porcentaje que se le suma al costo para venderlo. Si lo dejás vacío, se usa el de la categoría o el general.">
-            <label className="flex flex-col gap-1">
-              <span className="font-medium">Ganancia sobre el costo</span>
-              <span className="flex items-center gap-2">
-                <input name="recargo" inputMode="decimal" value={recargo} onChange={(e) => setRecargo(e.target.value)} placeholder={recargoQueAplica} className="h-12 w-24 rounded-lg border border-borde bg-superficie px-3 text-base" />
-                <span className="font-medium">%</span>
-                <span className="text-sm text-texto-suave">
-                  (se usa {origenRecargo}: {recargoQueAplica} %)
+          {otroEnvase && (
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="font-medium">Envase</span>
+                <input value={envase} onChange={(e) => setEnvase(e.target.value)} placeholder="Ej. Jaula, bolsa" className={`${campoGrande} w-44`} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="font-medium">Cuánto trae</span>
+                <span className="flex items-center gap-2">
+                  <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="18" className={`${campoGrande} w-24`} />
+                  <span className="font-medium">{u.corta}</span>
                 </span>
-              </span>
-            </label>
-            {envase.trim() && (
-              <div className="flex flex-col gap-2 rounded-lg bg-fondo p-3">
-                <label className="flex flex-wrap items-center gap-2">
-                  <span>
-                    Para probar: si el {presentacion.toLowerCase() || "envase"} te cuesta $
+              </label>
+            </div>
+          )}
+          {explicacion && <p className="rounded-xl bg-fondo px-3 py-2 font-medium">👉 {explicacion}</p>}
+        </Pregunta>
+
+        <details className="rounded-2xl border border-borde bg-superficie p-4">
+          <summary className="cursor-pointer text-lg font-semibold">Más opciones (se pueden dejar como están)</summary>
+          <div className="mt-4 flex flex-col gap-5">
+            {verRecargos && (
+              <div className="flex flex-col gap-2">
+                <p className="font-medium">¿Cuánto le ganás?</p>
+                <span className="flex flex-wrap items-center gap-2">
+                  <input name="recargo" inputMode="decimal" value={recargo} onChange={(e) => setRecargo(e.target.value)} placeholder={recargoQueAplica} aria-label="Ganancia sobre el costo en %" className={`${campoGrande} w-24`} />
+                  <span className="font-medium">%</span>
+                  <span className="text-sm text-texto-suave">
+                    Si lo dejás vacío se usa {origenRecargo}: {recargoQueAplica} %.
                   </span>
-                  <input inputMode="decimal" value={precioEjemplo} onChange={(e) => setPrecioEjemplo(e.target.value)} placeholder="18.000" aria-label="Precio de ejemplo del envase" className="h-10 w-28 rounded-lg border border-borde bg-superficie px-2" />
-                </label>
-                {ejemplo && (
-                  <p className="font-medium">
-                    → el {u.corta} te sale {formatearMoneda(ejemplo.costoUnidad)} y lo vendés a <b>{formatearMoneda(ejemplo.ventaUnidad)}</b>
-                  </p>
+                </span>
+                {envase.trim() && (
+                  <div className="flex flex-col gap-2 rounded-xl bg-fondo p-3">
+                    <label className="flex flex-wrap items-center gap-2">
+                      <span>Para probar: si el {presentacion.toLowerCase() || "envase"} te cuesta $</span>
+                      <input inputMode="decimal" value={precioEjemplo} onChange={(e) => setPrecioEjemplo(e.target.value)} placeholder="18.000" aria-label="Precio de ejemplo del envase" className="h-10 w-28 rounded-lg border border-borde bg-superficie px-2" />
+                    </label>
+                    {ejemplo && (
+                      <p className="font-medium">
+                        → el {u.corta} te sale {formatearMoneda(ejemplo.costoUnidad)} y lo vendés a <b>{formatearMoneda(ejemplo.ventaUnidad)}</b>
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
-          </Paso>
-        )}
-
-        <details className="rounded-xl border border-borde bg-superficie p-4">
-          <summary className="cursor-pointer font-semibold">Algo más para anotar (opcional)</summary>
-          <textarea name="observaciones" rows={3} placeholder="Ej. elegir los más maduros" className="mt-3 w-full rounded-lg border border-borde bg-superficie px-3 py-2 text-base" />
+            <label className="flex min-h-11 items-center gap-3">
+              <input type="checkbox" checked={fraccion} onChange={(e) => setFraccion(e.target.checked)} className="size-5" />
+              <span>
+                Se puede pedir en partes <span className="text-texto-suave">(ej. 1,5 {u.corta})</span>
+              </span>
+            </label>
+            <div className="flex flex-col gap-1">
+              <span className="font-medium">Código</span>
+              {codigoPropio === null ? (
+                <p className="text-sm text-texto-suave">
+                  Se arma solo: <b className="text-texto">{codigoAuto}</b>.{" "}
+                  <button type="button" onClick={() => setCodigoPropio(codigoAuto === "—" ? "" : codigoAuto)} className="font-medium underline underline-offset-2">
+                    Poner otro
+                  </button>
+                </p>
+              ) : (
+                <input value={codigoPropio} onChange={(e) => setCodigoPropio(e.target.value.toUpperCase())} maxLength={20} placeholder="Ej. TOM-R" className={`${campoGrande} w-44 uppercase`} />
+              )}
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">Notas</span>
+              <textarea name="observaciones" rows={2} placeholder="Ej. elegir los más maduros" className="rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-base" />
+            </label>
+          </div>
         </details>
       </FormularioAccion>
 
@@ -246,16 +236,14 @@ export function FormularioProducto({
               </span>
               <div>
                 <p className="font-semibold">{nombre.trim() || "Nombre del producto"}</p>
-                <p className="text-sm text-tarjeta-suave">
-                  {codigoPropio ?? codigoAuto} · se cuenta por {u.corta}
-                </p>
+                <p className="text-sm text-tarjeta-suave">Se vende {u.nombre.toLowerCase()}</p>
               </div>
             </div>
-            <p className="text-sm text-tarjeta-suave">📦 {presentacion ? `Se compra en ${presentacion}` : "Sin envase de compra"}</p>
+            <p className="text-sm text-tarjeta-suave">📦 {presentacion ? `Se compra en ${presentacion}` : "Se compra suelto"}</p>
             <p className="text-sm text-tarjeta-suave">🏷 {categoria?.nombre ?? "Sin categoría"}</p>
           </div>
         </div>
-        <p className="text-sm text-texto-suave">Después de crearlo, en su ficha le cargás los proveedores y sus precios.</p>
+        <p className="text-sm text-texto-suave">Después de crearlo, en su ficha le cargás qué proveedores lo venden y a qué precio (o se carga solo con la primera compra).</p>
       </aside>
     </div>
   );

@@ -46,7 +46,7 @@ describe("el día de trabajo paso a paso", () => {
     expect(e.d.dias.map((x) => x.fecha)).toContain(sumarDias(j.manana, 3));
   });
 
-  it("preparación, remitos, entrega y cierre", async () => {
+  it("preparación (con sus remitos), entrega y cierre", async () => {
     await iniciarPreparacion(j.base.db, j.admin, j.manana);
     expect((await estados(j.manana)).actual).toBe("preparacion");
     const entregas = (await obtenerPreparacion(j.base.db, j.admin, j.manana)).entregas;
@@ -55,7 +55,7 @@ describe("el día de trabajo paso a paso", () => {
     // Al marcar preparada se emiten los remitos: no queda ninguno por emitir.
     expect(await emitirDocumentosDelDia(j.base.db, j.admin, j.manana)).toEqual({ emitidas: 0, problemas: [] });
     const preparado = await estados(j.manana);
-    expect(preparado.pasos).toMatchObject({ preparacion: "hecho", remitos: "hecho" });
+    expect(preparado.pasos).toMatchObject({ preparacion: "hecho" });
     expect([preparado.actual, preparado.d.panel.conDocumentos, preparado.d.panel.sinReparto]).toEqual(["entregas", 3, 3]);
 
     for (const e of entregas) await confirmarEntrega(j.base.db, j.admin, { entregaId: e.id, modo: "COMPLETA", recibidoPor: "Recepción" });
@@ -65,7 +65,7 @@ describe("el día de trabajo paso a paso", () => {
     expect(entregado.d.plata.entregado).toBe(vendido.toFixed(2));
 
     await cerrarJornada(j.base.db, j.admin, j.manana);
-    expect(await estados(j.manana)).toMatchObject({ actual: null, hechos: 7 });
+    expect(await estados(j.manana)).toMatchObject({ actual: null, hechos: 6 });
   });
 });
 

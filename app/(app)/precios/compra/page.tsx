@@ -38,7 +38,7 @@ export default async function PaginaPreciosCompra({ searchParams }: PageProps<"/
     <section className="flex flex-col gap-6">
       <Encabezado
         titulo="Precios de compra"
-        descripcion={`Qué cuesta cada producto en cada proveedor. El costo es por unidad base, para comparar presentaciones distintas. Un precio sin actualizar hace más de ${parametros.diasAlertaDesactualizado} días se marca con ⚠.`}
+        descripcion={`Cuánto cobra cada puesto por cada producto. El costo se muestra por kilo o por unidad, para comparar aunque vengan en envases distintos. Se actualiza solo con cada compra; si un precio tiene más de ${parametros.diasAlertaDesactualizado} días sin actualizarse, aparece con ⚠.`}
       >
         {sesion.permisos.includes("precios.editar_compra") && (
           <Link href="/precios/compra/rapida" className={clasesBoton("principal")}>

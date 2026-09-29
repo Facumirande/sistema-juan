@@ -28,7 +28,7 @@ export default async function MiReparto() {
 
   return (
     <section className="flex max-w-xl flex-col gap-6">
-      <Encabezado titulo="Mi reparto" />
+      <Encabezado titulo="Mi reparto" descripcion="Tus paradas en orden. Tocá “Ir” para abrir el GPS y “Entregar” cuando llegues." />
       {repartos.length === 0 && <p className="text-texto-suave">No tenés repartos asignados para hoy ni mañana.</p>}
       {repartos.map((r) => (
         <div key={r.id} className="flex flex-col gap-3">

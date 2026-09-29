@@ -7,67 +7,74 @@ import { sumarDias } from "@/dominio/fechas/fechas";
 import type { ClavePaso, EstadoPaso } from "@/dominio/jornadas/pasos";
 import { datosDelPanel, type DiaDeTrabajo } from "@/modulos/jornadas/dia";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
-import { ESTADOS_JORNADA, fechaConDia } from "@/ui/etiquetas";
+import { fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
-import { clasesBoton } from "@/ui/formularios";
 
 import { emitirRemitosDelDiaAccion } from "../entregas/acciones";
 import { generarListaAccion } from "../lista-compra/acciones";
 import { iniciarPreparacionAccion } from "../preparacion/acciones";
 
-// Vista "Paso a paso" de la pantalla Hoy: los siete pasos del día en orden, con el que toca abierto.
+// Vista "Paso a paso": los seis pasos del día en orden, cada uno en una tarjeta de color pastel
+// (como las de Trello). El que toca está abierto con sus botones; lo que quedó a medias en un paso
+// anterior se avisa ahí mismo, para resolverlo sin frenar el día.
 
-const TITULOS: Record<ClavePaso, string> = {
+export const TITULOS: Record<ClavePaso, string> = {
   pedidos: "Pedidos",
   lista: "Lista de compra",
   compras: "Compras en el mercado",
-  preparacion: "Preparación",
-  remitos: "Remitos",
+  preparacion: "Preparación y remitos",
   entregas: "Reparto y entrega",
   cierre: "Cierre del día",
 };
 
-const EXPLICACION: Record<ClavePaso, string> = {
-  pedidos: "Cargá lo que pidió cada cliente para este día. Cuando estén todos confirmados, seguí con la lista de compra.",
-  lista: "La lista junta lo que pidieron todos: cuánto comprar de cada cosa y en qué puesto conviene.",
-  compras: "En el mercado, anotá cada compra: qué, cuánto, a qué precio y cómo se pagó. La lista se va tachando sola.",
-  preparacion: "Armá el pedido de cada cliente con lo que se compró. Si algo no alcanza, el sistema propone cómo repartirlo.",
-  remitos: "Los remitos se hacen solos al marcar preparado cada cliente: la lista de entrega sin precios y la lista contable con precios.",
-  entregas: "Armá el reparto (quién lleva qué y en qué orden), salí, y confirmá cada entrega: completa, con diferencias o no recibida.",
-  cierre: "Revisá que no quede nada pendiente y cerrá el día: queda guardado el resumen con lo vendido, lo comprado y la ganancia.",
+const ICONO: Record<ClavePaso, string> = { pedidos: "📝", lista: "🛒", compras: "🧺", preparacion: "📦", entregas: "🚚", cierre: "🔒" };
+
+/** Cada paso con su color pastel (fondo y texto, del tema claro y oscuro). */
+const COLOR: Record<ClavePaso, string> = {
+  pedidos: "bg-[var(--pastel-azul)] text-[var(--pastel-azul-texto)]",
+  lista: "bg-[var(--pastel-violeta)] text-[var(--pastel-violeta-texto)]",
+  compras: "bg-[var(--pastel-naranja)] text-[var(--pastel-naranja-texto)]",
+  preparacion: "bg-[var(--pastel-amarillo)] text-[var(--pastel-amarillo-texto)]",
+  entregas: "bg-[var(--pastel-verde)] text-[var(--pastel-verde-texto)]",
+  cierre: "bg-[var(--pastel-rosa)] text-[var(--pastel-rosa-texto)]",
 };
 
-const ESTADO_TEXTO: Record<EstadoPaso, string> = { hecho: "Listo", en_curso: "En curso", pendiente: "Falta", salteado: "Salteado" };
+/** Qué hay que hacer en cada paso, dicho como una indicación. */
+const QUE_HACER: Record<ClavePaso, string> = {
+  pedidos: "Cargá lo que pidió cada cliente para este día y confirmalo. Un pedido confirmado entra en la compra; uno sin confirmar, no.",
+  lista: "Juntá todos los pedidos confirmados en una sola lista: el sistema calcula cuánto comprar de cada producto y en qué puesto conviene.",
+  compras: "En el mercado, registrá cada compra en el puesto donde la hiciste (qué, cuánto, a qué precio y cómo pagaste). La lista se va tachando sola.",
+  preparacion: "Armá el pedido de cada cliente con lo que se compró y marcalo como preparado: su remito se hace solo. Si algo no alcanza, el sistema propone cómo repartirlo.",
+  entregas: "Imprimí los remitos, armá el reparto con el mejor orden (el viaje calcula el recorrido) y, al entregar, confirmá cada entrega: completa, con diferencias o no recibida.",
+  cierre: "Cuando esté todo entregado, revisá el resumen y cerrá el día: queda guardado lo vendido, lo comprado y la ganancia.",
+};
+
+const ESTADO_TEXTO: Record<EstadoPaso, string> = { hecho: "✓ Listo", en_curso: "En curso", pendiente: "Todavía no", salteado: "Salteado" };
 
 export const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
-function Marcador({ n, estado, actual }: { n: number; estado: EstadoPaso; actual: boolean }) {
-  const base = "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold";
-  if (estado === "hecho") return <span className={`${base} bg-marca text-marca-texto`}>✓</span>;
-  if (actual) return <span className={`${base} border-2 border-marca bg-superficie text-marca`}>{n}</span>;
-  if (estado === "salteado") return <span className={`${base} border border-dashed border-borde bg-superficie text-texto-suave`}>–</span>;
-  return <span className={`${base} border border-borde bg-superficie text-texto-suave`}>{n}</span>;
-}
+const boton = "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 font-semibold";
+const principal = `${boton} bg-[#172b4d] text-white hover:bg-[#0c1a33] dark:bg-white dark:text-[#172b4d]`;
+const secundario = `${boton} bg-white/70 hover:bg-white dark:bg-black/25 dark:hover:bg-black/40`;
 
-function Enlace({ href, children, principal }: { href: string; children: ReactNode; principal?: boolean }) {
+function Enlace({ href, children, destacado }: { href: string; children: ReactNode; destacado?: boolean }) {
   return (
-    <Link href={href} className={clasesBoton(principal ? "principal" : "secundario")}>
+    <Link href={href} className={destacado ? principal : secundario}>
       {children}
     </Link>
   );
 }
 
-/** Resumen de una línea y acciones de cada paso. */
+/** Resumen de una línea y botones de cada paso. */
 function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permiso) => boolean, actual: boolean): { resumen: ReactNode; acciones: ReactNode } {
   const { fecha, panel, plata, hoy } = dia;
   const d = datosDelPanel(panel);
   const e = d.entregas;
-  const cerrada = panel.estado === "CERRADA";
-  const abierta = !cerrada;
+  const abierta = panel.estado !== "CERRADA";
+  const faltanRemitos = e.preparadas - e.conDocumentos;
 
   switch (clave) {
-    case "pedidos": {
-      const puedeCargar = abierta && fecha >= hoy && puede("pedidos.crear");
+    case "pedidos":
       return {
         resumen:
           d.pedidos.confirmados + d.pedidos.borradores === 0 ? (
@@ -81,147 +88,154 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
           ),
         acciones: (
           <>
-            {puedeCargar && (
-              <Link href={`/pedidos/nuevo?fecha=${fecha}`} className={clasesBoton(actual ? "principal" : "secundario")}>
+            {abierta && fecha >= hoy && puede("pedidos.crear") && (
+              <Enlace href={`/pedidos/nuevo?fecha=${fecha}`} destacado={actual}>
                 ＋ Cargar un pedido
-              </Link>
+              </Enlace>
             )}
-            <div className="flex flex-wrap gap-2">
-              <Enlace href={`/pedidos?fecha=${fecha}`}>Ver los pedidos</Enlace>
-            </div>
+            {d.pedidos.borradores > 0 && <Enlace href={`/inicio?fecha=${fecha}`}>Confirmar los que faltan (en el tablero)</Enlace>}
           </>
         ),
       };
-    }
     case "lista":
       return {
         resumen: !d.lista.armada ? (
           "Sin armar"
         ) : d.lista.desactualizada ? (
-          <b>Cambiaron los pedidos: hay que actualizarla</b>
+          <b>Cambió un pedido: hay que actualizarla</b>
         ) : d.lista.fueraDeLista > 0 ? (
           <b>{plural(d.lista.fueraDeLista, "pedido confirmado quedó afuera", "pedidos confirmados quedaron afuera")}</b>
         ) : (
-          plural(d.lista.lineas, "producto", "productos")
+          plural(d.lista.lineas, "producto para comprar", "productos para comprar")
         ),
         acciones: (
-          <div className="flex flex-wrap items-start gap-2">
+          <>
             {abierta && puede("lista_compra.generar") && d.pedidos.confirmados > 0 && (!d.lista.armada || d.lista.desactualizada || d.lista.fueraDeLista > 0) && (
-              <FormularioAccion accion={generarListaAccion} boton={d.lista.armada ? (d.lista.fueraDeLista > 0 && !d.lista.desactualizada ? "Agregar todos a la lista" : "Actualizar la lista") : "Armar la lista con todos"} variante={actual ? "principal" : "secundario"}>
+              <FormularioAccion
+                accion={generarListaAccion}
+                boton={d.lista.armada ? (d.lista.fueraDeLista > 0 && !d.lista.desactualizada ? "Agregar los que faltan a la lista" : "Actualizar la lista") : "Armar la lista con todos los confirmados"}
+                variante={actual ? "principal" : "secundario"}
+              >
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
             )}
             {d.lista.armada && (
               <>
                 <Enlace href={`/lista-compra?fecha=${fecha}`}>Ver la lista</Enlace>
-                <Enlace href={`/lista-compra/imprimir?fecha=${fecha}`}>Imprimir</Enlace>
+                <Enlace href={`/lista-compra/imprimir?fecha=${fecha}`}>🖨️ Imprimir</Enlace>
               </>
             )}
-          </div>
+          </>
         ),
       };
     case "compras":
       return {
         resumen: (
           <>
-            {d.lista.armada ? `${d.lista.resueltas} de ${plural(d.lista.lineas, "producto resuelto", "productos resueltos")}` : "Sin lista"}
-            {` · ${plural(d.compras, "compra", "compras")}`}
+            {d.lista.armada ? `${d.lista.resueltas} de ${plural(d.lista.lineas, "producto comprado", "productos comprados")}` : "Todavía sin lista"}
+            {d.compras > 0 && ` · ${plural(d.compras, "compra", "compras")}`}
             {plata.comprado && dec(plata.comprado).gt(0) && ` · ${formatearMoneda(plata.comprado)}`}
           </>
         ),
         acciones: (
-          <div className="flex flex-wrap gap-2">
+          <>
             {abierta && puede("compras.registrar") && (
-              <Enlace href={`/compras/nueva?fecha=${fecha}`} principal={actual}>
-                Registrar una compra
+              <Enlace href={`/compras/nueva?fecha=${fecha}`} destacado={actual}>
+                🧺 Registrar una compra
               </Enlace>
             )}
-            {d.lista.armada && <Enlace href={`/lista-compra?fecha=${fecha}`}>Lista por puesto</Enlace>}
-            {puede("precios.editar_compra") && <Enlace href="/precios/compra/rapida">Precios en el puesto</Enlace>}
-          </div>
+            {d.lista.armada && <Enlace href={`/lista-compra?fecha=${fecha}`}>Qué falta comprar</Enlace>}
+          </>
         ),
       };
     case "preparacion":
       return {
-        resumen: e.total === 0 ? "Sin empezar" : `${e.preparadas} de ${plural(e.total, "cliente listo", "clientes listos")}`,
+        resumen:
+          e.total === 0 ? (
+            "Sin empezar"
+          ) : (
+            <>
+              {e.preparadas} de {plural(e.total, "cliente preparado", "clientes preparados")}
+              {faltanRemitos > 0 && <b> · {plural(faltanRemitos, "remito sin hacer", "remitos sin hacer")}</b>}
+            </>
+          ),
         acciones: (
-          <div className="flex flex-wrap items-start gap-2">
+          <>
             {abierta && e.total === 0 && puede("preparacion.registrar") && d.pedidos.confirmados > 0 && (
-              <FormularioAccion accion={iniciarPreparacionAccion} boton="Empezar a preparar" variante={actual ? "principal" : "secundario"}>
+              <FormularioAccion accion={iniciarPreparacionAccion} boton="📦 Empezar a preparar" variante={actual ? "principal" : "secundario"}>
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
             )}
             {e.total > 0 && (
-              <>
-                <Enlace href={`/preparacion/${fecha}`} principal={actual}>
-                  {e.preparadas < e.total ? "Seguir preparando" : "Ver la preparación"}
-                </Enlace>
-                <Enlace href={`/preparacion/${fecha}/imprimir`}>Hoja de preparación</Enlace>
-              </>
+              <Enlace href={`/preparacion/${fecha}`} destacado={actual && e.preparadas < e.total}>
+                {e.preparadas < e.total ? "Seguir preparando" : "Ver la preparación"}
+              </Enlace>
             )}
-          </div>
-        ),
-      };
-    case "remitos": {
-      const faltan = e.preparadas - e.conDocumentos;
-      return {
-        resumen: e.total === 0 ? "Se hacen al preparar" : `${e.conDocumentos} de ${plural(e.total, "cliente con remito", "clientes con remito")}`,
-        acciones: (
-          <div className="flex flex-wrap items-start gap-2">
-            {abierta && faltan > 0 && puede("entregas.emitir_documentos") && (
-              <FormularioAccion accion={emitirRemitosDelDiaAccion} boton={`Hacer ${plural(faltan, "remito que falta", "remitos que faltan")}`} variante={actual ? "principal" : "secundario"}>
+            {abierta && faltanRemitos > 0 && puede("entregas.emitir_documentos") && (
+              <FormularioAccion accion={emitirRemitosDelDiaAccion} boton={`Hacer ${plural(faltanRemitos, "el remito que falta", "los remitos que faltan")}`} variante={actual ? "principal" : "secundario"}>
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
             )}
-            {e.conDocumentos > 0 && (
-              <>
-                <Enlace href={`/entregas/remitos?fecha=${fecha}`} principal={actual && faltan <= 0}>
-                  Imprimir los remitos
-                </Enlace>
-                {puede("documentos.imprimir_contable") && <Enlace href={`/entregas/remitos?fecha=${fecha}&tipo=contable`}>Listas contables</Enlace>}
-              </>
-            )}
-          </div>
+            {e.total > 0 && <Enlace href={`/preparacion/${fecha}/imprimir`}>🖨️ Hoja de preparación</Enlace>}
+          </>
         ),
       };
-    }
     case "entregas":
       return {
         resumen: (
           <>
-            {e.total === 0 ? "Sin entregas" : `${e.entregadas} de ${plural(e.total, "entregada", "entregadas")}`}
+            {e.total === 0 ? "Sin entregas todavía" : `${e.entregadas} de ${plural(e.total, "entregada", "entregadas")}`}
             {d.repartos > 0 && ` · ${plural(d.repartos, "reparto", "repartos")}`}
             {panel.sinReparto > 0 && e.preparadas > 0 && e.enCamino < e.total && <b> · {plural(panel.sinReparto, "sin reparto", "sin reparto")}</b>}
             {plata.entregado && dec(plata.entregado).gt(0) && ` · ${formatearMoneda(plata.entregado)}`}
           </>
         ),
         acciones: (
-          <div className="flex flex-wrap gap-2">
-            {puede("repartos.ver") && e.total > 0 && e.entregadas < e.total && <Enlace href={`/viaje?fecha=${fecha}`}>🧭 Planear el viaje</Enlace>}
-            {puede("repartos.ver") && (
-              <Enlace href={`/repartos?fecha=${fecha}`} principal={actual && e.enCamino < e.total}>
-                {d.repartos === 0 ? "Armar el reparto" : "Ver los repartos"}
+          <>
+            {e.conDocumentos > 0 && <Enlace href={`/entregas/remitos?fecha=${fecha}`}>🖨️ Imprimir los remitos</Enlace>}
+            {puede("repartos.ver") && e.total > 0 && e.enCamino < e.total && (
+              <Enlace href={`/viaje?fecha=${fecha}`} destacado={actual}>
+                🧭 Armar el reparto y el viaje
               </Enlace>
             )}
-            {puede("entregas.ver") && (
-              <Enlace href={`/entregas?fecha=${fecha}`} principal={actual && e.enCamino === e.total && e.total > 0}>
-                Confirmar entregas
+            {puede("entregas.ver") && e.enCamino > 0 && (
+              <Enlace href={`/entregas?fecha=${fecha}`} destacado={actual && e.enCamino === e.total}>
+                ✅ Confirmar entregas
               </Enlace>
             )}
-          </div>
+          </>
         ),
       };
     case "cierre":
       return {
-        resumen: cerrada ? "Día cerrado: el resumen quedó guardado" : "Falta cerrar",
+        resumen: abierta ? "Falta cerrar" : "Día cerrado: el resumen quedó guardado",
         acciones: puede("jornada.cerrar") && panel.estado && (
-          <div className="flex flex-wrap gap-2">
-            <Enlace href={`/jornadas/${fecha}/cierre`} principal={actual}>
-              {cerrada ? "Ver el resumen del día" : "Revisar y cerrar el día"}
-            </Enlace>
-          </div>
+          <Enlace href={`/jornadas/${fecha}/cierre`} destacado={actual}>
+            {abierta ? "🔒 Revisar y cerrar el día" : "Ver el resumen del día"}
+          </Enlace>
         ),
       };
+  }
+}
+
+/** Qué quedó a medias en un paso anterior y cómo resolverlo. */
+function pendienteDeAtras(clave: ClavePaso, dia: DiaDeTrabajo): { texto: string; href: string; boton: string } {
+  const d = datosDelPanel(dia.panel);
+  switch (clave) {
+    case "pedidos":
+      return { texto: `${plural(d.pedidos.borradores, "pedido quedó sin confirmar", "pedidos quedaron sin confirmar")}: no entra${d.pedidos.borradores === 1 ? "" : "n"} en la compra hasta que lo confirmes.`, href: `/inicio?fecha=${dia.fecha}`, boton: "Ver en el tablero" };
+    case "lista":
+      return {
+        texto: d.lista.desactualizada ? "Cambió un pedido después de armar la lista: actualizala para comprar lo justo." : `${plural(d.lista.fueraDeLista, "pedido confirmado quedó afuera de la lista", "pedidos confirmados quedaron afuera de la lista")}.`,
+        href: `/lista-compra?fecha=${dia.fecha}`,
+        boton: "Ir a la lista",
+      };
+    case "compras":
+      return { texto: `Faltan comprar ${d.lista.lineas - d.lista.resueltas} de ${plural(d.lista.lineas, "producto", "productos")} de la lista (o marcarlos como no conseguidos).`, href: `/lista-compra?fecha=${dia.fecha}`, boton: "Ver qué falta" };
+    case "preparacion":
+      return { texto: "Quedan clientes sin preparar o sin remito.", href: `/preparacion/${dia.fecha}`, boton: "Ir a preparación" };
+    default:
+      return { texto: "Quedó algo a medias en este paso.", href: `/inicio?fecha=${dia.fecha}&vista=pasos`, boton: "Revisar" };
   }
 }
 
@@ -242,25 +256,16 @@ export function tituloDelDia(fecha: string, hoy: string): string {
 }
 
 export function DiaPasoAPaso({ dia, puede }: { dia: DiaDeTrabajo; puede: (p: Permiso) => boolean }) {
-  const { fecha, hoy, pasos, panel } = dia;
+  const { pasos } = dia;
   const avance = Math.round((pasos.hechos / pasos.pasos.length) * 100);
 
   return (
-    <>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold">{tituloDelDia(fecha, hoy)}</h2>
-          <span className="text-sm text-texto-suave">{panel.estado ? `Jornada ${ESTADOS_JORNADA[panel.estado]?.toLowerCase()}` : "Todavía sin pedidos"}</span>
+    <div className="flex w-full max-w-3xl flex-col gap-4">
+      <div className="flex flex-col gap-1.5 text-white">
+        <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/25" role="progressbar" aria-valuemin={0} aria-valuemax={pasos.pasos.length} aria-valuenow={pasos.hechos} aria-label="Pasos hechos">
+          <div className="h-2.5 rounded-full bg-white" style={{ width: `${avance}%` }} />
         </div>
-        <div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-fondo" role="progressbar" aria-valuemin={0} aria-valuemax={pasos.pasos.length} aria-valuenow={pasos.hechos} aria-label="Pasos hechos">
-            <div className="h-2 rounded-full bg-marca" style={{ width: `${avance}%` }} />
-          </div>
-          <p className="mt-1 text-sm text-texto-suave">
-            {pasos.actual ? `${pasos.hechos} de ${pasos.pasos.length} pasos listos · ahora: ${TITULOS[pasos.actual].toLowerCase()}` : "¡Día terminado!"}
-          </p>
-        </div>
+        <p className="text-sm font-medium text-white/90">{pasos.actual ? `${pasos.hechos} de ${pasos.pasos.length} pasos listos` : "¡Día terminado!"}</p>
       </div>
 
       <ol className="flex flex-col">
@@ -268,31 +273,66 @@ export function DiaPasoAPaso({ dia, puede }: { dia: DiaDeTrabajo; puede: (p: Per
           const actual = p.clave === pasos.actual;
           const { resumen, acciones } = contenidoDelPaso(p.clave, dia, puede, actual);
           const ultimo = i === pasos.pasos.length - 1;
+          const atrasado = pasos.atrasados.includes(p.clave);
           return (
-            <li key={p.clave} className="relative flex gap-3 pb-3">
-              {!ultimo && <span aria-hidden className={`absolute top-10 bottom-0 left-[17px] w-0.5 ${p.estado === "hecho" ? "bg-marca" : "bg-borde"}`} />}
-              <Marcador n={i + 1} estado={p.estado} actual={actual} />
+            <li key={p.clave} className="relative flex gap-3 pb-4">
+              {!ultimo && <span aria-hidden className="absolute top-11 bottom-0 left-[19px] w-1 rounded-full bg-white/35" />}
+              <span
+                aria-hidden
+                className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold shadow ${p.estado === "hecho" ? "bg-[#1f845a] text-white" : actual ? "bg-white text-[#172b4d] ring-4 ring-white/40" : "bg-white/85 text-[#172b4d]"}`}
+              >
+                {p.estado === "hecho" ? "✓" : i + 1}
+              </span>
               {actual ? (
-                <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-lg border-2 border-marca bg-superficie p-4 shadow-sm">
-                  <div>
-                    <p className="text-xs font-semibold tracking-wide text-marca uppercase">Ahora</p>
-                    <h3 className="text-lg font-semibold">{TITULOS[p.clave]}</h3>
-                    <p className="text-texto-suave">{resumen}</p>
+                <section className={`flex min-w-0 flex-1 flex-col gap-4 rounded-2xl p-5 shadow-lg ring-4 ring-white/70 ${COLOR[p.clave]}`} aria-label={`Ahora: ${TITULOS[p.clave]}`}>
+                  <div className="flex items-start gap-3">
+                    <span aria-hidden className="text-4xl leading-none">
+                      {ICONO[p.clave]}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold tracking-wider uppercase opacity-80">Ahora toca</p>
+                      <h3 className="text-2xl leading-tight font-bold">{TITULOS[p.clave]}</h3>
+                      <p className="mt-1 font-medium">{resumen}</p>
+                    </div>
                   </div>
-                  <p className="text-sm">{EXPLICACION[p.clave]}</p>
-                  <div className="flex flex-col gap-2">{acciones}</div>
-                </div>
+                  <p className="text-base leading-relaxed">{QUE_HACER[p.clave]}</p>
+                  <div className="flex flex-wrap items-start gap-2">{acciones}</div>
+                  {pasos.atrasados.length > 0 && (
+                    <div className="flex flex-col gap-2 rounded-xl bg-white/60 p-3 dark:bg-black/25">
+                      <p className="font-semibold">⚠️ Quedó pendiente de antes</p>
+                      {pasos.atrasados.map((clave) => {
+                        const a = pendienteDeAtras(clave, dia);
+                        return (
+                          <div key={clave} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="min-w-0 flex-1">
+                              <b>{TITULOS[clave]}:</b> {a.texto}
+                            </p>
+                            <Link href={a.href} className="self-start rounded-lg bg-white px-3 py-2 text-sm font-semibold whitespace-nowrap text-[#172b4d] shadow-sm sm:self-auto dark:bg-white/90">
+                              {a.boton} →
+                            </Link>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               ) : (
-                <details className="group min-w-0 flex-1 rounded-lg border border-borde bg-superficie">
-                  <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-4 py-2 hover:bg-fondo">
-                    <span className="font-semibold">{TITULOS[p.clave]}</span>
-                    <span className="text-sm text-texto-suave">
-                      {ESTADO_TEXTO[p.estado]} · {resumen}
+                <details className={`group min-w-0 flex-1 rounded-2xl shadow-sm ${COLOR[p.clave]} ${p.estado === "salteado" || p.estado === "pendiente" ? "opacity-85" : ""}`}>
+                  <summary className="flex min-h-14 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+                    <span aria-hidden className="text-2xl leading-none">
+                      {ICONO[p.clave]}
+                    </span>
+                    <span className="flex-1 text-lg font-bold">{TITULOS[p.clave]}</span>
+                    <span className="text-sm font-medium">
+                      {atrasado ? "⚠️ Quedó algo pendiente" : ESTADO_TEXTO[p.estado]} · {resumen}
+                    </span>
+                    <span aria-hidden className="text-lg transition-transform group-open:rotate-90">
+                      ›
                     </span>
                   </summary>
-                  <div className="flex flex-col gap-2 border-t border-borde px-4 py-3">
-                    <p className="text-sm text-texto-suave">{EXPLICACION[p.clave]}</p>
-                    {acciones}
+                  <div className="flex flex-col gap-3 border-t border-black/10 px-4 py-4 dark:border-white/15">
+                    <p>{QUE_HACER[p.clave]}</p>
+                    <div className="flex flex-wrap items-start gap-2">{acciones}</div>
                   </div>
                 </details>
               )}
@@ -300,6 +340,6 @@ export function DiaPasoAPaso({ dia, puede }: { dia: DiaDeTrabajo; puede: (p: Per
           );
         })}
       </ol>
-    </>
+    </div>
   );
 }

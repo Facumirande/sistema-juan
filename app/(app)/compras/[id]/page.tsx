@@ -34,7 +34,7 @@ export default async function PaginaCompra({ params, searchParams }: PageProps<"
       <Encabezado
         titulo={`${c.numero} · ${c.proveedor}`}
         volver={c.fechaJornada ? { ruta: `/compras?fecha=${c.fechaJornada}`, texto: "Compras del día" } : { ruta: `/proveedores/${c.proveedorId}`, texto: c.proveedor }}
-        descripcion={`${formatearFechaHora(c.fecha, sesion.zonaHoraria)} · ${CONDICIONES_COMPRA[c.condicion]}${c.fechaVencimiento ? ` · vence el ${formatearFecha(c.fechaVencimiento)}` : ""}`}
+        descripcion={`${formatearFechaHora(c.fecha, sesion.zonaHoraria)} · ${CONDICIONES_COMPRA[c.condicion]}${c.fechaVencimiento && c.estadoPago !== "PAGADA" ? ` · hay que pagarla antes del ${formatearFecha(c.fechaVencimiento)}` : ""}`}
       >
         {c.estado === "ANULADA" ? (
           <span className="rounded-full border border-error px-3 py-1 font-semibold text-error">Anulada</span>

@@ -27,7 +27,11 @@ export default async function RegistrarPago({ params }: PageProps<"/cuentas-prov
 
   return (
     <section className="flex max-w-2xl flex-col gap-4">
-      <Encabezado titulo={`Pagarle a ${c.proveedor.nombre}`} volver={{ ruta: `/cuentas-proveedores/${id}`, texto: "Cuenta del proveedor" }} />
+      <Encabezado
+        titulo={`Pagarle a ${c.proveedor.nombre}`}
+        volver={{ ruta: `/cuentas-proveedores/${id}`, texto: "Cuenta del proveedor" }}
+        descripcion="Anotá cuánto le pagaste y cómo. Se descuenta primero de las compras más viejas; si querés, elegís vos cuáles cancela."
+      />
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-borde bg-superficie p-3">
         <SemaforoCredito semaforo={c.indicadores.semaforo} usoPct={c.indicadores.usoPct?.toString()} />
         {c.indicadores.saldoAFavor.gt(0) ? (

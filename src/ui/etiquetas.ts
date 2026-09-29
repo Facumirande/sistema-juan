@@ -91,12 +91,12 @@ export const CANALES: Readonly<Record<string, string>> = { WHATSAPP: "WhatsApp",
 /** De dónde salió el precio de venta (05 §5.2): siempre se muestra (RN-077). */
 export const ORIGENES_VENTA: Readonly<Record<string, string>> = {
   PRECIO_FIJO_CLIENTE_PRODUCTO: "Precio pactado",
-  RECARGO_CLIENTE_PRODUCTO: "Recargo del cliente para este producto",
-  RECARGO_CLIENTE_CATEGORIA: "Recargo del cliente para la categoría",
-  RECARGO_CLIENTE: "Recargo del cliente",
-  RECARGO_PRODUCTO: "Recargo del producto",
-  RECARGO_CATEGORIA: "Recargo de la categoría",
-  RECARGO_GLOBAL: "Recargo general",
+  RECARGO_CLIENTE_PRODUCTO: "Ganancia del cliente para este producto",
+  RECARGO_CLIENTE_CATEGORIA: "Ganancia del cliente para la categoría",
+  RECARGO_CLIENTE: "Ganancia del cliente",
+  RECARGO_PRODUCTO: "Ganancia del producto",
+  RECARGO_CATEGORIA: "Ganancia de la categoría",
+  RECARGO_GLOBAL: "Ganancia general",
   MANUAL: "Precio a mano",
 };
 

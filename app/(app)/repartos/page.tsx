@@ -28,7 +28,7 @@ export default async function PaginaRepartos({ searchParams }: PageProps<"/repar
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado titulo="Repartos" descripcion={`Entrega del ${fechaConDia(fecha)}.`}>
+      <Encabezado titulo="Repartos" descripcion={`Quién lleva qué el ${fechaConDia(fecha)} y en qué orden. Para armarlos con el mejor recorrido, usá el viaje de entrega.`}>
         <Link href={`/entregas?fecha=${fecha}`} className={clasesBoton("secundario")}>
           Entregas
         </Link>
