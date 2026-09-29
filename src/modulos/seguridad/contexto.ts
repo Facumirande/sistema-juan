@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { empresa, rol, usuario, usuarioRol } from "@/db/esquema";
 import { cambiarRol, fijarEmpresa, fijarUsuarioAuth } from "@/db/transaccion";
+import { coloresDelNegocio } from "@/modulos/colaboracion/colores";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { PermisosEfectivos } from "@/seguridad/permisos";
@@ -12,6 +13,8 @@ export interface ContextoUsuario {
   usuarioId: string;
   empresaId: string;
   nombre: string;
+  /** Color de su avatar (elegido en "Mi cuenta" o asignado). */
+  color: string;
   email: string;
   zonaHoraria: string;
   roles: string[];
@@ -56,6 +59,7 @@ export async function resolverContexto(tx: Transaccion, authUserId: string): Pro
     usuarioId: u.id,
     empresaId: u.empresaId,
     nombre: u.nombre,
+    color: (await coloresDelNegocio(tx)).get(u.id)!,
     email: u.email,
     zonaHoraria: e.zonaHoraria,
     roles: roles.filter((r) => r.activo).map((r) => r.codigo),

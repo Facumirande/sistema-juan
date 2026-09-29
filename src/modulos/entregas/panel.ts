@@ -14,7 +14,8 @@ export interface PanelJornada {
   estado: string | null;
   pasos: { compra: Date | null; preparacion: Date | null; reparto: Date | null; cierre: Date | null };
   pedidos: Record<string, number>;
-  lista: { armada: boolean; desactualizada: boolean; lineas: number; compradas: number };
+  /** `fueraDeLista`: pedidos confirmados que no se agregaron a la lista (se eligen en el tablero). */
+  lista: { armada: boolean; desactualizada: boolean; lineas: number; compradas: number; fueraDeLista: number };
   compras: number;
   entregas: Record<string, number>;
   /** Entregas vigentes con la lista de entrega emitida en su versión actual (RN-122). */
@@ -38,7 +39,7 @@ export async function panelEnTransaccion(tx: Transaccion, fecha: FechaISO): Prom
       estado: null,
       pasos: { compra: null, preparacion: null, reparto: null, cierre: null },
       pedidos: {},
-      lista: { armada: false, desactualizada: false, lineas: 0, compradas: 0 },
+      lista: { armada: false, desactualizada: false, lineas: 0, compradas: 0, fueraDeLista: 0 },
       compras: 0,
       entregas: {},
       conDocumentos: 0,
@@ -77,7 +78,13 @@ export async function panelEnTransaccion(tx: Transaccion, fecha: FechaISO): Prom
     estado: j.estado,
     pasos: pasos!,
     pedidos: porEstado(pedidos),
-    lista: { armada: Boolean(l), desactualizada: l?.desactualizada ?? false, lineas: Number(l?.lineas ?? 0), compradas: Number(l?.compradas ?? 0) },
+    lista: {
+      armada: Boolean(l),
+      desactualizada: l?.desactualizada ?? false,
+      lineas: Number(l?.lineas ?? 0),
+      compradas: Number(l?.compradas ?? 0),
+      fueraDeLista: l ? (porEstado(pedidos).CONFIRMADO ?? 0) : 0,
+    },
     compras: Number(c?.n ?? 0),
     entregas: porEstado(entregas),
     conDocumentos: Number(docs?.conDocumentos ?? 0),

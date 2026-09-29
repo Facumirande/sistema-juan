@@ -5,7 +5,7 @@ import { pasosDelDia, type DatosDelDia } from "@/dominio/jornadas/pasos";
 const vacio: DatosDelDia = {
   jornada: null,
   pedidos: { confirmados: 0, borradores: 0 },
-  lista: { armada: false, desactualizada: false, lineas: 0, resueltas: 0 },
+  lista: { armada: false, desactualizada: false, lineas: 0, resueltas: 0, fueraDeLista: 0 },
   compras: 0,
   entregas: { total: 0, preparadas: 0, conDocumentos: 0, enCamino: 0, entregadas: 0 },
   repartos: 0,
@@ -14,7 +14,7 @@ const con = (cambios: Partial<DatosDelDia>): DatosDelDia => ({ ...vacio, ...camb
 const estados = (d: DatosDelDia) => Object.fromEntries(pasosDelDia(d).pasos.map((p) => [p.clave, p.estado]));
 
 const confirmados = { confirmados: 3, borradores: 0 };
-const listaArmada = { armada: true, desactualizada: false, lineas: 5, resueltas: 0 };
+const listaArmada = { armada: true, desactualizada: false, lineas: 5, resueltas: 0, fueraDeLista: 0 };
 const comprado = { ...listaArmada, resueltas: 5 };
 
 describe("el día de trabajo paso a paso", () => {
@@ -31,6 +31,12 @@ describe("el día de trabajo paso a paso", () => {
   it("un pedido nuevo después de armar la lista: la lista queda desactualizada y es lo que toca", () => {
     const d = con({ jornada: "COMPRANDO", pedidos: confirmados, lista: { ...listaArmada, desactualizada: true, resueltas: 2 }, compras: 2 });
     expect(estados(d)).toMatchObject({ lista: "en_curso", compras: "en_curso" });
+    expect(pasosDelDia(d).actual).toBe("lista");
+  });
+
+  it("un pedido confirmado que no se agregó a la lista la deja en curso", () => {
+    const d = con({ jornada: "COMPRANDO", pedidos: { confirmados: 4, borradores: 0 }, lista: { ...listaArmada, fueraDeLista: 1 } });
+    expect(estados(d).lista).toBe("en_curso");
     expect(pasosDelDia(d).actual).toBe("lista");
   });
 

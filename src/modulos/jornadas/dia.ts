@@ -39,7 +39,7 @@ export function datosDelPanel(p: PanelJornada): DatosDelDia {
   return {
     jornada: p.estado,
     pedidos: { confirmados: suma(p.pedidos, "CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO", "EN_REPARTO", "ENTREGADO"), borradores: suma(p.pedidos, "BORRADOR") },
-    lista: { armada: p.lista.armada, desactualizada: p.lista.desactualizada, lineas: p.lista.lineas, resueltas: p.lista.compradas },
+    lista: { armada: p.lista.armada, desactualizada: p.lista.desactualizada, lineas: p.lista.lineas, resueltas: p.lista.compradas, fueraDeLista: p.lista.fueraDeLista },
     compras: p.compras,
     entregas: {
       total: Object.values(e).reduce((s, n) => s + n, 0),

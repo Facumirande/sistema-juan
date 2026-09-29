@@ -3,15 +3,18 @@ import type { Metadata } from "next";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearNumero } from "@/dominio/dinero/formato";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
+import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { obtenerProducto } from "@/modulos/catalogo/productos";
+import { notasDe } from "@/modulos/colaboracion/notas";
 import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { listarProveedores } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { UNIDADES, UNIDADES_CORTAS, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
-import { AreaTexto, Campo, CampoNumero, Casilla, Encabezado, Estado, Selector, Tabla, Tarjeta } from "@/ui/formularios";
+import { AreaTexto, Campo, CampoNumero, Casilla, Encabezado, Estado, Selector, Tarjeta } from "@/ui/formularios";
 
+import { HiloDeNotas } from "../../actividad/notas";
 import { crearOfertaAccion } from "../../precios/compra/acciones";
 import { TablaOfertas, permisosOfertas } from "../../precios/compra/tabla-ofertas";
 import {
@@ -34,10 +37,11 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
   const puedeEditar = sesion.permisos.includes("productos.editar");
   const verCostos = sesion.permisos.includes("precios.ver_costos");
   const puedeCrearOferta = sesion.permisos.includes("proveedores.editar") && sesion.permisos.includes("precios.editar_compra");
-  const [categorias, ofertas, proveedores] = await Promise.all([
+  const [categorias, ofertas, proveedores, notas] = await Promise.all([
     puedeEditar ? listarCategorias(db, sesion.authUserId) : Promise.resolve([]),
     verCostos ? listaGeneralPreciosCompra(db, sesion.authUserId, { productoId: id }).then((r) => r.ofertas) : Promise.resolve([]),
     puedeCrearOferta ? listarProveedores(db, sesion.authUserId) : Promise.resolve([]),
+    notasDe(db, sesion.authUserId, { tipo: "PRODUCTO", id }),
   ]);
 
   const unidad = UNIDADES_CORTAS[p.unidadBase] ?? "";
@@ -47,7 +51,7 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo={p.nombre} volver={{ ruta: "/productos", texto: "Productos" }} descripcion={`${p.codigo} · ${p.categoria} · se cuenta en ${UNIDADES[p.unidadBase]?.toLowerCase()}`}>
+      <Encabezado titulo={`${dibujoDeProducto(p.nombre)} ${p.nombre}`} volver={{ ruta: "/productos", texto: "Productos" }} descripcion={`${p.codigo} · ${p.categoria} · se cuenta en ${UNIDADES[p.unidadBase]?.toLowerCase()}`}>
         <Estado activo={p.activo} />
       </Encabezado>
 
@@ -79,82 +83,74 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
         </Tarjeta>
       )}
 
-      <Tarjeta titulo="Presentaciones">
-        <p className="text-texto-suave">Cómo se compra o se vende. El factor es cuántos {unidad} trae cada una.</p>
-        <Tabla>
-          <thead>
-            <tr>
-              <th>Presentación</th>
-              <th>Trae</th>
-              <th>Uso</th>
-              <th>Estado</th>
-              {puedeEditar && <th></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {p.presentaciones.map((pr) => (
-              <tr key={pr.id}>
-                <td className="font-medium">
+      <Tarjeta titulo="Cómo se compra y se vende">
+        <p className="text-texto-suave">
+          Cada envase dice cuántos {unidad} trae: así se calcula el precio por {unidad}.
+        </p>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {p.presentaciones.map((pr) => {
+            const trae = formatearNumero(pr.factorABase, { decimales: 3, recortarCeros: true });
+            return (
+              <li key={pr.id} className={`flex flex-col gap-2 rounded-lg border border-borde p-3 ${pr.activo ? "" : "opacity-60"}`}>
+                <p className="flex flex-wrap items-center gap-2 font-semibold">
+                  <span aria-hidden>{pr.esUnidadBase ? "⚖️" : "📦"}</span>
                   {pr.nombre}
-                  {pr.esUnidadBase && <span className="block text-sm font-normal text-texto-suave">unidad base</span>}
-                </td>
-                <td>
-                  {formatearNumero(pr.factorABase, { decimales: 3, recortarCeros: true })} {unidad}
-                </td>
-                <td>{[pr.usableEnCompra && "compra", pr.usableEnVenta && "venta"].filter(Boolean).join(" y ")}</td>
-                <td>
-                  <Estado activo={pr.activo} />
-                </td>
+                  {pr.esUnidadBase && <span className="rounded bg-fondo px-2 text-xs font-semibold text-texto-suave">en lo que se cuenta</span>}
+                  {!pr.activo && <span className="rounded bg-fondo px-2 text-xs font-semibold text-texto-suave">desactivado</span>}
+                </p>
+                <p className="text-lg">{pr.esUnidadBase ? `Se cuenta y se pide por ${unidad}` : `1 ${pr.nombre.toLowerCase()} = ${trae} ${unidad}`}</p>
+                <p className="flex flex-wrap gap-2 text-sm">
+                  <span className={`rounded-full border px-2 py-0.5 ${pr.usableEnCompra ? "border-marca text-marca" : "border-borde text-texto-suave line-through"}`}>🛒 Para comprar</span>
+                  <span className={`rounded-full border px-2 py-0.5 ${pr.usableEnVenta ? "border-marca text-marca" : "border-borde text-texto-suave line-through"}`}>🧾 Para vender</span>
+                </p>
                 {puedeEditar && (
-                  <td>
-                    <details>
-                      <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Editar</summary>
-                      <div className="flex flex-col gap-3 py-2">
-                        <FormularioAccion accion={editarPresentacionAccion} boton="Guardar" variante="secundario">
+                  <details>
+                    <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Cambiar</summary>
+                    <div className="flex flex-col gap-3 py-2">
+                      <FormularioAccion accion={editarPresentacionAccion} boton="Guardar" variante="secundario">
+                        <input type="hidden" name="id" value={pr.id} />
+                        <Campo etiqueta="Nombre del envase" name="nombre" defaultValue={pr.nombre} />
+                        <CampoNumero
+                          etiqueta={`¿Cuántos ${unidad} trae?`}
+                          name="factorABase"
+                          defaultValue={trae}
+                          readOnly={pr.enUso || pr.esUnidadBase}
+                          ayuda={pr.enUso ? "Ya tiene precios cargados: para otro tamaño agregá un envase nuevo." : undefined}
+                        />
+                        <Casilla etiqueta="Se usa para comprar" name="usableEnCompra" defaultChecked={pr.usableEnCompra} />
+                        <Casilla etiqueta="Se usa para vender" name="usableEnVenta" defaultChecked={pr.usableEnVenta} />
+                      </FormularioAccion>
+                      {!pr.esUnidadBase && (
+                        <FormularioAccion accion={cambiarEstadoPresentacionAccion} boton={pr.activo ? "Desactivar" : "Reactivar"} variante={pr.activo ? "peligro" : "secundario"}>
                           <input type="hidden" name="id" value={pr.id} />
-                          <Campo etiqueta="Nombre" name="nombre" defaultValue={pr.nombre} />
-                          <CampoNumero
-                            etiqueta={`Cuántos ${unidad} trae`}
-                            name="factorABase"
-                            defaultValue={formatearNumero(pr.factorABase, { decimales: 3, recortarCeros: true })}
-                            readOnly={pr.enUso || pr.esUnidadBase}
-                            ayuda={pr.enUso ? "Ya tiene precios cargados: para otro tamaño creá una presentación nueva." : undefined}
-                          />
-                          <Casilla etiqueta="Se usa para comprar" name="usableEnCompra" defaultChecked={pr.usableEnCompra} />
-                          <Casilla etiqueta="Se usa para vender" name="usableEnVenta" defaultChecked={pr.usableEnVenta} />
+                          <input type="hidden" name="activo" value={String(!pr.activo)} />
                         </FormularioAccion>
-                        {!pr.esUnidadBase && (
-                          <FormularioAccion
-                            accion={cambiarEstadoPresentacionAccion}
-                            boton={pr.activo ? "Desactivar" : "Reactivar"}
-                            variante={pr.activo ? "peligro" : "secundario"}
-                          >
-                            <input type="hidden" name="id" value={pr.id} />
-                            <input type="hidden" name="activo" value={String(!pr.activo)} />
-                          </FormularioAccion>
-                        )}
-                      </div>
-                    </details>
-                  </td>
+                      )}
+                    </div>
+                  </details>
                 )}
-              </tr>
-            ))}
-          </tbody>
-        </Tabla>
+              </li>
+            );
+          })}
+        </ul>
         {puedeEditar && (
-          <details>
-            <summary className="min-h-11 cursor-pointer py-2 font-medium">+ Agregar presentación</summary>
+          <details className="rounded-lg border border-dashed border-borde p-3">
+            <summary className="min-h-11 cursor-pointer py-2 font-medium">+ Agregar otro envase</summary>
             <FormularioAccion accion={agregarPresentacionAccion} boton="Agregar">
               <input type="hidden" name="productoId" value={p.id} />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Campo etiqueta="Nombre" name="nombre" placeholder="Ej. Bolsa 20 kg" />
-                <CampoNumero etiqueta={`Cuántos ${unidad} trae`} name="factorABase" placeholder="Ej. 20" />
+                <Campo etiqueta="Nombre del envase" name="nombre" placeholder={`Ej. Bolsa 20 ${unidad}`} ayuda="Con el tamaño en el nombre, así se distingue de los otros." />
+                <CampoNumero etiqueta={`¿Cuántos ${unidad} trae?`} name="factorABase" placeholder="Ej. 20" />
               </div>
               <Casilla etiqueta="Se usa para comprar" name="usableEnCompra" defaultChecked />
               <Casilla etiqueta="Se usa para vender" name="usableEnVenta" defaultChecked />
             </FormularioAccion>
           </details>
         )}
+      </Tarjeta>
+
+      <Tarjeta titulo="💬 Notas">
+        <HiloDeNotas entidadTipo="PRODUCTO" entidadId={p.id} notas={notas.notas} personas={notas.personas} yo={notas.yo} zonaHoraria={sesion.zonaHoraria} />
       </Tarjeta>
 
       {puedeEditar && (

@@ -1,0 +1,274 @@
+import { TZDate } from "@date-fns/tz";
+import { format } from "date-fns";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+
+import { cliente, entregaItem, jornada, listaCompra, listaCompraItem, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
+import type { BaseDatos, Transaccion } from "@/db/tipos";
+import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
+import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
+import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
+import { COLUMNAS, columnaDePedido, estadoDelPlazo, ordenarTarjetas, textoPlazo, type ClaveColumna, type EstadoDelPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
+import type { EstadoPedido } from "@/dominio/precios/venta";
+import { contarNotasDe } from "@/modulos/colaboracion/notas";
+import { personasDelNegocio, soloVisible, type PersonaVisible } from "@/modulos/colaboracion/personas";
+import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
+
+import { numeroPedido } from "./pedidos";
+
+// Tablero de pedidos de un día, estilo Trello (uso interno, 28/09/2026): cada pedido es una
+// tarjeta en la columna de su etapa, con etiquetas (tipo de cliente, prioridad), miembro (quién se
+// encarga), plazo como fecha de vencimiento, avance como checklist y notas como comentarios.
+
+export interface AvanceDePedido {
+  /** Qué mide: lo comprado (en la lista de compra) o lo preparado. */
+  que: "comprado" | "preparado";
+  hechos: number;
+  total: number;
+}
+
+export interface TarjetaPedido {
+  id: string;
+  numero: string;
+  estado: EstadoPedido;
+  columna: ClaveColumna | null;
+  clienteId: string;
+  cliente: string;
+  tipoCliente: string;
+  puntoEntrega: string;
+  direccion: string;
+  /** Horario de recepción del lugar ("06:00–10:00"). */
+  horarioLugar: string | null;
+  prioridad: PrioridadPedido;
+  entregaDesde: string | null;
+  entregaHasta: string | null;
+  plazo: string | null;
+  estadoPlazo: EstadoDelPlazo;
+  lineas: number;
+  productos: string[];
+  avance: AvanceDePedido | null;
+  /** Solo con `precios.ver_venta`. */
+  totalEstimado: string | null;
+  notas: { total: number; sinLeer: number };
+  /** El miembro de la tarjeta: quién se encarga (o quien lo cargó, si nadie lo tomó). */
+  responsable: PersonaVisible | null;
+  cargadoPor: PersonaVisible | null;
+  confirmadoPor: PersonaVisible | null;
+  observaciones: string | null;
+  esTardio: boolean;
+}
+
+export interface ColumnaDelTablero {
+  clave: ClaveColumna;
+  titulo: string;
+  ayuda: string;
+  seleccionable: boolean;
+  tarjetas: TarjetaPedido[];
+}
+
+export interface TableroDePedidos {
+  fecha: FechaISO;
+  estadoJornada: string | null;
+  lista: { armada: boolean; desactualizada: boolean; numero: string | null };
+  columnas: ColumnaDelTablero[];
+  cancelados: TarjetaPedido[];
+  personas: PersonaVisible[];
+  yo: string;
+}
+
+export interface LineaConAvance {
+  id: string;
+  producto: string;
+  cantidad: string;
+  hecha: boolean;
+}
+
+const hora = (t: string | null) => t?.slice(0, 5) ?? null;
+const RESUELTAS = ["COMPRADO", "NO_CONSEGUIDO"];
+
+/** Las líneas de cada pedido y si ya se compraron (en la lista) o se prepararon, según su etapa. */
+async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: readonly { id: string; estado: EstadoPedido }[]): Promise<Map<string, { que: AvanceDePedido["que"] | null; lineas: LineaConAvance[] }>> {
+  const ids = pedidos.map((p) => p.id);
+  const resultado = new Map<string, { que: AvanceDePedido["que"] | null; lineas: LineaConAvance[] }>();
+  if (ids.length === 0) return resultado;
+  const items = await tx
+    .select({
+      id: pedidoItem.id,
+      pedidoId: pedidoItem.pedidoId,
+      productoId: pedidoItem.productoId,
+      producto: producto.nombre,
+      unidad: producto.unidadBase,
+      cantidad: pedidoItem.cantidad,
+      cantidadBase: pedidoItem.cantidadBase,
+      presentacion: presentacion.nombre,
+    })
+    .from(pedidoItem)
+    .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
+    .leftJoin(presentacion, eq(presentacion.id, pedidoItem.presentacionId))
+    .where(and(inArray(pedidoItem.pedidoId, ids), eq(pedidoItem.cancelado, false)))
+    .orderBy(asc(pedidoItem.linea));
+  const enLista = await tx
+    .select({ productoId: listaCompraItem.productoId, estado: listaCompraItem.estado })
+    .from(listaCompraItem)
+    .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
+    .where(eq(listaCompra.jornadaId, jornadaId));
+  const comprado = new Set(enLista.filter((l) => RESUELTAS.includes(l.estado)).map((l) => l.productoId));
+  const preparadas = items.length
+    ? new Set(
+        (
+          await tx
+            .select({ pedidoItemId: entregaItem.pedidoItemId })
+            .from(entregaItem)
+            .where(and(inArray(entregaItem.pedidoItemId, items.map((i) => i.id)), isNotNull(entregaItem.cantidadPreparada)))
+        ).map((e) => e.pedidoItemId),
+      )
+    : new Set<string | null>();
+  for (const p of pedidos) {
+    const que = p.estado === "EN_COMPRA" ? "comprado" : p.estado === "EN_PREPARACION" || p.estado === "PREPARADO" ? "preparado" : null;
+    resultado.set(p.id, {
+      que,
+      lineas: items
+        .filter((i) => i.pedidoId === p.id)
+        .map((i) => ({
+          id: i.id,
+          producto: i.producto,
+          cantidad: i.presentacion
+            ? `${formatearNumero(i.cantidad, { decimales: 3, recortarCeros: true })} × ${i.presentacion}`
+            : formatearCantidad(i.cantidadBase, i.unidad as UnidadMedida),
+          hecha: que === "comprado" ? comprado.has(i.productoId) : que === "preparado" ? preparadas.has(i.id) : p.estado === "EN_REPARTO" || p.estado === "ENTREGADO",
+        })),
+    });
+  }
+  return resultado;
+}
+
+function ahoraEnEmpresa(c: ContextoUsuario) {
+  const ahora = new Date();
+  return { hoy: hoyEnEmpresa(ahora, c.zonaHoraria), hora: format(new TZDate(ahora, c.zonaHoraria), "HH:mm") };
+}
+
+export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<TableroDePedidos> {
+  return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx, c) => {
+    const personas = await personasDelNegocio(tx);
+    const persona = new Map(personas.map((p) => [p.id, soloVisible(p)]));
+    const vacio: TableroDePedidos = {
+      fecha,
+      estadoJornada: null,
+      lista: { armada: false, desactualizada: false, numero: null },
+      columnas: COLUMNAS.map((col) => ({ clave: col.clave, titulo: col.titulo, ayuda: col.ayuda, seleccionable: col.seleccionable, tarjetas: [] })),
+      cancelados: [],
+      personas: personas.filter((p) => p.activa).map(soloVisible),
+      yo: c.usuarioId,
+    };
+    const [j] = await tx.select({ id: jornada.id, estado: jornada.estado }).from(jornada).where(eq(jornada.fecha, fecha));
+    if (!j) return vacio;
+
+    const filas = await tx
+      .select({
+        id: pedido.id,
+        numero: pedido.numero,
+        estado: pedido.estado,
+        prioridad: pedido.prioridad,
+        entregaDesde: pedido.entregaDesde,
+        entregaHasta: pedido.entregaHasta,
+        total: pedido.totalEstimado,
+        observaciones: pedido.observaciones,
+        esTardio: pedido.esTardio,
+        creadoPor: pedido.creadoPor,
+        confirmadoPor: pedido.confirmadoPor,
+        responsableId: pedido.responsableId,
+        clienteId: cliente.id,
+        cliente: cliente.nombre,
+        tipoCliente: cliente.tipoCliente,
+        punto: puntoEntrega.nombre,
+        direccion: puntoEntrega.direccion,
+        horarioDesde: puntoEntrega.horarioDesde,
+        horarioHasta: puntoEntrega.horarioHasta,
+      })
+      .from(pedido)
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .innerJoin(puntoEntrega, eq(puntoEntrega.id, pedido.puntoEntregaId))
+      .where(eq(pedido.jornadaId, j.id));
+    const avances = await lineasConAvance(tx, j.id, filas);
+    const notas = await contarNotasDe(tx, c, "PEDIDO", filas.map((f) => f.id));
+    const [lista] = await tx.select({ numero: listaCompra.numero, desactualizada: listaCompra.desactualizada }).from(listaCompra).where(eq(listaCompra.jornadaId, j.id));
+    const verVenta = c.permisos.tiene("precios.ver_venta");
+    const ahora = ahoraEnEmpresa(c);
+
+    const tarjetas = filas.map((f): TarjetaPedido => {
+      const a = avances.get(f.id)!;
+      return {
+        id: f.id,
+        numero: numeroPedido(f.numero),
+        estado: f.estado,
+        columna: columnaDePedido(f.estado),
+        clienteId: f.clienteId,
+        cliente: f.cliente,
+        tipoCliente: f.tipoCliente,
+        puntoEntrega: f.punto,
+        direccion: f.direccion,
+        horarioLugar: f.horarioDesde || f.horarioHasta ? `${hora(f.horarioDesde) ?? "?"}–${hora(f.horarioHasta) ?? "?"}` : null,
+        prioridad: f.prioridad,
+        entregaDesde: hora(f.entregaDesde),
+        entregaHasta: hora(f.entregaHasta),
+        plazo: textoPlazo(f.entregaDesde, f.entregaHasta),
+        estadoPlazo: estadoDelPlazo({ fecha, hasta: hora(f.entregaHasta), estado: f.estado, ...ahora }),
+        lineas: a.lineas.length,
+        productos: a.lineas.map((l) => l.producto),
+        avance: a.que ? { que: a.que, hechos: a.lineas.filter((l) => l.hecha).length, total: a.lineas.length } : null,
+        totalEstimado: verVenta ? f.total : null,
+        notas: notas.get(f.id) ?? { total: 0, sinLeer: 0 },
+        responsable: persona.get(f.responsableId ?? f.creadoPor ?? "") ?? null,
+        cargadoPor: f.creadoPor ? (persona.get(f.creadoPor) ?? null) : null,
+        confirmadoPor: f.confirmadoPor ? (persona.get(f.confirmadoPor) ?? null) : null,
+        observaciones: f.observaciones,
+        esTardio: f.esTardio,
+      };
+    });
+    const numeros = new Map(filas.map((f) => [f.id, f.numero]));
+    const ordenadas = ordenarTarjetas(tarjetas.map((t) => ({ ...t, tarjeta: t, numero: numeros.get(t.id)! }))).map((x) => x.tarjeta);
+    return {
+      ...vacio,
+      estadoJornada: j.estado,
+      lista: { armada: Boolean(lista), desactualizada: lista?.desactualizada ?? false, numero: lista ? formatearNumeroDocumento("LC-", lista.numero) : null },
+      columnas: vacio.columnas.map((col) => ({ ...col, tarjetas: ordenadas.filter((t) => t.columna === col.clave) })),
+      cancelados: ordenadas.filter((t) => t.estado === "CANCELADO"),
+    };
+  });
+}
+
+/** Lo que se ve al abrir una tarjeta: el pedido con sus líneas marcadas (compradas o preparadas). */
+export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoId: string): Promise<{ que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; responsable: PersonaVisible | null; cargadoPor: PersonaVisible | null; confirmadoPor: PersonaVisible | null; estadoPlazo: EstadoDelPlazo; personas: PersonaVisible[] }> {
+  return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx, c) => {
+    const [p] = await tx
+      .select({ id: pedido.id, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha, hasta: pedido.entregaHasta, responsableId: pedido.responsableId, creadoPor: pedido.creadoPor, confirmadoPor: pedido.confirmadoPor })
+      .from(pedido)
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .where(eq(pedido.id, pedidoId));
+    if (!p) return { que: null, lineas: [], responsable: null, cargadoPor: null, confirmadoPor: null, estadoPlazo: "a_tiempo", personas: [] };
+    const personas = await personasDelNegocio(tx);
+    const persona = new Map(personas.map((x) => [x.id, soloVisible(x)]));
+    const a = (await lineasConAvance(tx, p.jornadaId, [p])).get(p.id)!;
+    return {
+      que: a.que,
+      lineas: a.lineas,
+      responsable: persona.get(p.responsableId ?? p.creadoPor ?? "") ?? null,
+      cargadoPor: p.creadoPor ? (persona.get(p.creadoPor) ?? null) : null,
+      confirmadoPor: p.confirmadoPor ? (persona.get(p.confirmadoPor) ?? null) : null,
+      estadoPlazo: estadoDelPlazo({ fecha: p.fecha, hasta: hora(p.hasta), estado: p.estado, ...ahoraEnEmpresa(c) }),
+      personas: personas.filter((x) => x.activa).map(soloVisible),
+    };
+  });
+}
+
+/** Qué pedidos se eligieron y en qué estado están (para las acciones del tablero). */
+export async function estadosDePedidos(db: BaseDatos, authUserId: string, ids: readonly string[]): Promise<{ id: string; estado: EstadoPedido; fecha: FechaISO }[]> {
+  if (ids.length === 0) return [];
+  return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx) =>
+    tx
+      .select({ id: pedido.id, estado: pedido.estado, fecha: jornada.fecha })
+      .from(pedido)
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .where(inArray(pedido.id, [...ids]))
+      .orderBy(asc(pedido.numero)),
+  );
+}

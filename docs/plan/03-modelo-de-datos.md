@@ -137,6 +137,9 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | imputacion_cobro_cliente | Cobranzas | Imputación | M14 | PROPUESTO |
 | movimiento_cuenta_cliente | Cobranzas | Libro | M14 | PROPUESTO |
 | ajuste_stock | Stock | Documento | M15 | PROPUESTO (fase 2) |
+| nota | Colaboración | Documento | M20 (agregado) | MVP |
+| nota_lectura | Colaboración | Registro | M20 (agregado) | MVP |
+| actividad | Colaboración | Libro | M20 (agregado) | MVP |
 
 ---
 
@@ -187,6 +190,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | `periodicidad_facturacion` | `POR_ENTREGA`, `SEMANAL`, `QUINCENAL`, `MENSUAL` |
 | `canal_pedido` | `TELEFONO`, `WHATSAPP`, `EMAIL`, `PRESENCIAL`, `PORTAL` (PORTAL = PROPUESTO, portal de clientes) |
 | `politica_faltantes` | `PRIORIDAD_CLIENTE`, `PROPORCIONAL`, `MANUAL` |
+| `prioridad_pedido` | `ALTA` ("Urgente" en el tablero), `NORMAL`, `BAJA` ("Sin apuro"). Ordena las tarjetas y pesa en el reparto de faltantes (07, RN-115). |
 | `motivo_diferencia` | `RECHAZO_CALIDAD`, `FALTANTE`, `NO_CONSEGUIDO`, `ERROR_PREPARACION`, `CAMBIO_CLIENTE`, `OTRO` (con detalle en texto). Se usa tanto en preparación (faltantes) como en la confirmación de la entrega (rechazos). |
 
 ### 3.5 Compras, pagos y cuentas
@@ -209,6 +213,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | `tipo_comprobante` | `INTERNO` (MVP, no fiscal), `FISCAL` (PROPUESTO), `SALDO_INICIAL` (PROPUESTO, deuda previa de clientes) |
 | `tipo_ajuste_stock` (PROPUESTO) | `SOBRANTE` (+), `MERMA` (−), `DEVOLUCION_CLIENTE` (+), `USO_SOBRANTE` (−), `CORRECCION` (±) |
 | `tipo_secuencia` | `PEDIDO`, `LISTA_COMPRA`, `COMPRA`, `PAGO_PROVEEDOR`, `REPARTO`, `ENTREGA`, `FACTURA`, `COBRO_CLIENTE`, `AJUSTE_STOCK` |
+| `tipo_entidad` | `PEDIDO`, `CLIENTE`, `PROVEEDOR`, `PRODUCTO`, `COMPRA`, `PAGO`, `ENTREGA`, `REPARTO`, `JORNADA`, `LISTA_COMPRA`, `FACTURA`, `USUARIO`: a qué se refiere una nota o una entrada de actividad (§13b). |
 | `accion_auditoria` | `CREAR`, `MODIFICAR`, `CAMBIO_ESTADO`, `CANCELAR`, `ANULAR`, `CAMBIO_PRECIO_COMPRA`, `CAMBIO_RECARGO`, `CAMBIO_REGLA_PRECIO`, `OVERRIDE_PRECIO`, `EXCESO_LIMITE`, `CAMBIO_LIMITE_CREDITO`, `CORRECCION_ENTREGA`, `EMISION_DOCUMENTO`, `REAPERTURA_JORNADA`, `CAMBIO_CONFIGURACION`, `CAMBIO_PERMISOS`, `INICIO_SESION`, `EXPORTACION` |
 
 ---
@@ -313,6 +318,7 @@ Configuración del negocio. Una fila por empresa. No tiene `empresa_id`; sí tie
 | aplicar_saldo_a_favor_auto | boolean | No | `true` | Al registrar una compra CREDITO o MIXTA se imputa automáticamente el saldo a favor. |
 | emitir_documentos_al_preparar | boolean | No | `true` | Emitir DOC-02 y DOC-03 al marcar la entrega PREPARADA. |
 | facturar_automatico_por_entrega | boolean | No | `true` | Clientes POR_ENTREGA: comprobante interno automático al confirmar la entrega. |
+| latitud, longitud | numeric(9,6) | Sí | — | Agregado: de dónde salen los repartos (depósito o mercado), para calcular el viaje. Ambas o ninguna, en rango válido (check `empresa_coordenadas`). |
 | modulos_habilitados | text[] | No | `'{}'` | Módulos PROPUESTO activados: `COBRANZAS`, `STOCK`, `OFFLINE`, `FACTURACION_FISCAL`, `PORTAL_CLIENTES`. "Usa stock de sobrantes" = contiene `STOCK`. |
 | activa | boolean | No | `true` | |
 
@@ -335,7 +341,7 @@ Persona que usa el sistema. Vinculada 1 a 1 con el usuario de Supabase Auth. En 
 | invitacion_aceptada_en | timestamptz | Sí | — | Nulo = invitación pendiente. |
 | debe_cambiar_clave | boolean | No | `false` | |
 | ultimo_acceso_en | timestamptz | Sí | — | Actualizado como máximo una vez por hora. |
-| preferencias | jsonb | No | `'{}'` | Solo interfaz (tamaño de letra, vista compacta, última jornada). |
+| preferencias | jsonb | No | `'{}'` | Solo interfaz (tamaño de letra, vista compacta, última jornada). `color`: color del avatar elegido en "Mi cuenta" (uno de la paleta); sin elegir, se asigna el primero libre sin repetir. |
 
 ### 4.3 rol
 
@@ -681,7 +687,7 @@ Dirección o servicio donde se entrega (ej. "Cocina central" y "Cocina pediatrí
 | direccion | text | No | — | |
 | localidad | text | Sí | — | |
 | referencias | text | Sí | — | "Ingreso por calle lateral, andén 2". |
-| latitud, longitud | numeric(9,6) | Sí | — | Para abrir el mapa desde la hoja de ruta. |
+| latitud, longitud | numeric(9,6) | Sí | — | Para abrir el mapa y el GPS y calcular el viaje de entrega. Ambas o ninguna, en rango válido (check `punto_entrega_coordenadas`). Se marcan desde la ficha del cliente o el viaje: con el GPS del celular, buscando la dirección o pegando un enlace de Google Maps. |
 | contacto_nombre | text | Sí | — | Quien recibe habitualmente (ej. jefa de cocina). |
 | contacto_telefono | text | Sí | — | |
 | horario_desde, horario_hasta | time | Sí | — | Franja de recepción. |
@@ -806,7 +812,9 @@ Fecha operativa (= fecha de entrega). Agrupa pedidos, lista de compra, compras, 
 | referencia_cliente | text | Sí | — | Orden de compra del cliente. Obligatoria si `cliente.requiere_orden_compra`. |
 | estado | estado_pedido | No | `'BORRADOR'` | Ver 04-procesos-y-flujos.md. |
 | es_tardio | boolean | No | `false` | Cargado después de `empresa.hora_corte_pedidos` o con la lista de compra ya generada. |
-| entrega_desde, entrega_hasta | time | Sí | — | Franja especial para este pedido (si no, la del punto de entrega). |
+| entrega_desde, entrega_hasta | time | Sí | — | Franja especial para este pedido (si no, la del punto de entrega). En el tablero es el "plazo" de la tarjeta: vencido, pronto (faltan 2 h o menos) o a tiempo. |
+| prioridad | prioridad_pedido | No | `'NORMAL'` | Agregado (tablero). |
+| responsable_id | uuid | Sí | — | Agregado: quién se encarga (FK `usuario` de la misma empresa). Nulo = quien lo cargó. |
 | observaciones | text | Sí | — | Para preparación y entrega; se imprimen en DOC-07 y DOC-02. |
 | observaciones_internas | text | Sí | — | No se imprimen. |
 | total_estimado | numeric(14,2) | No | `0` | Suma de `subtotal_estimado` de líneas no canceladas. Recalculado por el dominio. |
@@ -1505,6 +1513,54 @@ Registra sobrantes (lo comprado de más por el redondeo a presentaciones), merma
 | lista_compra_item_id | uuid | Sí | — | Para uso de sobrantes en una lista de compra. |
 | motivo | text | Sí | — | |
 | estado | estado_registro | No | `'REGISTRADO'` | |
+
+---
+
+## 13b. Colaboración: notas y actividad (agregado)
+
+Las dos personas que usan el sistema se dejan notas en las tarjetas y fichas y ven qué hizo cada una. Las tres tablas tienen RLS por empresa (migración 0014).
+
+### 13b.1 nota
+
+Nota que alguien deja en un pedido, cliente, proveedor, producto, compra, entrega, reparto, etc. Solo la puede borrar quien la escribió; no se edita.
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| + campos comunes | | | | `creado_por` = autor. |
+| entidad_tipo | tipo_entidad | No | — | A qué se refiere. |
+| entidad_id | uuid | No | — | Id de esa entidad. Para verla hace falta poder ver la entidad (02 §4). |
+| texto | text | No | — | Entre 1 y 2000 caracteres. |
+| para_usuario_id | uuid | Sí | — | A quién va dirigida (aparece en su campanita). Nulo = para todos. |
+
+Índices: `(empresa_id, entidad_tipo, entidad_id, creado_en)` y `(empresa_id, para_usuario_id, creado_en desc)`.
+
+### 13b.2 nota_lectura
+
+Quién ya leyó cada nota (para el contador de la campanita). `unique (nota_id, usuario_id)`; se borra con la nota.
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| empresa_id, id | uuid | No | — | |
+| nota_id | uuid | No | — | FK `nota` (cascade). |
+| usuario_id | uuid | No | — | FK `usuario`. |
+| leida_en | timestamptz | No | `now()` | |
+
+### 13b.3 actividad
+
+Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-000012 de Restaurante La Esquina"). Solo se agrega: no admite `UPDATE` ni `DELETE` (trigger `impedir_modificacion`). No reemplaza a `auditoria`, que guarda los datos antes y después de los cambios sensibles.
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| empresa_id, id | uuid | No | — | |
+| ocurrida_en | timestamptz | No | `now()` | |
+| usuario_id | uuid | No | — | Quién. |
+| accion | text | No | — | CREAR, CONFIRMAR, CANCELAR, PRIORIDAD, ASIGNAR, PLAZO, ARMAR_LISTA, COMPRAR, PAGAR, PREPARAR, ENTREGAR, SALIR, CERRAR, FACTURAR, UBICAR, etc. |
+| entidad_tipo | tipo_entidad | No | — | |
+| entidad_id | uuid | Sí | — | |
+| jornada_id | uuid | Sí | — | Día al que pertenece, si corresponde. |
+| resumen | text | No | — | La frase que se muestra. |
+
+Índices: por fecha, por entidad y por persona (todos con `ocurrida_en desc`).
 
 ---
 

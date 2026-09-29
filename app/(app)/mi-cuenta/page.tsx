@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { obtenerSesion } from "@/modulos/seguridad/sesion";
+import { obtenerBaseDatos } from "@/db/cliente";
+import { otrasPersonas } from "@/modulos/colaboracion/personas";
+import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { identificadorVisible, LARGO_MINIMO_CLAVE } from "@/seguridad/identificacion";
 import { CampoClave } from "@/ui/campo-clave";
 import { FormularioAccion } from "@/ui/formulario-accion";
 
 import { cambiarMiClave } from "./acciones";
+import { FormularioPerfil } from "./perfil";
 
 export const metadata: Metadata = { title: "Mi cuenta · Sistema Juan" };
 
-/** P-03 Mi cuenta: datos propios y cambio de contraseña. */
+/** P-03 Mi cuenta: perfil (nombre y color con los que te ven los demás) y cambio de contraseña. */
 export default async function PaginaMiCuenta() {
   const sesion = await obtenerSesion();
-  if (!sesion) redirect("/login");
+  const authUserId = await obtenerAuthUserId();
+  if (!sesion || !authUserId) redirect("/login");
+  const otras = await otrasPersonas(obtenerBaseDatos(), authUserId);
 
   return (
     <section className="flex max-w-md flex-col gap-6">
@@ -23,6 +28,11 @@ export default async function PaginaMiCuenta() {
           {sesion.nombre} · tu usuario es <b>{identificadorVisible(sesion.email)}</b>
         </p>
       </header>
+
+      <div className="rounded-lg border border-borde bg-superficie p-4">
+        <h2 className="mb-4 text-lg font-semibold">Tu perfil</h2>
+        <FormularioPerfil nombre={sesion.nombre} color={sesion.color} otras={otras} />
+      </div>
 
       <div className="rounded-lg border border-borde bg-superficie p-4">
         <h2 className="mb-4 text-lg font-semibold">Cambiar la contraseña</h2>

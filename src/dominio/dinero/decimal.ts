@@ -27,9 +27,17 @@ export function dec(valor: ValorDecimal): Decimal {
   return resultado;
 }
 
-/** Montos: 2 decimales, mitad hacia arriba (RN-152). */
+/** Porcentajes y cuentas intermedias: 2 decimales, mitad hacia arriba (RN-152). */
 export function redondear2(valor: ValorDecimal): Decimal {
   return dec(valor).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+}
+
+/**
+ * Montos de plata: pesos enteros, sin centavos, mitad hacia arriba (decisión del 28/09/2026). La
+ * base guarda `numeric(14,2)`, con ",00".
+ */
+export function redondearPesos(valor: ValorDecimal): Decimal {
+  return dec(valor).toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 }
 
 /** Cantidades: 3 decimales. */

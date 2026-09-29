@@ -12,7 +12,8 @@ export interface DatosDelDia {
   /** Estado de la jornada; nulo si todavía no hay pedidos. */
   jornada: string | null;
   pedidos: { confirmados: number; borradores: number };
-  lista: { armada: boolean; desactualizada: boolean; lineas: number; resueltas: number };
+  /** `fueraDeLista`: pedidos confirmados que todavía no se agregaron a la lista armada. */
+  lista: { armada: boolean; desactualizada: boolean; lineas: number; resueltas: number; fueraDeLista: number };
   compras: number;
   /** Entregas vigentes: total, preparadas (o más), con documentos al día, en camino (o entregadas) y entregadas. */
   entregas: { total: number; preparadas: number; conDocumentos: number; enCamino: number; entregadas: number };
@@ -37,7 +38,7 @@ function estadoPropio(clave: ClavePaso, d: DatosDelDia): EstadoPropio {
     case "pedidos":
       return segun(d.pedidos.confirmados > 0 && d.pedidos.borradores === 0, d.pedidos.borradores > 0);
     case "lista":
-      return segun(d.lista.armada && !d.lista.desactualizada, d.lista.armada);
+      return segun(d.lista.armada && !d.lista.desactualizada && d.lista.fueraDeLista === 0, d.lista.armada);
     case "compras":
       return segun(d.lista.lineas > 0 && d.lista.resueltas === d.lista.lineas, d.compras > 0 || d.lista.resueltas > 0);
     case "preparacion":

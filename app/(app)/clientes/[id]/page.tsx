@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 
 import { obtenerBaseDatos } from "@/db/cliente";
+import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
 import { obtenerCliente } from "@/modulos/clientes/clientes";
+import { notasDe } from "@/modulos/colaboracion/notas";
 import { ultimosPedidosDeCliente } from "@/modulos/pedidos/pedidos";
 import { listarReglasCliente, recargosActuales } from "@/modulos/precios-venta/reglas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
@@ -11,6 +13,9 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Encabezado, Estado, Tarjeta } from "@/ui/formularios";
 
 import { cambiarEstadoClienteAccion, cambiarEstadoPuntoAccion, editarClienteAccion, guardarPuntoAccion, marcarPrincipalAccion } from "../acciones";
+import { HiloDeNotas } from "../../actividad/notas";
+import { ubicarPuntoAccion } from "../../viaje/acciones";
+import { MarcarUbicacion } from "../../viaje/ubicacion";
 import { CamposCliente, CamposPunto } from "../campos-cliente";
 
 import { PedidosDelCliente, PreciosDelCliente } from "./secciones";
@@ -27,10 +32,11 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
   const id = idDeRuta((await params).id);
   const db = obtenerBaseDatos();
   const c = await cargarFicha(obtenerCliente(db, sesion.authUserId, id));
-  const [precios, objetivos, pedidos] = await Promise.all([
+  const [precios, objetivos, pedidos, notas] = await Promise.all([
     sesion.permisos.includes("precios.ver_margenes") ? listarReglasCliente(db, sesion.authUserId, id) : Promise.resolve(null),
     sesion.permisos.includes("precios.editar_reglas") ? recargosActuales(db, sesion.authUserId) : Promise.resolve(null),
     sesion.permisos.includes("pedidos.ver") ? ultimosPedidosDeCliente(db, sesion.authUserId, id) : Promise.resolve(null),
+    notasDe(db, sesion.authUserId, { tipo: "CLIENTE", id }),
   ]);
   const puedeEditar = sesion.permisos.includes("clientes.editar");
   const activos = c.puntosEntrega.filter((p) => p.activo);
@@ -79,6 +85,17 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
                   .join(" · ")}
               </p>
               {p.instruccionesEntrega && <p className="text-sm">{p.instruccionesEntrega}</p>}
+              <div className="flex flex-wrap gap-2 py-1">
+                <a href={enlacesGoogleMaps([{ coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad }])[0]} target="_blank" rel="noreferrer" className="rounded-md bg-fondo px-3 py-1.5 text-sm font-medium hover:bg-borde">
+                  🧭 Cómo llegar
+                </a>
+                <a href={enlaceWaze({ coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad })} target="_blank" rel="noreferrer" className="rounded-md bg-fondo px-3 py-1.5 text-sm font-medium hover:bg-borde">
+                  Waze
+                </a>
+              </div>
+              {(puedeEditar || sesion.permisos.includes("entregas.confirmar")) && p.activo && (
+                <MarcarUbicacion accion={ubicarPuntoAccion} campos={{ puntoId: p.id }} actual={p.coordenada} direccion={[p.direccion, p.localidad].filter(Boolean).join(", ")} />
+              )}
               {puedeEditar && (
                 <details>
                   <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Editar</summary>
@@ -114,6 +131,10 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
             </FormularioAccion>
           </details>
         )}
+      </Tarjeta>
+
+      <Tarjeta titulo="💬 Notas">
+        <HiloDeNotas entidadTipo="CLIENTE" entidadId={c.id} notas={notas.notas} personas={notas.personas} yo={notas.yo} zonaHoraria={sesion.zonaHoraria} />
       </Tarjeta>
 
       {puedeEditar && (

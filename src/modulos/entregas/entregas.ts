@@ -10,6 +10,7 @@ import { entregaConDiferencias, transicionEntregaPermitida, type EstadoEntrega, 
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { numeroPedido } from "@/modulos/pedidos/pedidos";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { textoOpcional, validar } from "@/modulos/validacion";
 
@@ -332,6 +333,9 @@ export async function confirmarEntrega(
     await finalizarSiCorresponde(tx, c, e.repartoId);
     // Clientes que facturan por entrega: el comprobante sale solo (RN-143).
     const factura = await facturarAlConfirmar(tx, c, e.id);
+    const [cli] = await tx.select({ nombre: cliente.nombre }).from(cliente).where(eq(cliente.id, e.clienteId));
+    const como = d.modo === "NO_RECIBIO" ? " (no recibió)" : conDiferencias ? " con diferencias" : "";
+    await registrarActividad(tx, c, { accion: "ENTREGAR", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `entregó el pedido de ${cli?.nombre ?? "un cliente"}${como}` });
     return { documentos, conDiferencias, factura };
   });
 }
@@ -369,6 +373,7 @@ export async function corregirEntrega(db: BaseDatos, authUserId: string, datos: 
       datosAntes: Object.fromEntries(antes.map((a) => [a.producto, a.entregada])),
       datosDespues: Object.fromEntries(despues.map((x) => [antes.find((a) => a.id === x.id)!.producto, x.entregada])),
     });
+    await registrarActividad(tx, c, { accion: "CORREGIR", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `corrigió lo entregado en ${numeroEntrega(e.numero)} (${d.motivo})` });
     return reemitirSiCorresponde(tx, c, e.id);
   });
 }
@@ -398,6 +403,7 @@ export async function anularEntrega(db: BaseDatos, authUserId: string, datos: { 
     // Los pedidos vuelven a "en preparación" para armarse en otra entrega.
     await moverPedidosDeEntrega(tx, e.id, ["EN_PREPARACION", "PREPARADO", "ENTREGADO"], "EN_PREPARACION");
     await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "entrega", entidadId: e.id, resumen: `Anulación de ${numeroEntrega(e.numero)}.`, motivo });
+    await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `anuló la entrega ${numeroEntrega(e.numero)} (${motivo})` });
   });
 }
 

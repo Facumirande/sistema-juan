@@ -52,6 +52,13 @@ En Supabase se conecta por el pooler en modo transacción con el usuario `app_se
 - La cuenta ve su propio estado con la política `usuario_propio` (`src/modulos/usuarios/acceso.ts`).
 - Pendiente de una migración futura: renombrar esas dos columnas a `acceso_pedido_en` / `acceso_aprobado_en`.
 
+## Tablero, notas, actividad y viaje (28/09/2026)
+
+- Migraciones `0013_tablero_notas_actividad` (enums `prioridad_pedido` y `tipo_entidad`; tablas `nota`, `nota_lectura` y `actividad`; `pedido.prioridad` y `pedido.responsable_id`; `empresa.latitud/longitud`; checks de coordenadas en `empresa` y `punto_entrega`) y `0014_tablero_notas_actividad_rls` (aislamiento de las tres tablas; sin `UPDATE` para `app_negocio`; `actividad` con el trigger `impedir_modificacion`, así que tampoco admite `DELETE`).
+- `src/modulos/colaboracion/`: `registro.ts` escribe la actividad dentro de la misma transacción de cada caso de uso; `notas.ts`, `actividad.ts`, `personas.ts` y `colores.ts` (color de cada persona sin repetir: el elegido o el primero libre, de la cuenta más vieja a la más nueva). `entidades.ts` describe lo que nombra cada nota o entrada y exige poder verlo.
+- `src/modulos/pedidos/tablero.ts` arma las listas del tablero; `src/modulos/entregas/viaje.ts` guarda ubicaciones, busca direcciones en Nominatim (OpenStreetMap, solo desde el servidor y con un User-Agent sin datos personales) y sigue los enlaces cortos de Google Maps solo si son de `goo.gl`, `google.com` o `google.com.ar` (o sus subdominios, como `maps.app.goo.gl`) y por https. El cálculo del recorrido es puro (`src/dominio/entregas/recorrido.ts`) y los enlaces al GPS también (`navegacion.ts`).
+- Dinero en pesos enteros: `redondearPesos` en `src/dominio/dinero/decimal.ts`; las columnas siguen siendo `numeric(14,2)`.
+
 ## Iteración 7: facturación, cierre de jornada y reportes
 
 - Migraciones `0011_facturacion` (tablas `factura` y `factura_entrega`) y `0012_facturacion_rls`: aislamiento de las dos tablas; un comprobante solo admite `UPDATE` de estado, anulación, `exportada_en`, `pdf_path` y observaciones; de `factura_entrega` solo `activa`. Índice único parcial: una entrega en un solo comprobante vigente.

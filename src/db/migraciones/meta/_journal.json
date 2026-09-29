@@ -92,6 +92,20 @@
       "when": 1790549627996,
       "tag": "0012_facturacion_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790633435417,
+      "tag": "0013_tablero_notas_actividad",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790633437598,
+      "tag": "0014_tablero_notas_actividad_rls",
+      "breakpoints": true
     }
   ]
 }

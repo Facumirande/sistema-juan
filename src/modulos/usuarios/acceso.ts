@@ -7,6 +7,7 @@ import { cambiarRol, enEmpresa, fijarUsuarioAuth } from "@/db/transaccion";
 import type { BaseDatos } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { configuracionInicialPendiente, EMPRESA_PRINCIPAL_ID } from "@/modulos/configuracion/configuracion-inicial";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import type { ServicioCuentas } from "@/modulos/seguridad/cuentas";
 import { validar } from "@/modulos/validacion";
@@ -166,6 +167,7 @@ export async function responderPedidoDeAcceso(
       entidadId: u.id,
       resumen: `${datos.aprobar ? "Acceso habilitado" : "Pedido de acceso rechazado"}: ${u.nombre}.`,
     });
+    if (datos.aprobar) await registrarActividad(tx, c, { accion: "HABILITAR", entidadTipo: "USUARIO", entidadId: u.id, resumen: `habilitó a ${u.nombre} para usar el sistema` });
     if (!datos.aprobar) await cuentas.bloquear(u.authUserId, true);
   });
 }

@@ -22,11 +22,12 @@ import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { calcularLineaLista, estadoLineaLista, sugerirProveedor, type AlertaLista, type Candidato, type EstadoLineaLista } from "@/dominio/compras/lista";
 import { indicadoresCredito, type Semaforo } from "@/dominio/compras/credito";
-import { aNumeric, dec, redondear2, sumar } from "@/dominio/dinero/decimal";
+import { aNumeric, dec, redondearPesos, sumar } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { diasEntre, hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
-import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
+import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
 import { saldoNeto, umbralesSemaforo } from "./cuenta";
@@ -155,209 +156,271 @@ export async function actualizarComprado(tx: Transaccion, empresaId: string, jor
   }
 }
 
+export interface ResultadoLista {
+  listaId: string;
+  numero: string;
+  version: number;
+  borradores: number;
+  cambios: string[];
+  /** Pedidos que entraron en esta versión. */
+  agregados: number;
+  /** Pedidos confirmados que quedaron afuera (no se eligieron en el tablero). */
+  fueraDeLista: number;
+}
+
 /**
  * "Cerrar pedidos y generar lista de compra" o "Regenerar" (04 §5.c.1). Conserva lo comprado,
- * las cantidades fijadas a mano y los proveedores elegidos a mano (RN-049, RN-050).
+ * las cantidades fijadas a mano y los proveedores elegidos a mano (RN-049, RN-050). Sin elegir
+ * pedidos entran todos los confirmados; desde el tablero se eligen cuáles (los que ya estaban en
+ * la lista siguen).
  */
-export async function generarListaCompra(
-  db: BaseDatos,
-  authUserId: string,
-  fecha: FechaISO,
-): Promise<{ listaId: string; numero: string; version: number; borradores: number; cambios: string[] }> {
+export async function generarListaCompra(db: BaseDatos, authUserId: string, fecha: FechaISO, opciones: { pedidoIds?: readonly string[] } = {}): Promise<ResultadoLista> {
+  return ejecutarComoUsuario(db, authUserId, "lista_compra.generar", (tx, c) => armarLista(tx, c, fecha, opciones.pedidoIds ?? null));
+}
+
+/**
+ * Saca un pedido de la lista (vuelve a confirmado, afuera de la compra) y la rearma sin él. Lo ya
+ * comprado se conserva: si sobra, queda como sobrante.
+ */
+export async function sacarPedidoDeLista(db: BaseDatos, authUserId: string, pedidoId: string): Promise<ResultadoLista> {
   return ejecutarComoUsuario(db, authUserId, "lista_compra.generar", async (tx, c) => {
-    const j = await jornadaDeFecha(tx, fecha);
-    if (!j) throw new ErrorDeNegocio("VALIDACION", "No hay pedidos para ese día.");
-    if (j.estado === "REPARTIENDO" || j.estado === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "La jornada ya está repartiendo o cerrada: la lista no se regenera.");
-    const pedidos = await tx.select({ id: pedido.id, estado: pedido.estado }).from(pedido).where(eq(pedido.jornadaId, j.id));
-    const incluidos = pedidos.filter((p) => (ESTADOS_EN_LISTA as readonly string[]).includes(p.estado));
-    if (incluidos.length === 0) throw new ErrorDeNegocio("VALIDACION", "Para armar la lista hace falta al menos un pedido confirmado (RN-037).");
-    const borradores = pedidos.filter((p) => p.estado === "BORRADOR").length;
-
-    // 1. Necesidad por producto en unidad base (RN-043, RN-044)
-    const necesidades = await tx
-      .select({ productoId: pedidoItem.productoId, cantidad: sum(pedidoItem.cantidadBase).mapWith(String), notas: sql<string | null>`string_agg(distinct ${pedidoItem.observaciones}, ' / ')` })
-      .from(pedidoItem)
-      .where(and(inArray(pedidoItem.pedidoId, incluidos.map((p) => p.id)), eq(pedidoItem.cancelado, false)))
-      .groupBy(pedidoItem.productoId);
-    const necesidad = new Map(necesidades.map((n) => [n.productoId, n.cantidad ?? "0"]));
-    const comprado = await compradoPorProducto(tx, j.id);
-
-    const [existente] = await tx.select().from(listaCompra).where(eq(listaCompra.jornadaId, j.id)).for("update");
-    const anteriores = existente ? await tx.select().from(listaCompraItem).where(eq(listaCompraItem.listaCompraId, existente.id)) : [];
-    const productoIds = [...new Set([...necesidad.keys(), ...comprado.keys(), ...anteriores.map((a) => a.productoId)])];
-    const productos = productoIds.length
-      ? await tx
-          .select({ id: producto.id, nombre: producto.nombre, preferidoId: producto.proveedorPreferidoId, compraDefault: producto.presentacionCompraDefaultId })
-          .from(producto)
-          .innerJoin(categoria, eq(categoria.id, producto.categoriaId))
-          .where(inArray(producto.id, productoIds))
-          .orderBy(asc(categoria.orden), asc(categoria.nombre), asc(producto.nombre))
-      : [];
-
-    // 2. Ofertas candidatas y crédito disponible proyectado por proveedor (06 §9.4)
-    const [e] = await tx.select().from(empresa);
-    const hoy = hoyEnEmpresa(new Date(), e!.zonaHoraria);
-    const ofertas = productoIds.length
-      ? await tx
-          .select({
-            ofertaId: proveedorProducto.id,
-            productoId: proveedorProducto.productoId,
-            proveedorId: proveedorProducto.proveedorId,
-            presentacionId: proveedorProducto.presentacionId,
-            precio: proveedorProducto.precioVigente,
-            costoBase: proveedorProducto.costoBase,
-            factor: presentacion.factorABase,
-            fecha: proveedorProducto.fechaActualizacion,
-            limite: proveedor.limiteCredito,
-            condicion: proveedor.condicionPagoHabitual,
-          })
-          .from(proveedorProducto)
-          .innerJoin(proveedor, and(eq(proveedor.id, proveedorProducto.proveedorId), eq(proveedor.activo, true)))
-          .innerJoin(presentacion, and(eq(presentacion.id, proveedorProducto.presentacionId), eq(presentacion.activo, true), eq(presentacion.usableEnCompra, true)))
-          .where(
-            and(
-              inArray(proveedorProducto.productoId, productoIds),
-              eq(proveedorProducto.activo, true),
-              eq(proveedorProducto.disponible, true),
-              sql`${proveedorProducto.precioVigente} > 0`,
-            ),
-          )
-      : [];
-    const disponible = new Map<string, Decimal>();
-    for (const provId of new Set(ofertas.filter((o) => o.limite !== null && o.condicion !== "CONTADO").map((o) => o.proveedorId))) {
-      const limite = ofertas.find((o) => o.proveedorId === provId)!.limite!;
-      disponible.set(provId, dec(limite).minus(await saldoNeto(tx, provId)));
-    }
-    const ultimos = e!.estrategiaCosto === "ULTIMO_COSTO_REAL" && productoIds.length
-      ? await tx
-          .selectDistinctOn([compraItem.productoId], { productoId: compraItem.productoId, proveedorId: compra.proveedorId })
-          .from(compraItem)
-          .innerJoin(compra, and(eq(compra.id, compraItem.compraId), eq(compra.estado, "REGISTRADA")))
-          .where(inArray(compraItem.productoId, productoIds))
-          .orderBy(compraItem.productoId, desc(compra.fechaCompra))
-      : [];
-    const factores = productoIds.length
-      ? await tx.select({ id: presentacion.id, factor: presentacion.factorABase }).from(presentacion).where(inArray(presentacion.productoId, productoIds))
-      : [];
-
-    let lista = existente;
-    let numero: string;
-    if (!lista) {
-      const n = await siguienteNumero(tx, "LISTA_COMPRA");
-      numero = n.visible;
-      [lista] = await tx
-        .insert(listaCompra)
-        .values({ empresaId: c.empresaId, numero: n.numero, jornadaId: j.id, generadaPor: c.usuarioId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
-        .returning();
-    } else {
-      numero = formatearNumeroDocumento("LC-", lista.numero);
-    }
-
-    const cambios: string[] = [];
-    const costos: Decimal[] = [];
-    for (const prod of productos) {
-      const anterior = anteriores.find((a) => a.productoId === prod.id);
-      const necesidadBase = necesidad.get(prod.id) ?? "0";
-      const compradoBase = comprado.get(prod.id) ?? "0";
-      const candidatos: Candidato[] = ofertas
-        .filter((o) => o.productoId === prod.id)
-        .map((o) => ({
-          ofertaId: o.ofertaId,
-          proveedorId: o.proveedorId,
-          precio: o.precio,
-          factor: o.factor,
-          costoBase: o.costoBase,
-          sinControlDeCredito: o.limite === null || o.condicion === "CONTADO",
-          desactualizada: diasEntre(hoyEnEmpresa(o.fecha, e!.zonaHoraria), hoy) > e!.diasAlertaPrecioDesactualizado,
-          fechaActualizacion: o.fecha,
-        }));
-      const pendiente = Decimal.max(dec(necesidadBase).minus(compradoBase), 0);
-
-      // Proveedor: se respeta la asignación manual (RN-050)
-      const manual = anterior?.asignacionManual ? candidatos.find((x) => x.ofertaId === anterior.proveedorProductoSugeridoId) : undefined;
-      const sugerencia = manual
-        ? { candidato: manual, alertas: manual.desactualizada ? (["PRECIO_DESACTUALIZADO"] as AlertaLista[]) : [] }
-        : sugerirProveedor({
-            candidatos,
-            estrategia: e!.estrategiaCosto,
-            preferidoId: prod.preferidoId,
-            ultimoProveedorId: ultimos.find((u) => u.productoId === prod.id)?.proveedorId ?? null,
-            pendienteBase: pendiente,
-            disponibleProyectado: disponible,
-          });
-      const oferta = sugerencia.candidato;
-      const presentacionId = oferta ? ofertas.find((o) => o.ofertaId === oferta.ofertaId)!.presentacionId : prod.compraDefault;
-      const factor = oferta?.factor ?? factores.find((f) => f.id === prod.compraDefault)?.factor ?? "1";
-      const calculo = calcularLineaLista({
-        necesidadBase,
-        compradoBase,
-        factor,
-        cantidadManual: anterior?.ajusteManual ? anterior.cantidadPresentaciones : null,
-        marcadaNoConseguido: anterior?.estado === "NO_CONSEGUIDO",
-      });
-      const costo = oferta ? redondear2(calculo.cantidadPresentaciones.times(oferta.precio)) : null;
-      if (oferta && costo) {
-        costos.push(costo);
-        const d = disponible.get(oferta.proveedorId);
-        if (d !== undefined) disponible.set(oferta.proveedorId, d.minus(costo));
-      }
-      const necesidadModificada = Boolean(anterior && !dec(anterior.necesidadBase).eq(necesidadBase) && (dec(compradoBase).gt(0) || anterior.ajusteManual));
-      if (anterior && !dec(anterior.necesidadBase).eq(necesidadBase)) cambios.push(`${prod.nombre}: ${dec(anterior.necesidadBase)} → ${dec(necesidadBase)}`);
-      if (!anterior && existente) cambios.push(`${prod.nombre}: nuevo (${dec(necesidadBase)})`);
-
-      const valores = {
-        necesidadBase: aNumeric(necesidadBase, 3),
-        necesidadNetaBase: aNumeric(necesidadBase, 3),
-        compradoBase: aNumeric(compradoBase, 3),
-        presentacionSugeridaId: presentacionId,
-        cantidadPresentaciones: aNumeric(calculo.cantidadPresentaciones, 3),
-        aComprarBase: aNumeric(calculo.aComprarBase, 3),
-        sobrantePrevistoBase: aNumeric(calculo.sobrantePrevistoBase, 3),
-        proveedorSugeridoId: oferta?.proveedorId ?? null,
-        proveedorProductoSugeridoId: oferta?.ofertaId ?? null,
-        precioSugerido: oferta ? aNumeric(oferta.precio, 4) : null,
-        costoEstimado: costo ? aNumeric(costo, 2) : null,
-        estado: calculo.estado,
-        sinPedido: dec(necesidadBase).isZero() && dec(compradoBase).gt(0),
-        alertas: sugerencia.alertas,
-        necesidadModificada: anterior?.necesidadModificada || necesidadModificada,
-        observaciones: necesidades.find((n) => n.productoId === prod.id)?.notas ?? null,
-        actualizadoPor: c.usuarioId,
-      };
-      if (anterior) {
-        await tx.update(listaCompraItem).set(valores).where(eq(listaCompraItem.id, anterior.id));
-      } else {
-        await tx.insert(listaCompraItem).values({ ...valores, empresaId: c.empresaId, listaCompraId: lista!.id, productoId: prod.id, creadoPor: c.usuarioId });
-      }
-    }
-
-    const version = existente ? existente.version + 1 : 1;
-    await tx
-      .update(listaCompra)
-      .set({
-        version,
-        desactualizada: false,
-        generadaEn: sql`now()`,
-        generadaPor: c.usuarioId,
-        costoEstimadoTotal: aNumeric(sumar(costos), 2),
-        actualizadoPor: c.usuarioId,
-      })
-      .where(eq(listaCompra.id, lista!.id));
-    await tx
-      .update(pedido)
-      .set({ estado: "EN_COMPRA", actualizadoPor: c.usuarioId })
-      .where(and(eq(pedido.jornadaId, j.id), eq(pedido.estado, "CONFIRMADO")));
-    if (j.estado === "ABIERTA") await tx.update(jornada).set({ estado: "COMPRANDO", compraIniciadaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
-    await auditar(tx, {
-      empresaId: c.empresaId,
-      usuarioId: c.usuarioId,
-      accion: existente ? "MODIFICAR" : "CREAR",
-      entidad: "lista_compra",
-      entidadId: lista!.id,
-      resumen: `${numero} versión ${version} para el ${fecha}.${cambios.length ? ` Cambios: ${cambios.join("; ")}.` : ""}`,
+    const [p] = await tx
+      .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha })
+      .from(pedido)
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .where(eq(pedido.id, pedidoId))
+      .for("update", { of: pedido });
+    if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
+    if (p.estado !== "EN_COMPRA") throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Ese pedido no está en la lista de compra.");
+    const [otros] = await tx.select({ n: sql<number>`count(*)` }).from(pedido).where(and(eq(pedido.jornadaId, p.jornadaId), eq(pedido.estado, "EN_COMPRA")));
+    if (Number(otros?.n ?? 0) <= 1) throw new ErrorDeNegocio("VALIDACION", "Es el único pedido de la lista: si no se compra nada, cancelá el pedido.");
+    await tx.update(pedido).set({ estado: "CONFIRMADO", actualizadoPor: c.usuarioId }).where(eq(pedido.id, p.id));
+    const r = await armarLista(tx, c, p.fecha, []);
+    await registrarActividad(tx, c, {
+      accion: "SACAR_DE_LISTA",
+      entidadTipo: "PEDIDO",
+      entidadId: p.id,
+      jornadaId: p.jornadaId,
+      resumen: `sacó el pedido ${formatearNumeroDocumento("PED-", p.numero)} de la lista de compra`,
     });
-    return { listaId: lista!.id, numero, version, borradores, cambios };
+    return r;
   });
+}
+
+async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, seleccion: readonly string[] | null): Promise<ResultadoLista> {
+  const j = await jornadaDeFecha(tx, fecha);
+  if (!j) throw new ErrorDeNegocio("VALIDACION", "No hay pedidos para ese día.");
+  if (j.estado === "REPARTIENDO" || j.estado === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "La jornada ya está repartiendo o cerrada: la lista no se regenera.");
+  const pedidos = await tx.select({ id: pedido.id, estado: pedido.estado, numero: pedido.numero }).from(pedido).where(eq(pedido.jornadaId, j.id));
+  let incluidos = pedidos.filter((p) => (ESTADOS_EN_LISTA as readonly string[]).includes(p.estado));
+  if (seleccion) {
+    const elegidos = new Set(seleccion);
+    if ([...elegidos].some((id) => !pedidos.some((p) => p.id === id))) throw new ErrorDeNegocio("VALIDACION", "Algunos de los pedidos elegidos son de otro día.");
+    const noConfirmados = pedidos.filter((p) => elegidos.has(p.id) && !(ESTADOS_EN_LISTA as readonly string[]).includes(p.estado));
+    if (noConfirmados.length > 0) {
+      throw new ErrorDeNegocio("VALIDACION", `Para entrar en la lista, un pedido tiene que estar confirmado: ${noConfirmados.map((p) => formatearNumeroDocumento("PED-", p.numero)).join(", ")}.`);
+    }
+    incluidos = incluidos.filter((p) => p.estado === "EN_COMPRA" || elegidos.has(p.id));
+  }
+  if (incluidos.length === 0) throw new ErrorDeNegocio("VALIDACION", "Para armar la lista hace falta al menos un pedido confirmado (RN-037).");
+  const borradores = pedidos.filter((p) => p.estado === "BORRADOR").length;
+
+  // 1. Necesidad por producto en unidad base (RN-043, RN-044)
+  const necesidades = await tx
+    .select({ productoId: pedidoItem.productoId, cantidad: sum(pedidoItem.cantidadBase).mapWith(String), notas: sql<string | null>`string_agg(distinct ${pedidoItem.observaciones}, ' / ')` })
+    .from(pedidoItem)
+    .where(and(inArray(pedidoItem.pedidoId, incluidos.map((p) => p.id)), eq(pedidoItem.cancelado, false)))
+    .groupBy(pedidoItem.productoId);
+  const necesidad = new Map(necesidades.map((n) => [n.productoId, n.cantidad ?? "0"]));
+  const comprado = await compradoPorProducto(tx, j.id);
+
+  const [existente] = await tx.select().from(listaCompra).where(eq(listaCompra.jornadaId, j.id)).for("update");
+  const anteriores = existente ? await tx.select().from(listaCompraItem).where(eq(listaCompraItem.listaCompraId, existente.id)) : [];
+  const productoIds = [...new Set([...necesidad.keys(), ...comprado.keys(), ...anteriores.map((a) => a.productoId)])];
+  const productos = productoIds.length
+    ? await tx
+        .select({ id: producto.id, nombre: producto.nombre, preferidoId: producto.proveedorPreferidoId, compraDefault: producto.presentacionCompraDefaultId })
+        .from(producto)
+        .innerJoin(categoria, eq(categoria.id, producto.categoriaId))
+        .where(inArray(producto.id, productoIds))
+        .orderBy(asc(categoria.orden), asc(categoria.nombre), asc(producto.nombre))
+    : [];
+
+  // 2. Ofertas candidatas y crédito disponible proyectado por proveedor (06 §9.4)
+  const [e] = await tx.select().from(empresa);
+  const hoy = hoyEnEmpresa(new Date(), e!.zonaHoraria);
+  const ofertas = productoIds.length
+    ? await tx
+        .select({
+          ofertaId: proveedorProducto.id,
+          productoId: proveedorProducto.productoId,
+          proveedorId: proveedorProducto.proveedorId,
+          presentacionId: proveedorProducto.presentacionId,
+          precio: proveedorProducto.precioVigente,
+          costoBase: proveedorProducto.costoBase,
+          factor: presentacion.factorABase,
+          fecha: proveedorProducto.fechaActualizacion,
+          limite: proveedor.limiteCredito,
+          condicion: proveedor.condicionPagoHabitual,
+        })
+        .from(proveedorProducto)
+        .innerJoin(proveedor, and(eq(proveedor.id, proveedorProducto.proveedorId), eq(proveedor.activo, true)))
+        .innerJoin(presentacion, and(eq(presentacion.id, proveedorProducto.presentacionId), eq(presentacion.activo, true), eq(presentacion.usableEnCompra, true)))
+        .where(
+          and(
+            inArray(proveedorProducto.productoId, productoIds),
+            eq(proveedorProducto.activo, true),
+            eq(proveedorProducto.disponible, true),
+            sql`${proveedorProducto.precioVigente} > 0`,
+          ),
+        )
+    : [];
+  const disponible = new Map<string, Decimal>();
+  for (const provId of new Set(ofertas.filter((o) => o.limite !== null && o.condicion !== "CONTADO").map((o) => o.proveedorId))) {
+    const limite = ofertas.find((o) => o.proveedorId === provId)!.limite!;
+    disponible.set(provId, dec(limite).minus(await saldoNeto(tx, provId)));
+  }
+  const ultimos = e!.estrategiaCosto === "ULTIMO_COSTO_REAL" && productoIds.length
+    ? await tx
+        .selectDistinctOn([compraItem.productoId], { productoId: compraItem.productoId, proveedorId: compra.proveedorId })
+        .from(compraItem)
+        .innerJoin(compra, and(eq(compra.id, compraItem.compraId), eq(compra.estado, "REGISTRADA")))
+        .where(inArray(compraItem.productoId, productoIds))
+        .orderBy(compraItem.productoId, desc(compra.fechaCompra))
+    : [];
+  const factores = productoIds.length
+    ? await tx.select({ id: presentacion.id, factor: presentacion.factorABase }).from(presentacion).where(inArray(presentacion.productoId, productoIds))
+    : [];
+
+  let lista = existente;
+  let numero: string;
+  if (!lista) {
+    const n = await siguienteNumero(tx, "LISTA_COMPRA");
+    numero = n.visible;
+    [lista] = await tx
+      .insert(listaCompra)
+      .values({ empresaId: c.empresaId, numero: n.numero, jornadaId: j.id, generadaPor: c.usuarioId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
+      .returning();
+  } else {
+    numero = formatearNumeroDocumento("LC-", lista.numero);
+  }
+
+  const cambios: string[] = [];
+  const costos: Decimal[] = [];
+  for (const prod of productos) {
+    const anterior = anteriores.find((a) => a.productoId === prod.id);
+    const necesidadBase = necesidad.get(prod.id) ?? "0";
+    const compradoBase = comprado.get(prod.id) ?? "0";
+    const candidatos: Candidato[] = ofertas
+      .filter((o) => o.productoId === prod.id)
+      .map((o) => ({
+        ofertaId: o.ofertaId,
+        proveedorId: o.proveedorId,
+        precio: o.precio,
+        factor: o.factor,
+        costoBase: o.costoBase,
+        sinControlDeCredito: o.limite === null || o.condicion === "CONTADO",
+        desactualizada: diasEntre(hoyEnEmpresa(o.fecha, e!.zonaHoraria), hoy) > e!.diasAlertaPrecioDesactualizado,
+        fechaActualizacion: o.fecha,
+      }));
+    const pendiente = Decimal.max(dec(necesidadBase).minus(compradoBase), 0);
+
+    // Proveedor: se respeta la asignación manual (RN-050)
+    const manual = anterior?.asignacionManual ? candidatos.find((x) => x.ofertaId === anterior.proveedorProductoSugeridoId) : undefined;
+    const sugerencia = manual
+      ? { candidato: manual, alertas: manual.desactualizada ? (["PRECIO_DESACTUALIZADO"] as AlertaLista[]) : [] }
+      : sugerirProveedor({
+          candidatos,
+          estrategia: e!.estrategiaCosto,
+          preferidoId: prod.preferidoId,
+          ultimoProveedorId: ultimos.find((u) => u.productoId === prod.id)?.proveedorId ?? null,
+          pendienteBase: pendiente,
+          disponibleProyectado: disponible,
+        });
+    const oferta = sugerencia.candidato;
+    const presentacionId = oferta ? ofertas.find((o) => o.ofertaId === oferta.ofertaId)!.presentacionId : prod.compraDefault;
+    const factor = oferta?.factor ?? factores.find((f) => f.id === prod.compraDefault)?.factor ?? "1";
+    const calculo = calcularLineaLista({
+      necesidadBase,
+      compradoBase,
+      factor,
+      cantidadManual: anterior?.ajusteManual ? anterior.cantidadPresentaciones : null,
+      marcadaNoConseguido: anterior?.estado === "NO_CONSEGUIDO",
+    });
+    const costo = oferta ? redondearPesos(calculo.cantidadPresentaciones.times(oferta.precio)) : null;
+    if (oferta && costo) {
+      costos.push(costo);
+      const d = disponible.get(oferta.proveedorId);
+      if (d !== undefined) disponible.set(oferta.proveedorId, d.minus(costo));
+    }
+    const necesidadModificada = Boolean(anterior && !dec(anterior.necesidadBase).eq(necesidadBase) && (dec(compradoBase).gt(0) || anterior.ajusteManual));
+    if (anterior && !dec(anterior.necesidadBase).eq(necesidadBase)) cambios.push(`${prod.nombre}: ${dec(anterior.necesidadBase)} → ${dec(necesidadBase)}`);
+    if (!anterior && existente) cambios.push(`${prod.nombre}: nuevo (${dec(necesidadBase)})`);
+
+    const valores = {
+      necesidadBase: aNumeric(necesidadBase, 3),
+      necesidadNetaBase: aNumeric(necesidadBase, 3),
+      compradoBase: aNumeric(compradoBase, 3),
+      presentacionSugeridaId: presentacionId,
+      cantidadPresentaciones: aNumeric(calculo.cantidadPresentaciones, 3),
+      aComprarBase: aNumeric(calculo.aComprarBase, 3),
+      sobrantePrevistoBase: aNumeric(calculo.sobrantePrevistoBase, 3),
+      proveedorSugeridoId: oferta?.proveedorId ?? null,
+      proveedorProductoSugeridoId: oferta?.ofertaId ?? null,
+      precioSugerido: oferta ? aNumeric(oferta.precio, 4) : null,
+      costoEstimado: costo ? aNumeric(costo, 2) : null,
+      estado: calculo.estado,
+      sinPedido: dec(necesidadBase).isZero() && dec(compradoBase).gt(0),
+      alertas: sugerencia.alertas,
+      necesidadModificada: anterior?.necesidadModificada || necesidadModificada,
+      observaciones: necesidades.find((n) => n.productoId === prod.id)?.notas ?? null,
+      actualizadoPor: c.usuarioId,
+    };
+    if (anterior) {
+      await tx.update(listaCompraItem).set(valores).where(eq(listaCompraItem.id, anterior.id));
+    } else {
+      await tx.insert(listaCompraItem).values({ ...valores, empresaId: c.empresaId, listaCompraId: lista!.id, productoId: prod.id, creadoPor: c.usuarioId });
+    }
+  }
+
+  const version = existente ? existente.version + 1 : 1;
+  await tx
+    .update(listaCompra)
+    .set({
+      version,
+      desactualizada: false,
+      generadaEn: sql`now()`,
+      generadaPor: c.usuarioId,
+      costoEstimadoTotal: aNumeric(sumar(costos), 2),
+      actualizadoPor: c.usuarioId,
+    })
+    .where(eq(listaCompra.id, lista!.id));
+  const aMover = incluidos.filter((p) => p.estado === "CONFIRMADO").map((p) => p.id);
+  if (aMover.length > 0) await tx.update(pedido).set({ estado: "EN_COMPRA", actualizadoPor: c.usuarioId }).where(inArray(pedido.id, aMover));
+  if (j.estado === "ABIERTA") await tx.update(jornada).set({ estado: "COMPRANDO", compraIniciadaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
+  await auditar(tx, {
+    empresaId: c.empresaId,
+    usuarioId: c.usuarioId,
+    accion: existente ? "MODIFICAR" : "CREAR",
+    entidad: "lista_compra",
+    entidadId: lista!.id,
+    resumen: `${numero} versión ${version} para el ${fecha}.${cambios.length ? ` Cambios: ${cambios.join("; ")}.` : ""}`,
+  });
+  const fueraDeLista = pedidos.filter((p) => p.estado === "CONFIRMADO" && !aMover.includes(p.id)).length;
+  if (seleccion === null || aMover.length > 0) {
+    const dia = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
+    const cuantos = (n: number) => (n === 1 ? "1 pedido" : `${n} pedidos`);
+    await registrarActividad(tx, c, {
+      accion: "ARMAR_LISTA",
+      entidadTipo: "LISTA_COMPRA",
+      entidadId: lista!.id,
+      jornadaId: j.id,
+      resumen: existente
+        ? `actualizó la lista de compra del ${dia}${aMover.length ? ` y agregó ${cuantos(aMover.length)}` : ""}`
+        : `armó la lista de compra del ${dia} con ${cuantos(incluidos.length)}`,
+    });
+  }
+  return { listaId: lista!.id, numero, version, borradores, cambios, agregados: aMover.length, fueraDeLista };
 }
 
 /** P-50: la lista de un día agrupada por proveedor (plan de compra, 04 §5.c.3). */
@@ -522,7 +585,7 @@ export async function cambiarLineaLista(db: BaseDatos, authUserId: string, datos
           alertas: [],
         }),
         precioSugerido: precio,
-        costoEstimado: precio ? aNumeric(redondear2(calculo.cantidadPresentaciones.times(precio)), 2) : null,
+        costoEstimado: precio ? aNumeric(redondearPesos(calculo.cantidadPresentaciones.times(precio)), 2) : null,
         actualizadoPor: c.usuarioId,
       })
       .where(eq(listaCompraItem.id, l.id));

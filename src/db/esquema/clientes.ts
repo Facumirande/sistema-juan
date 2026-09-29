@@ -89,5 +89,9 @@ export const puntoEntrega = pgTable(
     check("punto_entrega_nombre_no_vacio", sql`char_length(trim(${t.nombre})) > 0`),
     check("punto_entrega_direccion_no_vacia", sql`char_length(trim(${t.direccion})) > 0`),
     check("punto_entrega_dias", sql`${t.diasEntrega} <@ array[1,2,3,4,5,6,7]::smallint[]`),
+    check(
+      "punto_entrega_coordenadas",
+      sql`(${t.latitud} is null) = (${t.longitud} is null) and coalesce(${t.latitud} between -90 and 90, true) and coalesce(${t.longitud} between -180 and 180, true)`,
+    ),
   ],
 );

@@ -4,9 +4,11 @@ import { z } from "zod";
 import { auditar, diferencias } from "@/db/auditoria";
 import { categoria, empresa, presentacion, producto, proveedor, proveedorProducto, unidadMedida } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
+import { codigoSugerido } from "@/dominio/catalogo/productos";
 import { dec } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { ContextoUsuario } from "@/modulos/seguridad/contexto";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
 import { numeroObligatorio, numeroOpcional, textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
@@ -31,7 +33,14 @@ export interface ProductoListado {
   id: string;
   codigo: string;
   nombre: string;
+  categoriaId: string;
   categoria: string;
+  /** VERDURA, FRUTA u OTRO: para el dibujo cuando el nombre no lo dice. */
+  grupo: string;
+  /** Envase con el que se compra habitualmente ("Cajón 18 kg"). */
+  presentacionCompra: string | null;
+  /** Solo con `precios.ver_costos`: el costo por unidad base más barato entre los proveedores. */
+  mejorCosto: string | null;
   unidadBase: UnidadBase;
   presentaciones: number;
   ofertas: number;
@@ -87,6 +96,8 @@ const camposProducto = {
 const esquemaNuevoProducto = z
   .object({
     ...camposProducto,
+    /** Vacío = se arma solo con el nombre ("Tomate redondo" → "TOMA-R"). */
+    codigo: textoOpcional(20).transform((v) => v?.toUpperCase() ?? null),
     /** Presentación de compra opcional al crear (ej. "Cajón 18 kg", 18). */
     presentacionCompraNombre: textoOpcional(60),
     presentacionCompraFactor: numeroOpcional(MENSAJE_FACTOR),
@@ -118,9 +129,10 @@ export async function listarProductos(
   authUserId: string,
   filtros: { texto?: string; categoriaId?: string; estado?: "activos" | "inactivos" | "todos" } = {},
 ): Promise<ProductoListado[]> {
-  return ejecutarComoUsuario(db, authUserId, "productos.ver", async (tx) => {
+  return ejecutarComoUsuario(db, authUserId, "productos.ver", async (tx, c) => {
     const texto = filtros.texto?.trim();
     const estado = filtros.estado ?? "activos";
+    const verCostos = c.permisos.tiene("precios.ver_costos");
     const presentaciones = tx
       .select({ productoId: presentacion.productoId, n: count().as("n_presentaciones") })
       .from(presentacion)
@@ -138,7 +150,11 @@ export async function listarProductos(
         id: producto.id,
         codigo: producto.codigo,
         nombre: producto.nombre,
+        categoriaId: categoria.id,
         categoria: categoria.nombre,
+        grupo: categoria.grupo,
+        presentacionCompra: sql<string | null>`(select pr.nombre from ${presentacion} pr where pr.id = producto.presentacion_compra_default_id)`,
+        mejorCosto: sql<string | null>`(select min(pp.costo_base) from ${proveedorProducto} pp where pp.producto_id = producto.id and pp.activo and pp.disponible and pp.precio_vigente > 0)`,
         unidadBase: producto.unidadBase,
         presentaciones: presentaciones.n,
         ofertas: ofertas.n,
@@ -158,7 +174,7 @@ export async function listarProductos(
         ),
       )
       .orderBy(asc(categoria.orden), asc(categoria.nombre), asc(producto.nombre));
-    return filas.map((f) => ({ ...f, presentaciones: Number(f.presentaciones ?? 0), ofertas: Number(f.ofertas ?? 0) }));
+    return filas.map((f) => ({ ...f, mejorCosto: verCostos ? f.mejorCosto : null, presentaciones: Number(f.presentaciones ?? 0), ofertas: Number(f.ofertas ?? 0) }));
   });
 }
 
@@ -264,7 +280,8 @@ async function exigirNombrePresentacionLibre(tx: Transaccion, productoId: string
 export async function crearProducto(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaNuevoProducto>): Promise<string> {
   const d = validar(esquemaNuevoProducto, datos);
   return ejecutarComoUsuario(db, authUserId, "productos.editar", async (tx, c) => {
-    await exigirProductoLibre(tx, d.codigo, d.nombre);
+    const codigo = d.codigo ?? codigoSugerido(d.nombre, new Set((await tx.select({ codigo: producto.codigo }).from(producto)).map((p) => p.codigo)));
+    await exigirProductoLibre(tx, codigo, d.nombre);
     await exigirCategoriaActiva(tx, d.categoriaId);
     const [e] = await tx.select({ alicuota: empresa.alicuotaIvaDefault }).from(empresa);
 
@@ -272,7 +289,7 @@ export async function crearProducto(db: BaseDatos, authUserId: string, datos: z.
       .insert(producto)
       .values({
         empresaId: c.empresaId,
-        codigo: d.codigo,
+        codigo,
         nombre: d.nombre,
         nombreCorto: d.nombreCorto,
         categoriaId: d.categoriaId,
@@ -311,9 +328,10 @@ export async function crearProducto(db: BaseDatos, authUserId: string, datos: z.
       accion: "CREAR",
       entidad: "producto",
       entidadId: productoId,
-      resumen: `Alta del producto ${d.codigo} · ${d.nombre}.`,
-      datosDespues: { codigo: d.codigo, nombre: d.nombre, unidadBase: d.unidadBase, categoriaId: d.categoriaId },
+      resumen: `Alta del producto ${codigo} · ${d.nombre}.`,
+      datosDespues: { codigo, nombre: d.nombre, unidadBase: d.unidadBase, categoriaId: d.categoriaId },
     });
+    await registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "PRODUCTO", entidadId: productoId, resumen: `agregó el producto ${d.nombre}` });
     return productoId;
   });
 }
@@ -602,4 +620,14 @@ export async function listarPresentacionesDeVenta(
       .where(and(eq(producto.activo, true), eq(presentacion.activo, true), eq(presentacion.usableEnVenta, true)))
       .orderBy(asc(producto.nombre), asc(presentacion.factorABase)),
   );
+}
+
+/** Para el ejemplo del alta guiada: el recargo general y el de cada categoría (el que se usaría si el producto no tiene uno). */
+export async function recargosParaAlta(db: BaseDatos, authUserId: string): Promise<{ global: string; porCategoria: Record<string, string | null>; codigos: string[] }> {
+  return ejecutarComoUsuario(db, authUserId, "productos.ver", async (tx) => {
+    const [e] = await tx.select({ recargo: empresa.recargoGlobal }).from(empresa);
+    const categorias = await tx.select({ id: categoria.id, recargo: categoria.recargoDefault }).from(categoria);
+    const codigos = await tx.select({ codigo: producto.codigo }).from(producto);
+    return { global: e?.recargo ?? "30", porCategoria: Object.fromEntries(categorias.map((x) => [x.id, x.recargo])), codigos: codigos.map((x) => x.codigo) };
+  });
 }

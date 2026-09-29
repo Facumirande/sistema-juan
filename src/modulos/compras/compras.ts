@@ -21,7 +21,7 @@ import {
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { estadoPagoCompra, indicadoresCredito, verificarLimite, type EstadoPagoCompra, type IndicadoresCredito } from "@/dominio/compras/credito";
-import { aNumeric, dec, redondear2, sumar } from "@/dominio/dinero/decimal";
+import { aNumeric, dec, redondearPesos, sumar } from "@/dominio/dinero/decimal";
 import { formatearMoneda, formatearPorcentaje } from "@/dominio/dinero/formato";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa, sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
@@ -30,6 +30,7 @@ import { aUnidadBase, costoPorUnidadBase } from "@/dominio/unidades/unidades";
 import { jornadaParaPedidos } from "@/modulos/pedidos/jornadas";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
 import { actualizarOfertaPorCompra, preciosVigentes } from "@/modulos/precios-compra/ofertas";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, numeroOpcional, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -114,7 +115,7 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
         factor: pr.factor,
         cantidadBase: aUnidadBase(i.cantidad, pr.factor, pr.admiteFraccion),
         costoBase: costoPorUnidadBase(i.precio, pr.factor),
-        subtotal: redondear2(dec(i.cantidad).times(i.precio)),
+        subtotal: redondearPesos(dec(i.cantidad).times(i.precio)),
       };
     });
     const total = sumar(items.map((i) => i.subtotal));
@@ -287,6 +288,7 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
     await recalcularPedidosPendientes(tx, { productoIds: [...new Set(items.map((i) => i.productoId))] });
 
     const credito = indicadoresCredito(await saldoNeto(tx, prov.id), prov.limiteCredito, await umbralesSemaforo(tx));
+    await registrarActividad(tx, c, { accion: "COMPRAR", entidadTipo: "COMPRA", entidadId: nueva!.id, jornadaId: j.id, resumen: `registró la compra ${visible} a ${prov.nombre}` });
     return {
       compraId: nueva!.id,
       numero: visible,
@@ -355,6 +357,7 @@ export async function anularCompra(db: BaseDatos, authUserId: string, datos: { c
     await aplicarSaldoAFavor(tx, c, cp.proveedorId);
 
     await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "compra", entidadId: cp.id, resumen: `Anulación de ${visible}.`, motivo });
+    await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "COMPRA", entidadId: cp.id, jornadaId: cp.jornadaId, resumen: `anuló la compra ${visible} (${motivo})` });
     if (cp.jornadaId) await actualizarComprado(tx, c.empresaId, cp.jornadaId);
     const productos = await tx.selectDistinct({ id: compraItem.productoId }).from(compraItem).where(eq(compraItem.compraId, cp.id));
     await recalcularPedidosPendientes(tx, { productoIds: productos.map((p) => p.id) });

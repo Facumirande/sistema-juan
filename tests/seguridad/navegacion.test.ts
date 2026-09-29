@@ -14,7 +14,7 @@ describe("menú por permisos (08 §2.2)", () => {
   it("el REPARTIDOR ve su reparto, entregas y sus documentos, nada con precios ni deudas (08 §6)", () => {
     const menu = menuPara(ROLES_SISTEMA.REPARTIDOR.porDefecto);
     expect(menu.map((g) => g.grupo)).toEqual(["Día de trabajo", "Cada paso por separado"]);
-    expect(menu[0]?.items.map((i) => i.etiqueta)).toEqual(["Hoy", "Mi reparto", "Todos los días"]);
+    expect(menu[0]?.items.map((i) => i.etiqueta)).toEqual(["Hoy", "Actividad y notas", "Mi reparto", "Todos los días"]);
     expect(menu[1]?.items.map((i) => i.etiqueta)).toEqual(["Entregas", "Documentos emitidos"]);
   });
 

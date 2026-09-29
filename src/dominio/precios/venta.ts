@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 
-import { dec, redondear2, redondear4, type ValorDecimal } from "../dinero/decimal";
+import { dec, redondear2, redondear4, redondearPesos, type ValorDecimal } from "../dinero/decimal";
 import { ErrorDeNegocio } from "../errores";
 import { diasEntre, type FechaISO } from "../fechas/fechas";
 
@@ -26,7 +26,7 @@ export const DIAS_AVISO_PRECIO_FIJO = 15;
 /** Redondeo del precio de venta (05 §5.6, RN-081). En CERCANO la mitad va hacia arriba. */
 export function redondearPrecio(valor: ValorDecimal, multiplo: ValorDecimal, modo: ModoRedondeo): Decimal {
   const v = dec(valor);
-  if (modo === "NINGUNO") return redondear2(v);
+  if (modo === "NINGUNO") return redondearPesos(v);
   const m = dec(multiplo);
   if (m.lte(0)) throw new ErrorDeNegocio("VALIDACION", "El múltiplo de redondeo tiene que ser mayor que 0.");
   const q = v.div(m);
@@ -216,7 +216,7 @@ export function calcularPrecioVenta(d: DatosPrecioVenta): PrecioVenta {
 
   return {
     precioUnitario: redondear4(precioBase),
-    precioPresentacion: redondear2(precioBase.times(factor)),
+    precioPresentacion: redondearPesos(precioBase.times(factor)),
     costoUnitario: costo,
     origenCosto: d.costo.origen,
     recargoAplicado: recargo,
@@ -231,7 +231,7 @@ export function calcularPrecioVenta(d: DatosPrecioVenta): PrecioVenta {
 
 /** Subtotal de una línea: cantidad en unidad base × precio por unidad base, 2 decimales (05 §5.7 regla 5). */
 export function subtotalLinea(cantidadBase: ValorDecimal, precioUnitario: ValorDecimal): Decimal {
-  return redondear2(dec(cantidadBase).times(precioUnitario));
+  return redondearPesos(dec(cantidadBase).times(precioUnitario));
 }
 
 // ——— Estados (04 §5.b, RN-024 y RN-036) ———

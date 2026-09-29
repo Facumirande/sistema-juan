@@ -125,9 +125,10 @@ Enfoque: **M** = mobile-first; **D** = desktop-first (usable en celular); **M/D*
 | ID | Pantalla | Ruta | Módulo | Enfoque | Permiso para abrir | Datos | Fase |
 |---|---|---|---|---|---|---|---|
 | P-01 | Ingreso y configuración inicial | `/login`, `/configuracion-inicial` | M18 | M/D | Pública | — | MVP |
-| P-02 | Hoy (día de trabajo paso a paso) | `/inicio`, `/inicio?fecha=` | M16 | M | Sesión | O +V +C +F | MVP |
+| P-02 | Hoy: tablero de pedidos y día paso a paso | `/inicio`, `/inicio?fecha=`, `?vista=pasos`, `?pedido=` | M06/M16 | M/D | Sesión | O +V +C +F | MVP |
 | P-03 | Mi cuenta | `/mi-cuenta` | M18 | M/D | Sesión | P (propios) | MVP |
 | P-10 | Productos | `/productos` | M01 | D | `productos.ver` | O | MVP |
+| P-10b | Nuevo producto (guiado) | `/productos/nuevo` | M01 | M/D | `productos.editar` | O +M | MVP (uso interno) |
 | P-11 | Ficha de producto | `/productos/[id]` | M01 | D | `productos.ver` | O +C +V +M | MVP |
 | P-12 | Categorías | `/productos/categorias` | M01 | D | `productos.ver` | O +M | MVP |
 | P-15 | Clientes | `/clientes` | M02 | M/D | `clientes.ver` | O | MVP |
@@ -168,6 +169,7 @@ Enfoque: **M** = mobile-first; **D** = desktop-first (usable en celular); **M/D*
 | P-76 | Armar reparto | `/repartos/[id]` | M11 | D | `repartos.gestionar` | O | MVP |
 | P-77 | Mi reparto | `/repartos/mios` | M11 | M | `repartos.ver_propios` | O | MVP |
 | P-78 | Confirmar entrega | `/repartos/mios/entrega/[id]` | M11 | M | `entregas.confirmar` | O | MVP |
+| P-78b | Viaje de entrega (recorrido y GPS) | `/viaje`, `/viaje?fecha=` | M11 | M/D | `repartos.ver` | O | MVP (uso interno) |
 | P-79 | Entregas de la jornada | `/entregas` | M11 | M/D | `entregas.ver` | O +V | MVP |
 | P-80 | Detalle de entrega | `/entregas/[id]` | M11/M12 | D | `entregas.ver` | O +V +C +M | MVP |
 | P-85 | Facturación | `/facturacion` | M13 | D | `facturacion.ver` | V | MVP |
@@ -177,6 +179,7 @@ Enfoque: **M** = mobile-first; **D** = desktop-first (usable en celular); **M/D*
 | P-90 | Reportes | `/reportes`, `/reportes/[codigo]` | M16 | D | `reportes.ver` | según reporte | MVP básico |
 | P-91 | Balance (gráficos en el tiempo) | `/balance` | M16 | D | `reportes.ver` | V C M F | MVP (uso interno) |
 | P-93 | Movimientos (registro) | `/balance/movimientos` | M16 | D | `reportes.ver` | V C F | MVP (uso interno) |
+| P-94 | Actividad y notas | `/actividad`, `?ver=notas`, `?persona=` | M20 | M/D | Sesión (cada entrada, según el permiso de ver lo que nombra) | O | MVP (uso interno) |
 | P-92 | Documentos emitidos | `/documentos` | M12 | D | Algún permiso `documentos.imprimir_*` | según documento | MVP |
 | P-95 | Configuración de la empresa | `/configuracion` | M17 | D | `configuracion.ver` | M | MVP |
 | P-96 | Usuarios y roles | `/usuarios` | M18 | D | `usuarios.administrar` | P | MVP |
@@ -222,6 +225,17 @@ Formato de cada pantalla: **quién la usa**, **qué muestra** y una tabla de **a
 - Después del primer ingreso en el celular: sugerencia de **instalar la app** (PWA) con instrucciones para Android y iPhone.
 
 #### P-02 Hoy (día de trabajo paso a paso)
+
+**Tablero de pedidos (28/09/2026, segunda versión, pedido del usuario: "tipo Trello").** "Hoy" abre en el **tablero**; la pestaña "☰ Paso a paso" muestra los siete pasos de abajo. El tablero imita la presentación y la mecánica de Trello: fondo de color, listas grises con tarjetas blancas, etiquetas de colores, fecha de vencimiento, miembros y la tarjeta que se abre encima.
+
+- **Listas (columnas):** Por confirmar (borradores) · Confirmados · En la lista de compra · Preparando · En camino · Entregados. Los cancelados, plegados abajo. En el celular, chips para saltar a cada lista.
+- **Tarjeta:** franja con las etiquetas (tipo de cliente, "Urgente" o "Sin apuro", "Llegó tarde"), cliente y número, y abajo los indicadores: ⏰ plazo (rojo vencido, amarillo pronto — 2 h o menos —, verde listo), 💬 notas con punto si hay sin leer, ☑ avance (comprado o preparado de N líneas), 🧺 cantidad de productos, total estimado (con `precios.ver_venta`) y el avatar de quien se encarga. Ordenadas por prioridad, plazo y número.
+- **Arrastrar** una tarjeta a otra lista hace la acción que corresponde: a Confirmados confirma, a "En la lista de compra" la agrega a la lista, y de ahí a Confirmados la saca. Lo demás avanza con su paso.
+- **Elegir pedidos:** "☑ Elegir pedidos" pone casillas en las tarjetas y "Elegir todos" en cada lista; "🛒 Elegir todo lo que falta comprar" marca de una vez los confirmados que no están en la lista. Con pedidos elegidos aparece una barra fija: **armar la lista de compra con estos**, confirmar, sacar de la lista, cambiar la prioridad o quién se encarga.
+- **La lista de compra por pedidos elegidos:** se arma con los pedidos que se eligen (o todos los confirmados); los que se confirman después quedan "fuera de la lista" y el paso 2 lo avisa. La lista queda desactualizada solo si cambia un pedido que ya está en ella.
+- **Filtros:** por persona (avatares) y "Urgentes". **"+ Agregar un pedido"** al pie de Por confirmar crea el borrador con el cliente elegido.
+- **Tarjeta abierta** (`?pedido=`, se cierra con Esc o tocando afuera): quién se encarga, etiquetas, plazo, dónde se entrega (con Google Maps y Waze), observaciones, los productos como lista de control con su avance, las **notas** (escribir una "para" alguien) y el historial con el nombre de cada persona. Al costado: prioridad, miembro, plazo (desde/hasta), confirmar, agregar o sacar de la lista y abrir el pedido completo. Abrirla marca sus notas como leídas.
+- Arriba siguen los avisos (notas sin leer, pedidos de acceso, deuda vencida o por vencer).
 
 **Como quedó construida (28/09/2026, uso interno).** Es la pantalla con la que arranca el día. Arriba, los avisos (personas esperando acceso, deuda vencida o por vencer con proveedores); después, los días cercanos para elegir (ayer, hoy, mañana y las jornadas sin cerrar), el día elegido con su barra de avance, y los **siete pasos** en orden:
 
@@ -271,7 +285,7 @@ El paso que toca ("Ahora") se muestra abierto, con una explicación corta y sus 
 
 #### P-03 Mi cuenta
 
-Datos propios, cambio de contraseña, activar MFA, tamaño de letra (normal / grande, útil en el mercado), accesos fijados en la barra inferior, instalar la app, cerrar sesión en este dispositivo.
+**Construida (28/09/2026):** **Tu perfil** — nombre y color del avatar con los que te ven los demás en las tarjetas, las notas y la actividad (con vista previa; los colores que ya usa otra persona llevan sus iniciales; sin elegir, a cada uno le toca uno distinto) — y cambio de contraseña. Plan original: Datos propios, cambio de contraseña, activar MFA, tamaño de letra (normal / grande, útil en el mercado), accesos fijados en la barra inferior, instalar la app, cerrar sesión en este dispositivo.
 
 ---
 
@@ -279,7 +293,13 @@ Datos propios, cambio de contraseña, activar MFA, tamaño de letra (normal / gr
 
 #### P-10 Productos
 
-Tabla: código, nombre, categoría, unidad base, presentaciones (cantidad), proveedor preferido, estado. Filtros: categoría, grupo (FRUTA / VERDURA / OTRO), activos o desactivados, "sin proveedor", "sin precio".
+**Construida (28/09/2026):** tarjetas agrupadas por categoría ("▦ Tarjetas | ☰ Lista"): dibujo del producto, código, en qué se cuenta, envase de compra, "Desde $X el kg" y cuántos proveedores (con `precios.ver_costos`) y el preferido. **+ Nuevo producto** abre P-10b.
+
+#### P-10b Nuevo producto (guiado, 28/09/2026)
+
+Cuatro preguntas con la tarjeta de "Así va a quedar" al costado: 1) nombre y categoría (el código se arma solo; "Poner otro" para elegirlo); 2) en qué se cuenta, con botones grandes (kilo, unidad, atado, maple, bandeja, docena, paquete, litro) y si se puede pedir en partes; 3) cómo se compra, con envases sugeridos según la unidad ("Cajón 18 kg", "Bolsa 25 kg"…) y la explicación "1 cajón 18 kg = 18 kg"; 4) la ganancia sobre el costo (vacío = la de la categoría o la general) con una cuenta de ejemplo: "si el cajón te cuesta $12.000 → el kg te sale $667 y lo vendés a $900". Al crear, lleva a la ficha, donde los envases se ven como tarjetas ("1 cajón = 18 kg", para comprar / para vender) y se cargan los proveedores.
+
+Plan original — tabla: código, nombre, categoría, unidad base, presentaciones (cantidad), proveedor preferido, estado. Filtros: categoría, grupo (FRUTA / VERDURA / OTRO), activos o desactivados, "sin proveedor", "sin precio".
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -318,7 +338,9 @@ Lista con nombre, grupo, orden (define el orden de recorrido en el mercado y en 
 
 #### P-15 Clientes
 
-Lista (tarjetas en el celular): nombre, tipo, puntos de entrega, prioridad para faltantes, periodicidad de facturación, último pedido, estado. Búsqueda por nombre o identificador fiscal. **+ Nuevo cliente** con `clientes.editar`.
+**Construida (28/09/2026):** tarjetas agrupadas por tipo (hospital, restaurante, comercio…) con dirección, "Sin ubicación en el mapa" si falta, horario, teléfono y el próximo pedido; también como lista. En la ficha, cada punto de entrega tiene **Cómo llegar** (Google Maps y Waze) y **Marcar en el mapa** ("Estoy en el lugar" con el GPS, buscar la dirección o pegar un enlace de Google Maps), y la ficha tiene notas.
+
+Plan original — lista (tarjetas en el celular): nombre, tipo, puntos de entrega, prioridad para faltantes, periodicidad de facturación, último pedido, estado. Búsqueda por nombre o identificador fiscal. **+ Nuevo cliente** con `clientes.editar`.
 
 #### P-16 Ficha de cliente
 
@@ -344,7 +366,9 @@ Lista (tarjetas en el celular): nombre, tipo, puntos de entrega, prioridad para 
 
 #### P-20 Proveedores
 
-Lista: nombre, ubicación en el mercado, teléfono, condición de pago habitual, cantidad de productos ofrecidos; con `proveedores.ver_credito`: límite, saldo, semáforo compacto, deuda vencida. **+ Nuevo proveedor** con `proveedores.editar`.
+**Construida (28/09/2026):** tarjetas separadas en "Con deuda" y "Al día", con una franja arriba del color del semáforo de crédito, lugar en el mercado, condición de pago, cuántos productos vende y "Se le debe $X" con el semáforo y el % de uso; también como lista. La ficha tiene notas.
+
+Plan original — lista: nombre, ubicación en el mercado, teléfono, condición de pago habitual, cantidad de productos ofrecidos; con `proveedores.ver_credito`: límite, saldo, semáforo compacto, deuda vencida. **+ Nuevo proveedor** con `proveedores.editar`.
 
 #### P-21 Ficha de proveedor
 
@@ -808,7 +832,19 @@ Dos columnas en la PC: a la izquierda las entregas de la jornada sin reparto (pr
 | Salir | `repartos.gestionar`, o el repartidor asignado desde P-77 | RN-122, RN-039 | Exige repartidor y documentos emitidos de la versión vigente de todas las entregas. Reparto → `EN_CURSO`; entregas y pedidos → `EN_REPARTO`; jornada → `REPARTIENDO` si es el primero. |
 | Anular reparto | `repartos.gestionar` | 03 §15.8 | Solo sin entregas `ENTREGADA`; motivo; las entregas quedan sin reparto. |
 
+#### P-78b Viaje de entrega (28/09/2026, pedido del usuario)
+
+Calcula el viaje para no tener que pensarlo: las entregas del día que falta llevar, el mejor orden y el GPS para ir.
+
+- **De dónde salen los repartos:** el depósito o el mercado (`empresa.latitud/longitud`), marcado con el GPS, buscando la dirección o con un enlace de Google Maps. También se puede salir de "donde estoy ahora".
+- **Calcular el viaje:** "Empezar por" una parada elegida o "la que quede más cómoda", y "volver al depósito". El orden es el de menos kilómetros (exacto hasta 8 paradas; con más, el vecino más cercano mejorado con 2-opt). Cada tramo muestra kilómetros y minutos aproximados (línea recta × 1,3 por las calles, a 25 km/h) y el total. Sin orden guardado, la pantalla ya abre con el mejor recorrido. Las paradas sin ubicación van al final con un aviso.
+- **Ajuste a mano** con ↑ ↓. **GPS:** "Ir ▶" (Google Maps) y Waze por parada, 📞 llamar, y "Abrir todo el viaje en Google Maps" (de a 10 paradas por enlace, el máximo de Google; sale desde donde esté el celular).
+- **Armar el reparto con este orden** (queda a cargo de quien lo arma) o, si ya hay reparto, **Guardar este orden**. La misma tarjeta "Recorrido y GPS" está en P-76.
+- La búsqueda de direcciones usa OpenStreetMap (Nominatim) desde el servidor, solo cuando alguien toca "Buscar"; no se envían datos personales.
+
 #### P-77 Mi reparto (celular del repartidor)
+
+**Agregado (28/09/2026):** por parada, 🧭 **Ir** (Google Maps) y **Waze**; todo el recorrido en Google Maps y "Cambiar el orden".
 
 Solo los repartos asignados al usuario (RN-131; un reparto ajeno responde "no encontrado"). Lista de paradas en orden: cliente, punto, dirección, ventana horaria, bultos, estado (pendiente / entregada / con diferencias). Por parada: **Llamar** al contacto, **Abrir mapa** (latitud/longitud o dirección), **Entregar** (P-78). Botones del reparto: **Imprimir o compartir hoja de ruta (DOC-04)**, **Salir** (si todavía está `PLANIFICADO`) y **Regresé** (pasa a `FINALIZADO` y registra `regreso_en`; también automático al confirmar la última parada).
 
@@ -929,6 +965,12 @@ Lo vendido, lo comprado, la ganancia y la deuda con proveedores a lo largo del t
 #### P-93 Movimientos (uso interno, 28/09/2026)
 
 Registro de lo que pasó en el período, del más nuevo al más viejo: ventas (entregas confirmadas), compras, pagos a proveedores y ajustes de sus cuentas, sin lo anulado. Filtro por tipo y fechas, totales por tipo arriba, cada fila lleva a su documento, e **Imprimir**. Muestra hasta 500 filas.
+
+#### P-94 Actividad y notas (uso interno, 28/09/2026)
+
+Lo que hizo cada persona en el sistema y las notas que se dejaron, por día y del más nuevo al más viejo ("María confirmó el pedido PED-000012 de Restaurante La Esquina"). Arriba, una tarjeta por persona con lo que hizo hoy, en la semana y lo último. Filtros: todo o solo notas, y por persona. Cada entrada lleva a lo que nombra; solo se muestran las que la persona puede ver según sus permisos. **Marcar todas las notas como leídas.** La 🔔 del encabezado cuenta las notas sin leer dirigidas a vos (o a todos) y lleva acá.
+
+Las notas se dejan en las tarjetas de pedido y en las fichas de clientes, proveedores y productos: se elige "Para" quién es, se borran solo por quien las escribió y no se editan.
 
 #### P-92 Documentos emitidos
 

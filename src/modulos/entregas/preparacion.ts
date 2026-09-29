@@ -7,9 +7,11 @@ import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 import { distribuirFaltante, evaluarPreparado, pasoDeReparto, type MotivoDiferencia } from "@/dominio/entregas/entregas";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import { prioridadParaFaltantes } from "@/dominio/pedidos/tablero";
 import { formatearCantidad, formatearPorcentaje, type UnidadMedida } from "@/dominio/dinero/formato";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { compradoPorProducto } from "@/modulos/compras/lista-compra";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { id, numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -140,6 +142,7 @@ async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise
       pedida: entregaItem.cantidadPedida,
       propuesta: entregaItem.cantidadPropuesta,
       prioridad: cliente.prioridadFaltantes,
+      prioridadPedido: pedido.prioridad,
       orden: entrega.numero,
       admiteFraccion: producto.admiteFraccion,
     })
@@ -147,6 +150,8 @@ async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise
     .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
     .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
     .innerJoin(producto, eq(producto.id, entregaItem.productoId))
+    .leftJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
+    .leftJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
     .where(and(eq(entrega.jornadaId, jornadaId), eq(entregaItem.esSustitucion, false)));
   const porProducto = new Map<string, typeof lineas>();
   for (const l of lineas) porProducto.set(l.productoId, [...(porProducto.get(l.productoId) ?? []), l]);
@@ -156,7 +161,8 @@ async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise
         ? new Map(grupo.map((l) => [l.id, dec(l.pedida)]))
         : distribuirFaltante(
             comprado.get(productoId) ?? "0",
-            grupo.map((l) => ({ id: l.id, pedida: l.pedida, prioridad: l.prioridad, orden: l.orden })),
+            // Primero los pedidos de prioridad alta; dentro de cada grupo, la prioridad del cliente.
+            grupo.map((l) => ({ id: l.id, pedida: l.pedida, prioridad: prioridadParaFaltantes(l.prioridad, l.prioridadPedido ?? "NORMAL"), orden: l.orden })),
             { paso: pasoDeReparto(grupo[0]!.admiteFraccion), politica: empresa.politicaFaltantes },
           );
     for (const l of grupo) {
@@ -182,6 +188,9 @@ export async function iniciarPreparacion(db: BaseDatos, authUserId: string, fech
       await tx.update(jornada).set({ estado: "PREPARANDO", preparacionIniciadaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
     }
     const { borradores } = unico(await tx.select({ borradores: count() }).from(pedido).where(and(eq(pedido.jornadaId, j.id), eq(pedido.estado, "BORRADOR"))));
+    if (j.estado === "ABIERTA" || j.estado === "COMPRANDO" || r.entregasNuevas > 0) {
+      await registrarActividad(tx, c, { accion: "PREPARAR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `empezó a preparar los pedidos del ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}` });
+    }
     return { ...r, borradores: Number(borradores) };
   });
 }
@@ -560,6 +569,8 @@ export async function marcarPreparada(db: BaseDatos, authUserId: string, datos: 
     await tx.update(entrega).set({ estado: "PREPARADA", cantidadBultos: bultos ?? e.cantidadBultos, actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id));
     await moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO");
     if (e.estado === "PREPARADA") return { documentos: await reemitirSiCorresponde(tx, c, e.id) };
+    const [cli] = await tx.select({ nombre: cliente.nombre }).from(cliente).where(eq(cliente.id, e.clienteId));
+    await registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${cli?.nombre ?? "un cliente"}` });
     const empresa = await configuracionEmpresa(tx);
     if (!empresa.emitirDocumentosAlPreparar) return { documentos: null };
     if (e.version > 0) return { documentos: await reemitirSiCorresponde(tx, c, e.id) };

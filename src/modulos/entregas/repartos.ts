@@ -8,6 +8,7 @@ import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ordenarParadas } from "@/dominio/entregas/entregas";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa, sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { textoOpcional, validar } from "@/modulos/validacion";
 
@@ -234,6 +235,13 @@ export async function salirDeReparto(db: BaseDatos, authUserId: string, repartoI
       await moverPedidosDeEntrega(tx, p.id, ["PREPARADO"], "EN_REPARTO");
     }
     if (j.estado === "PREPARANDO") await tx.update(jornada).set({ estado: "REPARTIENDO", repartoIniciadoEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
+    await registrarActividad(tx, c, {
+      accion: "SALIR",
+      entidadTipo: "REPARTO",
+      entidadId: r.id,
+      jornadaId: j.id,
+      resumen: `salió con el reparto ${numeroReparto(r.numero)} (${paradas.length === 1 ? "1 entrega" : `${paradas.length} entregas`})`,
+    });
   });
 }
 
@@ -244,6 +252,7 @@ export async function regresarDeReparto(db: BaseDatos, authUserId: string, repar
     exigirManejo(c, r);
     if (r.estado !== "EN_CURSO") throw new ErrorDeNegocio("VALIDACION", "El reparto no está en curso.");
     await tx.update(reparto).set({ estado: "FINALIZADO", regresoEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(reparto.id, r.id));
+    await registrarActividad(tx, c, { accion: "VOLVER", entidadTipo: "REPARTO", entidadId: r.id, jornadaId: r.jornadaId, resumen: `volvió del reparto ${numeroReparto(r.numero)}` });
   });
 }
 
@@ -492,4 +501,64 @@ export async function repartidoresDisponibles(db: BaseDatos, authUserId: string)
       .where(and(eq(usuario.activo, true), inArray(rol.codigo, ["REPARTIDOR", "ADMIN"])))
       .orderBy(asc(usuario.nombre)),
   );
+}
+
+// ——— Recorrido (uso interno, 28/09/2026) ———
+
+/**
+ * Guarda el orden de las paradas elegido en el recorrido (calculado o a mano). Lo puede hacer
+ * quien maneja el reparto (también el repartidor asignado) mientras no terminó.
+ */
+export async function fijarOrdenDeReparto(db: BaseDatos, authUserId: string, datos: { repartoId: string; orden: readonly string[] }): Promise<void> {
+  await ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
+    const { r, j } = await repartoBloqueado(tx, datos.repartoId);
+    exigirManejo(c, r);
+    if (r.estado !== "PLANIFICADO" && r.estado !== "EN_CURSO") throw new ErrorDeNegocio("VALIDACION", "El reparto ya terminó.");
+    const actuales = (await paradasEnOrden(tx, r.id)).map((p) => p.id);
+    const nuevo = [...new Set(datos.orden)];
+    if (nuevo.length !== actuales.length || nuevo.some((id) => !actuales.includes(id))) {
+      throw new ErrorDeNegocio("VALIDACION", "El orden tiene que incluir todas las paradas del reparto (cambió algo: volvé a calcularlo).");
+    }
+    await renumerar(tx, nuevo);
+    await registrarActividad(tx, c, { accion: "ORDENAR", entidadTipo: "REPARTO", entidadId: r.id, jornadaId: j.id, resumen: `ordenó las paradas del reparto ${numeroReparto(r.numero)}` });
+  });
+}
+
+/**
+ * Arma un reparto con las entregas del día en el orden del recorrido calculado (RN-123: cada
+ * entrega en un solo reparto y de la misma jornada).
+ */
+export async function armarRepartoConOrden(db: BaseDatos, authUserId: string, datos: { fecha: FechaISO; entregaIds: readonly string[] }): Promise<string> {
+  return ejecutarComoUsuario(db, authUserId, "repartos.gestionar", async (tx, c) => {
+    const j = await jornadaDeFecha(tx, datos.fecha);
+    if (!j) throw new ErrorDeNegocio("VALIDACION", "No hay jornada para ese día.");
+    exigirJornadaAbierta(j);
+    const ids = [...new Set(datos.entregaIds)];
+    if (ids.length === 0) throw new ErrorDeNegocio("VALIDACION", "Elegí al menos una entrega.");
+    const entregas = await tx.select().from(entrega).where(inArray(entrega.id, ids)).for("update");
+    if (entregas.length !== ids.length || entregas.some((e) => e.jornadaId !== j.id)) throw new ErrorDeNegocio("VALIDACION", "Alguna entrega no es de este día (RN-123).");
+    const otrosRepartos = [...new Set(entregas.map((e) => e.repartoId).filter((x): x is string => x !== null))];
+    const vivos = otrosRepartos.length
+      ? await tx.select({ id: reparto.id }).from(reparto).where(and(inArray(reparto.id, otrosRepartos), ne(reparto.estado, "ANULADO")))
+      : [];
+    const ocupadas = entregas.filter((e) => e.repartoId && vivos.some((v) => v.id === e.repartoId));
+    if (ocupadas.length) throw new ErrorDeNegocio("VALIDACION", "Alguna entrega ya está en otro reparto: sacala de ahí o ordená ese reparto (RN-123).");
+    if (entregas.some((e) => !["BORRADOR", "EN_PREPARACION", "PREPARADA"].includes(e.estado))) throw new ErrorDeNegocio("VALIDACION", "Alguna entrega ya salió, se entregó o está anulada.");
+    const { numero } = await siguienteNumero(tx, "REPARTO");
+    const [r] = await tx
+      .insert(reparto)
+      .values({ empresaId: c.empresaId, numero, jornadaId: j.id, repartidorId: c.usuarioId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
+      .returning({ id: reparto.id });
+    for (const [i, id] of ids.entries()) {
+      await tx.update(entrega).set({ repartoId: r!.id, ordenEnReparto: i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, id));
+    }
+    await registrarActividad(tx, c, {
+      accion: "CREAR",
+      entidadTipo: "REPARTO",
+      entidadId: r!.id,
+      jornadaId: j.id,
+      resumen: `armó el reparto ${numeroReparto(numero)} con el recorrido calculado (${ids.length === 1 ? "1 parada" : `${ids.length} paradas`})`,
+    });
+    return r!.id;
+  });
 }

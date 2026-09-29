@@ -4,8 +4,11 @@ import { z } from "zod";
 import { auditar, diferencias } from "@/db/auditoria";
 import { condicionPago, proveedor, proveedorProducto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
+import { indicadoresCredito, type Semaforo } from "@/dominio/compras/credito";
 import { dec } from "@/dominio/dinero/decimal";
+import { umbralesSemaforo } from "@/modulos/compras/cuenta";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { enteroOpcional, numeroOpcional, textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -19,6 +22,9 @@ export interface CreditoProveedor {
   limiteCredito: string | null;
   plazoPagoDias: number | null;
   saldoActual: string;
+  /** Cuánto del límite está usado y su semáforo (06 §8.3). */
+  usoPct: string | null;
+  semaforo: Semaforo;
 }
 
 export interface ProveedorListado {
@@ -76,8 +82,9 @@ const esquemaProveedor = z.object({
     .optional(),
 });
 
-function credito(p: { limiteCredito: string | null; plazoPagoDias: number | null; saldoActual: string }): CreditoProveedor {
-  return { limiteCredito: p.limiteCredito, plazoPagoDias: p.plazoPagoDias, saldoActual: p.saldoActual };
+function credito(p: { limiteCredito: string | null; plazoPagoDias: number | null; saldoActual: string }, umbrales: { amarilloPct: string; rojoPct: string }): CreditoProveedor {
+  const i = indicadoresCredito(p.saldoActual, p.limiteCredito, umbrales);
+  return { limiteCredito: p.limiteCredito, plazoPagoDias: p.plazoPagoDias, saldoActual: p.saldoActual, usoPct: i.usoPct?.toFixed(2) ?? null, semaforo: i.semaforo };
 }
 
 export async function listarProveedores(
@@ -89,6 +96,7 @@ export async function listarProveedores(
     const texto = filtros.texto?.trim();
     const estado = filtros.estado ?? "activos";
     const verCredito = c.permisos.tiene("proveedores.ver_credito");
+    const umbrales = verCredito ? await umbralesSemaforo(tx) : null;
     const filas = await tx
       .select({
         id: proveedor.id,
@@ -120,7 +128,7 @@ export async function listarProveedores(
       condicionPagoHabitual: f.condicionPagoHabitual,
       ofertas: Number(f.ofertas),
       activo: f.activo,
-      credito: verCredito ? credito(f) : null,
+      credito: umbrales ? credito(f, umbrales) : null,
     }));
   });
 }
@@ -144,7 +152,7 @@ export async function obtenerProveedor(db: BaseDatos, authUserId: string, id: st
       condicionPagoHabitual: p.condicionPagoHabitual,
       observaciones: p.observaciones,
       activo: p.activo,
-      credito: c.permisos.tiene("proveedores.ver_credito") ? credito(p) : null,
+      credito: c.permisos.tiene("proveedores.ver_credito") ? credito(p, await umbralesSemaforo(tx)) : null,
     };
   });
 }
@@ -191,6 +199,7 @@ export async function guardarProveedor(db: BaseDatos, authUserId: string, datos:
         resumen: `Alta del proveedor ${d.nombre}.`,
         datosDespues: { ...d, ...creditoNuevo },
       });
+      await registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "PROVEEDOR", entidadId: nuevo!.id, resumen: `agregó el proveedor ${d.nombre}` });
       return nuevo!.id;
     }
 

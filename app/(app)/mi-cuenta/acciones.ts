@@ -4,9 +4,11 @@ import { redirect } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { crearClienteSupabaseServidor } from "@/lib/supabase/servidor";
+import { cambiarMiPerfil } from "@/modulos/colaboracion/personas";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { marcarClavePropia } from "@/modulos/usuarios/usuarios";
 import { LARGO_MINIMO_CLAVE } from "@/seguridad/identificacion";
+import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
 /** Cambio de la propia contraseña (P-03). Pide la actual para que nadie la cambie con una sesión que quedó abierta. */
@@ -32,4 +34,12 @@ export async function cambiarMiClave(_estado: EstadoAccion, datos: FormData): Pr
   if (error) return { ok: false, mensaje: "No se pudo cambiar la contraseña. Probá de nuevo." };
   await marcarClavePropia(obtenerBaseDatos(), authUserId);
   return { ok: true, mensaje: "Listo, tu contraseña quedó cambiada." };
+}
+
+/** Cómo te ven los demás: nombre y color del avatar (tarjetas, notas y actividad). */
+export async function cambiarMiPerfilAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await cambiarMiPerfil(db, authUserId, { nombre: campo(datos, "nombre"), color: campo(datos, "color") });
+    return { ok: true, mensaje: "Listo, tu perfil quedó guardado." };
+  });
 }

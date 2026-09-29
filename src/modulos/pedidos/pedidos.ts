@@ -2,15 +2,17 @@ import { and, asc, count, desc, eq, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
-import { canalPedido, cliente, jornada, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
+import { canalPedido, cliente, jornada, pedido, pedidoItem, presentacion, prioridadPedido, producto, puntoEntrega, usuario } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { aNumeric, dec, sumar } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
+import { textoPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import { subtotalLinea, transicionPedidoPermitida, type AlertaPrecio, type EstadoPedido, type OrigenPrecioVenta } from "@/dominio/precios/venta";
 import { aUnidadBase } from "@/dominio/unidades/unidades";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { marcarListaDesactualizada } from "@/modulos/compras/lista-compra";
 import { calcularPrecios } from "@/modulos/precios-venta/calculo";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
@@ -64,15 +66,25 @@ export interface DetallePedido {
   estadoJornada: string;
   clienteId: string;
   cliente: string;
+  tipoCliente: string;
   requiereOrdenCompra: boolean;
   puntoEntregaId: string;
   puntoEntrega: string;
   direccion: string;
+  localidad: string | null;
+  /** Ubicación marcada del lugar de entrega (para ir con el GPS). */
+  coordenada: { lat: number; lng: number } | null;
+  /** Horario de recepción del lugar ("06:00–10:00"). */
+  horarioLugar: string | null;
   canal: CanalPedido | null;
   referenciaCliente: string | null;
   observaciones: string | null;
   observacionesInternas: string | null;
   esTardio: boolean;
+  prioridad: PrioridadPedido;
+  /** Plazo de entrega pedido por el cliente ("HH:MM"). */
+  entregaDesde: string | null;
+  entregaHasta: string | null;
   totalEstimado: string | null;
   fechaPedido: Date;
   lineas: LineaDePedido[];
@@ -98,6 +110,9 @@ export interface PedidoListado {
 export const numeroPedido = (n: number) => formatearNumeroDocumento("PED-", n);
 
 const ESTADOS_ABIERTOS: readonly EstadoPedido[] = ["BORRADOR", "CONFIRMADO", "EN_COMPRA"];
+
+/** "29/09" para las frases de la actividad. */
+const diaCorto = (fecha: FechaISO) => `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
 
 // ——— Consultas ———
 
@@ -173,9 +188,15 @@ export async function obtenerPedido(db: BaseDatos, authUserId: string, pedidoId:
         fecha: jornada.fecha,
         estadoJornada: jornada.estado,
         cliente: cliente.nombre,
+        tipoCliente: cliente.tipoCliente,
         requiereOrdenCompra: cliente.requiereOrdenCompra,
         punto: puntoEntrega.nombre,
         direccion: puntoEntrega.direccion,
+        localidad: puntoEntrega.localidad,
+        latitud: puntoEntrega.latitud,
+        longitud: puntoEntrega.longitud,
+        horarioDesde: puntoEntrega.horarioDesde,
+        horarioHasta: puntoEntrega.horarioHasta,
       })
       .from(pedido)
       .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
@@ -216,15 +237,22 @@ export async function obtenerPedido(db: BaseDatos, authUserId: string, pedidoId:
       estadoJornada: p.estadoJornada,
       clienteId: p.pedido.clienteId,
       cliente: p.cliente,
+      tipoCliente: p.tipoCliente,
       requiereOrdenCompra: p.requiereOrdenCompra,
       puntoEntregaId: p.pedido.puntoEntregaId,
       puntoEntrega: p.punto,
       direccion: p.direccion,
+      localidad: p.localidad,
+      coordenada: p.latitud !== null && p.longitud !== null ? { lat: Number(p.latitud), lng: Number(p.longitud) } : null,
+      horarioLugar: p.horarioDesde || p.horarioHasta ? `${p.horarioDesde?.slice(0, 5) ?? "?"}–${p.horarioHasta?.slice(0, 5) ?? "?"}` : null,
       canal: p.pedido.canal,
       referenciaCliente: p.pedido.referenciaCliente,
       observaciones: p.pedido.observaciones,
       observacionesInternas: p.pedido.observacionesInternas,
       esTardio: p.pedido.esTardio,
+      prioridad: p.pedido.prioridad,
+      entregaDesde: p.pedido.entregaDesde?.slice(0, 5) ?? null,
+      entregaHasta: p.pedido.entregaHasta?.slice(0, 5) ?? null,
       totalEstimado: verVenta ? p.pedido.totalEstimado : null,
       fechaPedido: p.pedido.fechaPedido,
       editable: puedeEditar(c, p.pedido.estado),
@@ -401,6 +429,13 @@ export async function crearPedido(
       entidadId: nuevo!.id,
       resumen: `${visible} de ${cli.nombre} para el ${d.fecha}.`,
     });
+    await registrarActividad(tx, c, {
+      accion: "CREAR",
+      entidadTipo: "PEDIDO",
+      entidadId: nuevo!.id,
+      jornadaId: j.id,
+      resumen: `cargó el pedido ${visible} de ${cli.nombre} para el ${diaCorto(d.fecha)}`,
+    });
     return { pedidoId: nuevo!.id, numero: visible, duplicadoDe: existente ? numeroPedido(existente.numero) : null };
   });
 }
@@ -496,7 +531,7 @@ export async function agregarLinea(db: BaseDatos, authUserId: string, datos: z.i
       });
     }
     await recalcularPedido(tx, d.pedidoId);
-    if (p.pedido.estado !== "BORRADOR") await marcarListaDesactualizada(tx, p.pedido.jornadaId); // RN-052
+    if (p.pedido.estado === "EN_COMPRA") await marcarListaDesactualizada(tx, p.pedido.jornadaId); // RN-052
     if (p.pedido.estado === "EN_COMPRA") {
       await auditar(tx, {
         empresaId: c.empresaId,
@@ -530,7 +565,7 @@ export async function cambiarLinea(db: BaseDatos, authUserId: string, datos: z.i
   await ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     const { item, pedido: p } = await lineaParaModificar(tx, c, d.itemId);
     const prod = await productoParaLinea(tx, item.productoId, item.presentacionId);
-    if (p.pedido.estado !== "BORRADOR") await marcarListaDesactualizada(tx, p.pedido.jornadaId);
+    if (p.pedido.estado === "EN_COMPRA") await marcarListaDesactualizada(tx, p.pedido.jornadaId);
     await tx
       .update(pedidoItem)
       .set({
@@ -555,7 +590,7 @@ export async function quitarLinea(db: BaseDatos, authUserId: string, datos: { it
       const motivo = datos.motivo?.trim() ?? "";
       if (motivo.length < 5) throw new ErrorDeNegocio("VALIDACION", "Escribí por qué se cancela la línea (al menos 5 letras).");
       await tx.update(pedidoItem).set({ cancelado: true, motivoCancelacion: motivo, actualizadoPor: c.usuarioId }).where(eq(pedidoItem.id, item.id));
-      await marcarListaDesactualizada(tx, p.pedido.jornadaId);
+      if (p.pedido.estado === "EN_COMPRA") await marcarListaDesactualizada(tx, p.pedido.jornadaId);
       await auditar(tx, {
         empresaId: c.empresaId,
         usuarioId: c.usuarioId,
@@ -607,10 +642,6 @@ export async function cambiarDatosPedido(db: BaseDatos, authUserId: string, dato
       .where(eq(pedido.id, d.pedidoId));
     if (jornadaId !== p.pedido.jornadaId) {
       await recalcularPedido(tx, d.pedidoId);
-      if (p.pedido.estado !== "BORRADOR") {
-        await marcarListaDesactualizada(tx, p.pedido.jornadaId);
-        await marcarListaDesactualizada(tx, jornadaId);
-      }
     }
   });
 }
@@ -625,7 +656,7 @@ export async function confirmarPedido(db: BaseDatos, authUserId: string, pedidoI
       .from(pedidoItem)
       .where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false)));
     if (Number(lineas?.n ?? 0) === 0) throw new ErrorDeNegocio("VALIDACION", "El pedido no tiene productos (RN-018).");
-    const [cli] = await tx.select({ requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId));
+    const [cli] = await tx.select({ nombre: cliente.nombre, requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId));
     if (!cli?.activo) throw new ErrorDeNegocio("VALIDACION", "El cliente está desactivado (RN-012).");
     if (cli.requiereOC && !p.pedido.referenciaCliente) {
       throw new ErrorDeNegocio("VALIDACION", "Este cliente trabaja con orden de compra: cargá el número antes de confirmar (RN-017).");
@@ -646,7 +677,6 @@ export async function confirmarPedido(db: BaseDatos, authUserId: string, pedidoI
       })
       .where(eq(pedido.id, pedidoId));
     await recalcularPedido(tx, pedidoId);
-    await marcarListaDesactualizada(tx, p.pedido.jornadaId); // si la lista ya existía (RN-029, RN-052)
     await auditar(tx, {
       empresaId: c.empresaId,
       usuarioId: c.usuarioId,
@@ -656,6 +686,13 @@ export async function confirmarPedido(db: BaseDatos, authUserId: string, pedidoI
       resumen: `${numeroPedido(p.pedido.numero)} confirmado.`,
       datosAntes: { estado: p.pedido.estado },
       datosDespues: { estado: "CONFIRMADO" },
+    });
+    await registrarActividad(tx, c, {
+      accion: "CONFIRMAR",
+      entidadTipo: "PEDIDO",
+      entidadId: pedidoId,
+      jornadaId: p.pedido.jornadaId,
+      resumen: `confirmó el pedido ${numeroPedido(p.pedido.numero)} de ${cli.nombre}`,
     });
   });
 }
@@ -676,7 +713,7 @@ export async function cancelarPedido(db: BaseDatos, authUserId: string, datos: {
       .update(pedido)
       .set({ estado: "CANCELADO", canceladoEn: sql`now()`, canceladoPor: c.usuarioId, motivoCancelacion: motivo, actualizadoPor: c.usuarioId })
       .where(eq(pedido.id, p.id));
-    if (p.estado !== "BORRADOR") await marcarListaDesactualizada(tx, p.jornadaId);
+    if (p.estado === "EN_COMPRA") await marcarListaDesactualizada(tx, p.jornadaId);
     await auditar(tx, {
       empresaId: c.empresaId,
       usuarioId: c.usuarioId,
@@ -687,6 +724,14 @@ export async function cancelarPedido(db: BaseDatos, authUserId: string, datos: {
       motivo,
       datosAntes: { estado: p.estado },
       datosDespues: { estado: "CANCELADO" },
+    });
+    const [cli] = await tx.select({ nombre: cliente.nombre }).from(cliente).where(eq(cliente.id, p.clienteId));
+    await registrarActividad(tx, c, {
+      accion: "CANCELAR",
+      entidadTipo: "PEDIDO",
+      entidadId: p.id,
+      jornadaId: p.jornadaId,
+      resumen: `canceló el pedido ${numeroPedido(p.numero)} de ${cli?.nombre ?? "un cliente"}${motivo ? ` (${motivo})` : ""}`,
     });
   });
 }
@@ -750,6 +795,13 @@ export async function duplicarPedido(
       entidadId: nuevo!.id,
       resumen: `${visible} duplicado de ${numeroPedido(origen.numero)} para el ${datos.fecha}.`,
     });
+    await registrarActividad(tx, c, {
+      accion: "DUPLICAR",
+      entidadTipo: "PEDIDO",
+      entidadId: nuevo!.id,
+      jornadaId: j.id,
+      resumen: `repitió el pedido ${numeroPedido(origen.numero)} de ${cli.nombre} para el ${diaCorto(datos.fecha)} (${visible})`,
+    });
     return { pedidoId: nuevo!.id, numero: visible, omitidos: items.filter((x) => !x.activo).map((x) => x.nombre) };
   });
 }
@@ -809,4 +861,115 @@ export async function ultimosPedidosDeCliente(db: BaseDatos, authUserId: string,
         .limit(limite)
     ).map((p) => ({ ...p, numero: numeroPedido(p.numero) })),
   );
+}
+
+// ——— Tablero: prioridad y plazo (uso interno, 28/09/2026) ———
+
+/** Hasta que se entrega, a un pedido se le puede cambiar la prioridad y el plazo (no cambia lo que se compra). */
+const ESTADOS_ORGANIZABLES: readonly EstadoPedido[] = ["BORRADOR", "CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO", "EN_REPARTO"];
+
+const NOMBRE_PRIORIDAD: Readonly<Record<PrioridadPedido, string>> = { ALTA: "alta", NORMAL: "normal", BAJA: "baja" };
+
+const esquemaPrioridad = z.object({
+  pedidoIds: z.array(z.uuid()).min(1, "Elegí al menos un pedido."),
+  prioridad: z.enum(prioridadPedido.enumValues, "Elegí la prioridad."),
+});
+
+/** Cambia la prioridad de uno o varios pedidos (tablero). Con faltantes, los de prioridad alta se abastecen primero. */
+export async function cambiarPrioridad(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaPrioridad>): Promise<number> {
+  const d = validar(esquemaPrioridad, datos);
+  return ejecutarComoUsuario(db, authUserId, "pedidos.editar", async (tx, c) => {
+    const filas = await tx
+      .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, prioridad: pedido.prioridad, jornadaId: pedido.jornadaId, cliente: cliente.nombre })
+      .from(pedido)
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .where(inArray(pedido.id, d.pedidoIds))
+      .for("update", { of: pedido });
+    if (filas.length !== new Set(d.pedidoIds).size) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró alguno de los pedidos.");
+    const cambian = filas.filter((p) => (ESTADOS_ORGANIZABLES as readonly string[]).includes(p.estado) && p.prioridad !== d.prioridad);
+    for (const p of cambian) {
+      await tx.update(pedido).set({ prioridad: d.prioridad, actualizadoPor: c.usuarioId }).where(eq(pedido.id, p.id));
+      await registrarActividad(tx, c, {
+        accion: "PRIORIDAD",
+        entidadTipo: "PEDIDO",
+        entidadId: p.id,
+        jornadaId: p.jornadaId,
+        resumen: `le puso prioridad ${NOMBRE_PRIORIDAD[d.prioridad]} al pedido ${numeroPedido(p.numero)} de ${p.cliente}`,
+      });
+    }
+    return cambian.length;
+  });
+}
+
+const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+const horaDePlazo = textoOpcional(5).refine((v) => v === null || HORA.test(v), { message: "La hora va en formato 24 h, ej. 08:30." });
+
+const esquemaPlazo = z
+  .object({ pedidoId: z.uuid(), entregaDesde: horaDePlazo, entregaHasta: horaDePlazo })
+  .refine((d) => !d.entregaDesde || !d.entregaHasta || d.entregaDesde < d.entregaHasta, { message: "El plazo termina antes de empezar." });
+
+/** El plazo de entrega que pidió el cliente ("antes de las 9", "entre 7 y 9"). Vacío = sin plazo. */
+export async function cambiarPlazo(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaPlazo>): Promise<void> {
+  const d = validar(esquemaPlazo, datos);
+  await ejecutarComoUsuario(db, authUserId, "pedidos.editar", async (tx, c) => {
+    const [p] = await tx
+      .select({ numero: pedido.numero, estado: pedido.estado, jornadaId: pedido.jornadaId, cliente: cliente.nombre })
+      .from(pedido)
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .where(eq(pedido.id, d.pedidoId))
+      .for("update", { of: pedido });
+    if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
+    if (!(ESTADOS_ORGANIZABLES as readonly string[]).includes(p.estado)) throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Ese pedido ya no se organiza: está entregado o cancelado.");
+    await tx.update(pedido).set({ entregaDesde: d.entregaDesde, entregaHasta: d.entregaHasta, actualizadoPor: c.usuarioId }).where(eq(pedido.id, d.pedidoId));
+    const plazo = textoPlazo(d.entregaDesde, d.entregaHasta);
+    await registrarActividad(tx, c, {
+      accion: "PLAZO",
+      entidadTipo: "PEDIDO",
+      entidadId: d.pedidoId,
+      jornadaId: p.jornadaId,
+      resumen: plazo ? `anotó que el pedido ${numeroPedido(p.numero)} de ${p.cliente} se entrega ${plazo}` : `le sacó el plazo al pedido ${numeroPedido(p.numero)} de ${p.cliente}`,
+    });
+  });
+}
+
+const esquemaResponsable = z.object({
+  pedidoIds: z.array(z.uuid()).min(1, "Elegí al menos un pedido."),
+  /** Nulo = sin nadie asignado (queda quien lo cargó). */
+  usuarioId: z.uuid().nullable(),
+});
+
+/** Quién se encarga de uno o varios pedidos (el "miembro" de la tarjeta). */
+export async function asignarResponsable(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaResponsable>): Promise<number> {
+  const d = validar(esquemaResponsable, datos);
+  return ejecutarComoUsuario(db, authUserId, "pedidos.editar", async (tx, c) => {
+    let nombre: string | null = null;
+    if (d.usuarioId) {
+      const [u] = await tx.select({ nombre: usuario.nombre, activo: usuario.activo }).from(usuario).where(eq(usuario.id, d.usuarioId));
+      if (!u?.activo) throw new ErrorDeNegocio("VALIDACION", "Esa persona no está habilitada en el sistema.");
+      nombre = u.nombre;
+    }
+    const filas = await tx
+      .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, responsableId: pedido.responsableId, jornadaId: pedido.jornadaId, cliente: cliente.nombre })
+      .from(pedido)
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .where(inArray(pedido.id, d.pedidoIds))
+      .for("update", { of: pedido });
+    if (filas.length !== new Set(d.pedidoIds).size) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró alguno de los pedidos.");
+    const cambian = filas.filter((p) => (ESTADOS_ORGANIZABLES as readonly string[]).includes(p.estado) && p.responsableId !== d.usuarioId);
+    for (const p of cambian) {
+      await tx.update(pedido).set({ responsableId: d.usuarioId, actualizadoPor: c.usuarioId }).where(eq(pedido.id, p.id));
+      await registrarActividad(tx, c, {
+        accion: "ASIGNAR",
+        entidadTipo: "PEDIDO",
+        entidadId: p.id,
+        jornadaId: p.jornadaId,
+        resumen: nombre
+          ? d.usuarioId === c.usuarioId
+            ? `se hizo cargo del pedido ${numeroPedido(p.numero)} de ${p.cliente}`
+            : `le pasó el pedido ${numeroPedido(p.numero)} de ${p.cliente} a ${nombre}`
+          : `dejó sin responsable el pedido ${numeroPedido(p.numero)} de ${p.cliente}`,
+      });
+    }
+    return cambian.length;
+  });
 }

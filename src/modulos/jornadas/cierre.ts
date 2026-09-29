@@ -15,6 +15,7 @@ import { jornadaDeFecha, numeroEntrega, unico } from "@/modulos/entregas/comun";
 import { documentosAlDia } from "@/modulos/entregas/documentos";
 import { numeroPedido } from "@/modulos/pedidos/pedidos";
 import { costosReales } from "@/modulos/precios-venta/calculo";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 
 // Cierre de jornada (04 §5.h, P-47): RN-040 y RN-041.
@@ -189,6 +190,7 @@ export async function cerrarJornada(db: BaseDatos, authUserId: string, fecha: Fe
       resumen: `Cierre de la jornada del ${fecha}: vendido $${resumen.vendido}, comprado $${resumen.comprado}.`,
       datosDespues: { vendido: resumen.vendido, comprado: resumen.comprado, resultado: resumen.resultado },
     });
+    await registrarActividad(tx, c, { accion: "CERRAR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `cerró el día ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}` });
   });
 }
 
@@ -202,5 +204,6 @@ export async function reabrirJornada(db: BaseDatos, authUserId: string, datos: {
     if (j.estado !== "CERRADA") throw new ErrorDeNegocio("VALIDACION", "La jornada no está cerrada.");
     await tx.update(jornada).set({ estado: "REPARTIENDO", cerradaEn: null, cerradaPor: null, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
     await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "REAPERTURA_JORNADA", entidad: "jornada", entidadId: j.id, resumen: `Reapertura de la jornada del ${datos.fecha}.`, motivo });
+    await registrarActividad(tx, c, { accion: "REABRIR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `reabrió el día ${datos.fecha.slice(8, 10)}/${datos.fecha.slice(5, 7)} (${motivo})` });
   });
 }

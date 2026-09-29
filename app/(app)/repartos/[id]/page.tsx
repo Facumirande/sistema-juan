@@ -4,6 +4,7 @@ import Link from "next/link";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearFechaHora } from "@/dominio/fechas/fechas";
 import { entregasSinReparto, obtenerReparto, repartidoresDisponibles } from "@/modulos/entregas/repartos";
+import { salidaDeRepartos } from "@/modulos/entregas/viaje";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { ESTADOS_ENTREGA, ESTADOS_REPARTO, fechaConDia } from "@/ui/etiquetas";
@@ -22,6 +23,9 @@ import {
   salirAccion,
 } from "../acciones";
 
+import { paradasDeReparto } from "../../viaje/paradas";
+import { PlanificadorDeViaje } from "../../viaje/planificador";
+
 export const metadata: Metadata = { title: "Reparto · Sistema Juan" };
 
 /** P-76 Armar reparto: quién, en qué, qué paradas y en qué orden. */
@@ -29,7 +33,8 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
   const sesion = await sesionParaPantalla(null);
   const id = idDeRuta((await params).id);
   const db = obtenerBaseDatos();
-  const r = await cargarFicha(obtenerReparto(db, sesion.authUserId, id));
+  const [r, salida] = await Promise.all([cargarFicha(obtenerReparto(db, sesion.authUserId, id)), salidaDeRepartos(db, sesion.authUserId)]);
+  const puedeOrdenar = (sesion.permisos.includes("repartos.gestionar") || r.esMio) && (r.estado === "PLANIFICADO" || r.estado === "EN_CURSO") && r.jornadaEstado !== "CERRADA";
   const puedeGestionar = sesion.permisos.includes("repartos.gestionar") && r.jornadaEstado !== "CERRADA";
   const planificado = r.estado === "PLANIFICADO";
   const [pendientes, repartidores] = puedeGestionar && planificado ? await Promise.all([entregasSinReparto(db, sesion.authUserId, id), repartidoresDisponibles(db, sesion.authUserId)]) : [[], []];
@@ -67,6 +72,14 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
             </div>
           </FormularioAccion>
         </Tarjeta>
+      )}
+
+      {r.paradas.length > 0 && r.estado !== "ANULADO" && (
+        <div id="recorrido">
+          <Tarjeta titulo="🧭 Recorrido y GPS">
+            <PlanificadorDeViaje paradas={paradasDeReparto(r.paradas)} salida={salida} guardar={puedeOrdenar ? { tipo: "reparto", repartoId: r.id } : null} />
+          </Tarjeta>
+        </div>
       )}
 
       <Tarjeta titulo={`Paradas (${r.paradas.length})`}>

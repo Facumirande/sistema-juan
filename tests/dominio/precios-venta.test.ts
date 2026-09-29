@@ -47,7 +47,7 @@ function datos(parcial: Partial<DatosPrecioVenta> & Pick<DatosPrecioVenta, "cost
 describe("redondeo del precio de venta (05 §5.6)", () => {
   it("coincide con la tabla del plan", () => {
     const casos: [string, string, ModoRedondeo, string][] = [
-      ["1248.75", "1", "NINGUNO", "1248.75"],
+      ["1248.75", "1", "NINGUNO", "1249"], // sin redondeo configurado, igual se lleva al peso
       ["1248.75", "0.5", "ARRIBA", "1249"],
       ["1248.75", "0.5", "CERCANO", "1249"],
       ["1156.25", "0.5", "ARRIBA", "1156.5"],

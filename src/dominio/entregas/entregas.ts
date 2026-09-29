@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 
-import { dec, redondear2, sumar, type ValorDecimal } from "../dinero/decimal";
+import { dec, redondear2, redondearPesos, sumar, type ValorDecimal } from "../dinero/decimal";
 
 // Preparación y entregas (04 §5.e y §5.f): reparto de faltantes, tolerancia de peso, totales de
 // la entrega y diferencias. Cantidades siempre en unidad base.
@@ -95,7 +95,7 @@ export interface LineaValorizada {
 
 /** Importe de una línea: cantidad × precio unitario, a 2 decimales. */
 export function importeLinea(cantidad: ValorDecimal, precioUnitario: ValorDecimal): Decimal {
-  return redondear2(dec(cantidad).times(precioUnitario));
+  return redondearPesos(dec(cantidad).times(precioUnitario));
 }
 
 /**
@@ -109,10 +109,10 @@ export function totalesEntrega(lineas: readonly LineaValorizada[], preciosIncluy
   for (const l of lineas) {
     const importe = importeLinea(l.cantidad, l.precioUnitario);
     const alicuota = dec(l.alicuotaIva).div(100);
-    const ivaLinea = preciosIncluyenIva ? redondear2(importe.minus(importe.div(alicuota.plus(1)))) : redondear2(importe.times(alicuota));
+    const ivaLinea = preciosIncluyenIva ? redondearPesos(importe.minus(importe.div(alicuota.plus(1)))) : redondearPesos(importe.times(alicuota));
     neto = neto.plus(preciosIncluyenIva ? importe.minus(ivaLinea) : importe);
     iva = iva.plus(ivaLinea);
-    if (l.costoUnitario !== null) costo = costo.plus(redondear2(dec(l.cantidad).times(l.costoUnitario)));
+    if (l.costoUnitario !== null) costo = costo.plus(redondearPesos(dec(l.cantidad).times(l.costoUnitario)));
   }
   return { neto, iva, total: neto.plus(iva), costo };
 }

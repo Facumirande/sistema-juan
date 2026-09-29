@@ -20,10 +20,11 @@ export interface SerieGrafico {
   puntos: Punto[];
 }
 
-const compacto = new Intl.NumberFormat("es-AR", { notation: "compact", maximumFractionDigits: 1 });
-const plataCorta = (n: number) => (n < 0 ? `−$${compacto.format(-n)}` : `$${compacto.format(n)}`);
+// La plata en pesos enteros, sin decimales ni abreviaturas ("$250.000").
+const enteros = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+const plataCorta = (n: number) => (n < 0 ? `−$${enteros.format(-n)}` : `$${enteros.format(n)}`);
 
-const MARGEN = { izq: 60, der: 16, arr: 12, aba: 28 };
+const MARGEN = { izq: 84, der: 16, arr: 12, aba: 28 };
 
 /** Escala "linda" que incluye el cero: 4 o 5 marcas redondas. */
 function escala(min: number, max: number) {

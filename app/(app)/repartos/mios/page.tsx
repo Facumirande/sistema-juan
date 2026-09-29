@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
+import { enlaceWaze, enlacesGoogleMaps, type DestinoGps } from "@/dominio/entregas/navegacion";
 import { misRepartos, obtenerReparto } from "@/modulos/entregas/repartos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { ESTADOS_ENTREGA, ESTADOS_REPARTO, fechaConDia } from "@/ui/etiquetas";
@@ -12,10 +13,11 @@ import { regresarAccion, salirAccion } from "../acciones";
 
 export const metadata: Metadata = { title: "Mi reparto · Sistema Juan" };
 
-const mapa = (p: { latitud: string | null; longitud: string | null; direccion: string; localidad: string | null }) =>
-  p.latitud && p.longitud
-    ? `https://www.google.com/maps/search/?api=1&query=${p.latitud},${p.longitud}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.direccion, p.localidad].filter(Boolean).join(", "))}`;
+const destino = (p: { latitud: string | null; longitud: string | null; direccion: string; localidad: string | null }): DestinoGps => ({
+  coordenada: p.latitud !== null && p.longitud !== null ? { lat: Number(p.latitud), lng: Number(p.longitud) } : null,
+  direccion: p.direccion,
+  localidad: p.localidad,
+});
 
 /** P-77 Mi reparto (celular): mis paradas en orden, sin precios (RN-131). */
 export default async function MiReparto() {
@@ -61,9 +63,16 @@ export default async function MiReparto() {
                       Llamar
                     </a>
                   )}
-                  <a href={mapa(p)} target="_blank" rel="noreferrer" className={clasesBoton("secundario")}>
-                    Mapa
-                  </a>
+                  {p.estado !== "ENTREGADA" && (
+                    <>
+                      <a href={enlacesGoogleMaps([destino(p)])[0]} target="_blank" rel="noreferrer" className={clasesBoton("principal")}>
+                        🧭 Ir
+                      </a>
+                      <a href={enlaceWaze(destino(p))} target="_blank" rel="noreferrer" className={clasesBoton("secundario")}>
+                        Waze
+                      </a>
+                    </>
+                  )}
                   {p.estado === "EN_REPARTO" && (
                     <Link href={`/repartos/mios/entrega/${p.id}`} className={clasesBoton("principal")}>
                       Entregar
@@ -74,6 +83,18 @@ export default async function MiReparto() {
             ))}
           </ol>
           <div className="flex flex-wrap gap-2">
+            {r.paradas.some((p) => p.estado !== "ENTREGADA") && (
+              <>
+                {enlacesGoogleMaps(r.paradas.filter((p) => p.estado !== "ENTREGADA").map(destino)).map((e, i, todos) => (
+                  <a key={e} href={e} target="_blank" rel="noreferrer" className={clasesBoton("principal")}>
+                    🧭 {todos.length > 1 ? `Viaje en Google Maps (parte ${i + 1})` : "Todo el viaje en Google Maps"}
+                  </a>
+                ))}
+                <Link href={`/repartos/${r.id}#recorrido`} className={clasesBoton("secundario")}>
+                  Cambiar el orden
+                </Link>
+              </>
+            )}
             {sesion.permisos.includes("documentos.imprimir_entrega") && (
               <Link href={`/repartos/${r.id}/imprimir`} className={clasesBoton("secundario")}>
                 Hoja de ruta

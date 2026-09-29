@@ -20,7 +20,7 @@ import {
 import { categoria, presentacion, producto } from "./catalogo";
 import { cliente, puntoEntrega } from "./clientes";
 import { camposComunes, cantidad, marcaDeTiempo, monto, porcentaje, precioUnitario } from "./comunes";
-import { canalPedido, estadoJornada, estadoPedido, origenCosto, origenPrecioVenta, tipoReglaPrecio } from "./enums";
+import { canalPedido, estadoJornada, estadoPedido, origenCosto, origenPrecioVenta, prioridadPedido, tipoReglaPrecio } from "./enums";
 import { usuario } from "./seguridad";
 
 /**
@@ -90,6 +90,10 @@ export const pedido = pgTable(
     canal: canalPedido("canal"),
     referenciaCliente: text("referencia_cliente"),
     estado: estadoPedido("estado").notNull().default("BORRADOR"),
+    /** Tablero: qué pedido va primero. Con faltantes, ALTA se abastece antes (RN-115 ampliada). */
+    prioridad: prioridadPedido("prioridad").notNull().default("NORMAL"),
+    /** Tablero: quién se encarga del pedido (el "miembro" de la tarjeta). Nulo = quien lo cargó. */
+    responsableId: uuid("responsable_id"),
     esTardio: boolean("es_tardio").notNull().default(false),
     entregaDesde: time("entrega_desde"),
     entregaHasta: time("entrega_hasta"),
@@ -110,6 +114,7 @@ export const pedido = pgTable(
     index("pedido_jornada_estado").on(t.empresaId, t.jornadaId, t.estado),
     index("pedido_cliente_fecha").on(t.empresaId, t.clienteId, t.fechaPedido.desc()),
     foreignKey({ name: "pedido_jornada_fk", columns: [t.empresaId, t.jornadaId], foreignColumns: [jornada.empresaId, jornada.id] }),
+    foreignKey({ name: "pedido_responsable_fk", columns: [t.empresaId, t.responsableId], foreignColumns: [usuario.empresaId, usuario.id] }),
     foreignKey({ name: "pedido_cliente_fk", columns: [t.empresaId, t.clienteId], foreignColumns: [cliente.empresaId, cliente.id] }),
     foreignKey({
       name: "pedido_punto_entrega_fk",

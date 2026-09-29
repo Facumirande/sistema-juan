@@ -42,6 +42,9 @@ export const empresa = pgTable(
     identificacionFiscal: text("identificacion_fiscal"),
     condicionFiscal: text("condicion_fiscal"),
     direccion: text("direccion"),
+    /** De dónde salen los repartos (para calcular el recorrido). */
+    latitud: numeric("latitud", { precision: 9, scale: 6 }),
+    longitud: numeric("longitud", { precision: 9, scale: 6 }),
     telefono: text("telefono"),
     email: text("email"),
     logoPath: text("logo_path"),
@@ -84,6 +87,10 @@ export const empresa = pgTable(
     check("empresa_recargo_global", sql`${t.recargoGlobal} > -100`),
     check("empresa_redondeo_multiplo", sql`${t.redondeoMultiplo} > 0`),
     check("empresa_modulos", sql`${t.modulosHabilitados} <@ array['COBRANZAS','STOCK','OFFLINE','FACTURACION_FISCAL','PORTAL_CLIENTES']::text[]`),
+    check(
+      "empresa_coordenadas",
+      sql`(${t.latitud} is null) = (${t.longitud} is null) and coalesce(${t.latitud} between -90 and 90, true) and coalesce(${t.longitud} between -180 and 180, true)`,
+    ),
   ],
 );
 

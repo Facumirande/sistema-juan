@@ -146,3 +146,23 @@ export const estadoDocumento = pgEnum("estado_documento", ["VIGENTE", "REEMPLAZA
 export const tipoComprobante = pgEnum("tipo_comprobante", ["INTERNO"]);
 
 export const estadoFactura = pgEnum("estado_factura", ["EMITIDA", "ANULADA"]);
+
+// Tablero de pedidos, notas entre usuarios y actividad (uso interno, 28/09/2026).
+
+export const prioridadPedido = pgEnum("prioridad_pedido", ["ALTA", "NORMAL", "BAJA"]);
+
+/** A qué se refiere una nota o un registro de actividad. */
+export const tipoEntidad = pgEnum("tipo_entidad", [
+  "PEDIDO",
+  "CLIENTE",
+  "PROVEEDOR",
+  "PRODUCTO",
+  "COMPRA",
+  "PAGO",
+  "ENTREGA",
+  "REPARTO",
+  "JORNADA",
+  "LISTA_COMPRA",
+  "FACTURA",
+  "USUARIO",
+]);

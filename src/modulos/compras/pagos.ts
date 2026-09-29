@@ -10,6 +10,7 @@ import { aNumeric, dec } from "@/dominio/dinero/decimal";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -137,6 +138,7 @@ export async function registrarPago(db: BaseDatos, authUserId: string, datos: z.
       entidadId: pago!.id,
       resumen: `${visible} a ${prov.nombre}: ${formatearMoneda(d.monto)} (${d.modo === "FIFO" ? "a las compras más viejas" : "imputación manual"}).`,
     });
+    await registrarActividad(tx, c, { accion: "PAGAR", entidadTipo: "PAGO", entidadId: pago!.id, resumen: `le pagó a ${prov.nombre} (${visible})` });
     return { pagoId: pago!.id, numero: visible, credito: indicadoresCredito(await saldoNeto(tx, prov.id), prov.limiteCredito, await umbralesSemaforo(tx)) };
   });
 }
@@ -167,6 +169,7 @@ export async function anularPagoEnTransaccion(tx: Transaccion, c: ContextoUsuari
   });
   await desactivarImputaciones(tx, c, { pagoId: pago.id }, `Anulación de ${visible}`);
   await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "pago_proveedor", entidadId: pago.id, resumen: `Anulación de ${visible}.`, motivo });
+  await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "PAGO", entidadId: pago.id, resumen: `anuló el pago ${visible} (${motivo})` });
 }
 
 /** P-64 Anular pago (RN-100). Devuelve un aviso si el proveedor queda por encima del límite. */

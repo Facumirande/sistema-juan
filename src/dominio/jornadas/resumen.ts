@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 
-import { dec, redondear2, sumar, type ValorDecimal } from "../dinero/decimal";
+import { dec, redondear2, redondearPesos, sumar, type ValorDecimal } from "../dinero/decimal";
 
 // Resumen del día al cerrar la jornada (04 §5.h): comprado, vendido, costo, margen, sobrantes,
 // resultado y deuda con proveedores. Se guarda congelado en `jornada.resumen`.
@@ -38,7 +38,7 @@ export interface ResumenDelDia {
 }
 
 const pct = (parte: Decimal, total: Decimal) => (total.isZero() ? null : redondear2(parte.div(total).times(100)).toFixed(2));
-const plata = (v: ValorDecimal) => redondear2(dec(v)).toFixed(2);
+const plata = (v: ValorDecimal) => redondearPesos(dec(v)).toFixed(2);
 
 function agrupar<T>(filas: readonly T[], clave: (f: T) => string, valores: (f: T) => ValorDecimal[]): { clave: string; sumas: Decimal[] }[] {
   const mapa = new Map<string, Decimal[]>();
@@ -61,7 +61,7 @@ export function resumenDelDia(d: DatosResumen): ResumenDelDia {
   const sobrantes = d.productos
     .map((p) => {
       const cantidad = Decimal.max(dec(p.comprado).minus(p.entregado), 0);
-      return { producto: p.producto, unidad: p.unidad, cantidad, costo: p.costoUnitario === null ? dec(0) : redondear2(cantidad.times(p.costoUnitario)) };
+      return { producto: p.producto, unidad: p.unidad, cantidad, costo: p.costoUnitario === null ? dec(0) : redondearPesos(cantidad.times(p.costoUnitario)) };
     })
     .filter((s) => s.cantidad.gt(0));
   const deudas = d.saldos.filter((s) => dec(s.saldo).gt(0));

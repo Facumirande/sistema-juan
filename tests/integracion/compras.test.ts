@@ -234,7 +234,7 @@ describe("compras en el mercado (04 §5.d, 06 §3 y §9)", () => {
   it("el límite de crédito bloquea y dice cuánto pagar; superarlo requiere permiso y motivo (RN-063)", async () => {
     // A debe $177.000 de $500.000: una compra de $330.000 a crédito lo pasa por $7.000.
     const intento = comprar("A", "CREDITO", [["tomate", "Cajón 18 kg", "20", "16.500"]]);
-    expect(await mensajeDeError(intento)).toMatch(/Pagá al menos \$7\.000,00 ahora/);
+    expect(await mensajeDeError(intento)).toMatch(/Pagá al menos \$7\.000 ahora/);
     const sinPermiso = comprar("A", "CREDITO", [["tomate", "Cajón 18 kg", "20", "16.500"]], { motivoExceso: "Hay que abastecer al hospital" });
     expect(await codigoDeError(sinPermiso)).toBe("SIN_PERMISO");
     const conPermiso = await registrarCompra(base.db, admin, {

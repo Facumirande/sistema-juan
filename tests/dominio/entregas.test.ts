@@ -71,7 +71,8 @@ describe("preparación y entrega (RN-113, RN-127)", () => {
     ].map(([cantidad, precio]) => ({ cantidad: cantidad!, precioUnitario: precio!, costoUnitario: "900", alicuotaIva: "0" }));
     const t = totalesEntrega(lineas, false);
     expect([t.neto.toString(), t.iva.toString(), t.total.toString(), t.costo.toString()]).toEqual(["114400", "0", "114400", "108900"]);
-    expect(importeLinea("36.4", "1156.6667").toString()).toBe("42102.67");
+    // Cada importe se lleva al peso, así los totales suman exacto (pesos enteros).
+    expect(importeLinea("36.4", "1156.6667").toString()).toBe("42103");
   });
 
   it("IVA discriminado o incluido en el precio; sin costo no suma costo", () => {

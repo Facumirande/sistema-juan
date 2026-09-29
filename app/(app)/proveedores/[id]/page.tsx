@@ -5,6 +5,7 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { formatearFecha, hoyEnEmpresa } from "@/dominio/fechas/fechas";
 import { listarPresentacionesDeCompra } from "@/modulos/catalogo/productos";
+import { notasDe } from "@/modulos/colaboracion/notas";
 import { listarCompras } from "@/modulos/compras/compras";
 import { cuentaDeProveedor } from "@/modulos/compras/cuenta";
 import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
@@ -16,6 +17,7 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { CampoNumero, Encabezado, Estado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { SemaforoCredito } from "@/ui/semaforo";
 
+import { HiloDeNotas } from "../../actividad/notas";
 import { crearOfertaAccion } from "../../precios/compra/acciones";
 import { TablaOfertas, permisosOfertas } from "../../precios/compra/tabla-ofertas";
 import { cambiarEstadoProveedorAccion, editarProveedorAccion } from "../acciones";
@@ -33,11 +35,12 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
   const verCostos = sesion.permisos.includes("precios.ver_costos");
   const puedeEditar = sesion.permisos.includes("proveedores.editar");
   const puedeCrearOferta = puedeEditar && sesion.permisos.includes("precios.editar_compra");
-  const [ofertas, presentaciones, cuenta, compras] = await Promise.all([
+  const [ofertas, presentaciones, cuenta, compras, notas] = await Promise.all([
     verCostos ? listaGeneralPreciosCompra(db, sesion.authUserId, { proveedorId: id }).then((r) => r.ofertas) : Promise.resolve([]),
     puedeCrearOferta ? listarPresentacionesDeCompra(db, sesion.authUserId) : Promise.resolve([]),
     p.credito ? cuentaDeProveedor(db, sesion.authUserId, id, 10) : Promise.resolve(null),
     sesion.permisos.includes("compras.ver") ? listarCompras(db, sesion.authUserId, { proveedorId: id }) : Promise.resolve([]),
+    notasDe(db, sesion.authUserId, { tipo: "PROVEEDOR", id }),
   ]);
   const yaOfrecidas = new Set(ofertas.map((o) => o.presentacionId));
   const opcionesOferta = presentaciones
@@ -181,6 +184,10 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
           )}
         </Tarjeta>
       )}
+
+      <Tarjeta titulo="💬 Notas">
+        <HiloDeNotas entidadTipo="PROVEEDOR" entidadId={p.id} notas={notas.notas} personas={notas.personas} yo={notas.yo} zonaHoraria={sesion.zonaHoraria} />
+      </Tarjeta>
 
       {puedeEditar && (
         <Tarjeta titulo="Datos del proveedor">

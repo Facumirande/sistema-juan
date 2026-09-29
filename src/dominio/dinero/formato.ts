@@ -15,9 +15,9 @@ export function formatearNumero(
   return `${negativo ? "-" : ""}${entero}${fraccion ? `,${fraccion}` : ""}`;
 }
 
-/** "$114.400,00" · "-$30.000,00" */
+/** "$114.400" · "-$30.000": la plata se muestra en pesos enteros, sin centavos. */
 export function formatearMoneda(valor: ValorDecimal, simbolo = "$"): string {
-  const texto = formatearNumero(valor, { decimales: 2 });
+  const texto = formatearNumero(valor, { decimales: 0 });
   return texto.startsWith("-") ? `-${simbolo}${texto.slice(1)}` : `${simbolo}${texto}`;
 }
 

@@ -15,6 +15,31 @@
   --serie-negativa: #e34948;
   --grilla: #e1e0d9;
   --base-grafico: #c3c2b7;
+  /* Tablero de tarjetas (estilo Trello): fondo de color, columnas grises y tarjetas blancas. */
+  --tablero-fondo: linear-gradient(135deg, #17532e 0%, #226b37 55%, #2f7d32 100%);
+  --lista-fondo: #f1f2f4;
+  --lista-texto: #172b4d;
+  --tarjeta-fondo: #ffffff;
+  --tarjeta-hover: #f7f8f9;
+  --tarjeta-texto: #172b4d;
+  --tarjeta-suave: #44546f;
+  --tarjeta-sombra: 0 1px 1px #091e4240, 0 0 1px #091e424f;
+  --modal-fondo: #f1f2f4;
+  --etiqueta-texto: #172b4d;
+  --etiqueta-verde: #4bce97;
+  --etiqueta-amarillo: #f5cd47;
+  --etiqueta-naranja: #fea362;
+  --etiqueta-rojo: #f87168;
+  --etiqueta-violeta: #9f8fef;
+  --etiqueta-azul: #579dff;
+  --etiqueta-celeste: #6cc3e0;
+  --etiqueta-gris: #b3b9c4;
+  --vence-fondo: #c9372c;
+  --vence-texto: #ffffff;
+  --pronto-fondo: #f5cd47;
+  --pronto-texto: #172b4d;
+  --listo-fondo: #1f845a;
+  --listo-texto: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,6 +57,26 @@
     --serie-negativa: #e66767;
     --grilla: #2c2c2a;
     --base-grafico: #383835;
+    --tablero-fondo: linear-gradient(135deg, #0d2716 0%, #123a20 55%, #184a27 100%);
+    --lista-fondo: #101204;
+    --lista-texto: #b6c2cf;
+    --tarjeta-fondo: #22272b;
+    --tarjeta-hover: #282e33;
+    --tarjeta-texto: #b6c2cf;
+    --tarjeta-suave: #9fadbc;
+    --tarjeta-sombra: 0 1px 1px #03040480, 0 0 1px #03040480;
+    --modal-fondo: #323940;
+    --etiqueta-texto: #ffffff;
+    --etiqueta-verde: #216e4e;
+    --etiqueta-amarillo: #7f5f01;
+    --etiqueta-naranja: #a54800;
+    --etiqueta-rojo: #ae2e24;
+    --etiqueta-violeta: #5e4db2;
+    --etiqueta-azul: #0055cc;
+    --etiqueta-celeste: #206a83;
+    --etiqueta-gris: #454f59;
+    --pronto-fondo: #7f5f01;
+    --pronto-texto: #ffffff;
   }
 }
 
@@ -49,6 +94,15 @@
   --color-serie-negativa: var(--serie-negativa);
   --color-grilla: var(--grilla);
   --color-base-grafico: var(--base-grafico);
+  --color-lista: var(--lista-fondo);
+  --color-lista-texto: var(--lista-texto);
+  --color-tarjeta: var(--tarjeta-fondo);
+  --color-tarjeta-hover: var(--tarjeta-hover);
+  --color-tarjeta-texto: var(--tarjeta-texto);
+  --color-tarjeta-suave: var(--tarjeta-suave);
+  --color-modal: var(--modal-fondo);
+  --color-etiqueta-texto: var(--etiqueta-texto);
+  --shadow-tarjeta: var(--tarjeta-sombra);
   --font-sans: var(--font-geist-sans);
 }
 

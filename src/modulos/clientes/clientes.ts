@@ -2,9 +2,10 @@ import { and, asc, count, eq, ilike, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar, diferencias } from "@/db/auditoria";
-import { cliente, periodicidadFacturacion, puntoEntrega, tipoCliente } from "@/db/esquema";
+import { cliente, jornada, pedido, periodicidadFacturacion, puntoEntrega, tipoCliente } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -23,6 +24,13 @@ export interface ClienteListado {
   periodicidadFacturacion: PeriodicidadFacturacion;
   puntosEntrega: number;
   activo: boolean;
+  /** Lugar principal de entrega: dirección, horario y si tiene la ubicación marcada. */
+  direccion: string | null;
+  horario: string | null;
+  ubicado: boolean;
+  /** Próximo día con un pedido (confirmado o no) y el último día que se le entregó. */
+  proximoPedido: string | null;
+  ultimaEntrega: string | null;
 }
 
 export interface PuntoDeEntrega {
@@ -39,6 +47,8 @@ export interface PuntoDeEntrega {
   instruccionesEntrega: string | null;
   esPrincipal: boolean;
   activo: boolean;
+  /** Dónde queda en el mapa (para calcular el recorrido e ir con el GPS). */
+  coordenada: { lat: number; lng: number } | null;
 }
 
 export type FichaCliente = Omit<typeof cliente.$inferSelect, "empresaId" | "creadoPor" | "actualizadoPor" | "creadoEn" | "actualizadoEn"> & {
@@ -115,6 +125,11 @@ export async function listarClientes(
         periodicidadFacturacion: cliente.periodicidadFacturacion,
         activo: cliente.activo,
         puntosEntrega: count(puntoEntrega.id),
+        direccion: sql<string | null>`(select concat_ws(', ', pe.direccion, pe.localidad) from ${puntoEntrega} pe where pe.cliente_id = cliente.id and pe.activo order by pe.es_principal desc, pe.creado_en limit 1)`,
+        horario: sql<string | null>`(select case when pe.horario_desde is null and pe.horario_hasta is null then null else concat(coalesce(to_char(pe.horario_desde, 'HH24:MI'), '?'), '–', coalesce(to_char(pe.horario_hasta, 'HH24:MI'), '?')) end from ${puntoEntrega} pe where pe.cliente_id = cliente.id and pe.activo order by pe.es_principal desc, pe.creado_en limit 1)`,
+        ubicado: sql<boolean>`exists (select 1 from ${puntoEntrega} pe where pe.cliente_id = cliente.id and pe.activo and pe.latitud is not null)`,
+        proximoPedido: sql<string | null>`(select min(j.fecha)::text from ${pedido} p join ${jornada} j on j.id = p.jornada_id where p.cliente_id = cliente.id and p.estado not in ('CANCELADO', 'ENTREGADO') and j.fecha >= current_date)`,
+        ultimaEntrega: sql<string | null>`(select max(j.fecha)::text from ${pedido} p join ${jornada} j on j.id = p.jornada_id where p.cliente_id = cliente.id and p.estado = 'ENTREGADO')`,
       })
       .from(cliente)
       .leftJoin(puntoEntrega, and(eq(puntoEntrega.clienteId, cliente.id), eq(puntoEntrega.activo, true)))
@@ -126,7 +141,7 @@ export async function listarClientes(
       )
       .groupBy(cliente.id)
       .orderBy(sql`${cliente.activo} desc`, asc(cliente.nombre));
-    return filas.map((f) => ({ ...f, puntosEntrega: Number(f.puntosEntrega) }));
+    return filas.map((f) => ({ ...f, puntosEntrega: Number(f.puntosEntrega), ubicado: Boolean(f.ubicado) }));
   });
 }
 
@@ -156,6 +171,7 @@ export async function obtenerCliente(db: BaseDatos, authUserId: string, id: stri
         instruccionesEntrega: p.instruccionesEntrega,
         esPrincipal: p.esPrincipal,
         activo: p.activo,
+        coordenada: p.latitud !== null && p.longitud !== null ? { lat: Number(p.latitud), lng: Number(p.longitud) } : null,
       })),
     };
   });
@@ -235,6 +251,7 @@ export async function guardarCliente(
         resumen: `Alta del cliente ${d.nombre}.`,
         datosDespues: d,
       });
+      await registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "CLIENTE", entidadId: nuevo!.id, resumen: `agregó el cliente ${d.nombre}` });
       return nuevo!.id;
     }
 

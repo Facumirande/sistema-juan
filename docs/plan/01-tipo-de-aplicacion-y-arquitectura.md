@@ -298,6 +298,7 @@ Cada módulo es dueño de sus tablas (solo él las escribe) y expone consultas y
 | M17 | Configuración | Datos de la empresa, moneda, zona horaria, recargo global, estrategia de costo, redondeo, umbrales del semáforo, margen mínimo, numeración. | empresa, secuencia | — | MVP | — |
 | M18 | Usuarios y seguridad | Usuarios, roles, permisos, sesiones (ver 02-usuarios-roles-y-permisos.md). | usuario, rol, usuario_rol | M17 | MVP | — |
 | M19 | Auditoría | Registro inmutable de cambios sensibles: precios, recargos, overrides, anulaciones, excesos de límite, permisos. | auditoria | M18 (transversal a todos) | MVP | — |
+| M20 | Colaboración (agregado 28/09/2026) | Notas entre las personas en pedidos y fichas, lo que hizo cada una (actividad) y su perfil (nombre y color). | nota, nota_lectura, actividad | M18 (transversal) | MVP | — |
 
 Correspondencia con el circuito del usuario (R3 y R13):
 

@@ -11,6 +11,7 @@ import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
 import { configuracionEmpresa, numeroEntrega } from "@/modulos/entregas/comun";
 import { documentosAlDia } from "@/modulos/entregas/documentos";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 
 // Facturación del MVP (04 §5.g): comprobante interno no fiscal que agrupa entregas confirmadas
@@ -93,6 +94,7 @@ export async function emitirComprobante(
     entidadId: f!.id,
     resumen: `${visible} a ${cli!.nombre}: ${formatearMoneda(total)} (${entregas.length} ${entregas.length === 1 ? "entrega" : "entregas"}).`,
   });
+  await registrarActividad(tx, c, { accion: "FACTURAR", entidadTipo: "FACTURA", entidadId: f!.id, resumen: `emitió el comprobante ${visible} a ${cli!.nombre}` });
   return { facturaId: f!.id, numero: visible, total: aNumeric(total, 2) };
 }
 
@@ -339,5 +341,6 @@ export async function anularComprobante(db: BaseDatos, authUserId: string, datos
         ));
     }
     await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "factura", entidadId: f.id, resumen: `Anulación de ${numeroFactura(f.numero)}.`, motivo });
+    await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "FACTURA", entidadId: f.id, resumen: `anuló el comprobante ${numeroFactura(f.numero)} (${motivo})` });
   });
 }

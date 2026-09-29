@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+
+import { PALETA_AVATAR, asignarColores, colorDePersona, esColorDeAvatar, iniciales, nombreCorto } from "@/dominio/colaboracion/personas";
+import { tiempoRelativo, tituloDeDia } from "@/dominio/colaboracion/tiempo";
+
+const ZONA = "America/Argentina/Buenos_Aires";
+
+describe("cómo se ve cada persona", () => {
+  it("iniciales de nombre y apellido, o de un solo nombre", () => {
+    expect(iniciales("María Pérez")).toBe("MP");
+    expect(iniciales("Ana María López")).toBe("AL");
+    expect(iniciales("juan")).toBe("J");
+    expect(iniciales("¡Hola!")).toBe("H");
+    expect(iniciales("   ")).toBe("?");
+    expect(iniciales("...")).toBe("?");
+  });
+
+  it("el color elegido si es de la paleta; si no, uno fijo según el id", () => {
+    expect(esColorDeAvatar("#1F5FBF")).toBe(true);
+    expect(esColorDeAvatar("#000000")).toBe(false);
+    expect(esColorDeAvatar(undefined)).toBe(false);
+    expect(colorDePersona("u1", "#B3471D")).toBe("#b3471d");
+    const fijo = colorDePersona("7c2a4f7e-1111-4222-8333-944455556666", "#123456");
+    expect(PALETA_AVATAR.map((p) => p.color)).toContain(fijo);
+    expect(colorDePersona("7c2a4f7e-1111-4222-8333-944455556666")).toBe(fijo);
+  });
+
+  it("los colores automáticos no se repiten ni pisan los elegidos", () => {
+    const colores = asignarColores([{ id: "a" }, { id: "b", elegido: "#1f5fbf" }, { id: "c", elegido: "nada" }]);
+    expect(colores.get("b")).toBe("#1f5fbf");
+    expect(colores.get("a")).toBe("#b3471d");
+    expect(colores.get("c")).toBe("#1d7a46");
+    const todos = asignarColores([...PALETA_AVATAR.map((p, i) => ({ id: `x${i}`, elegido: p.color as string })), { id: "extra" }]);
+    expect(PALETA_AVATAR.map((p) => p.color)).toContain(todos.get("extra"));
+    const muchos = asignarColores(Array.from({ length: 10 }, (_, i) => ({ id: `p${i}` })));
+    expect(muchos.get("p8")).toBe(muchos.get("p0"));
+  });
+
+  it("el nombre corto para las frases", () => {
+    expect(nombreCorto("María Pérez")).toBe("María");
+    expect(nombreCorto("")).toBe("");
+  });
+});
+
+describe("cuándo pasó algo", () => {
+  const ahora = new Date("2026-09-28T17:00:00Z"); // lunes 14:00 en Buenos Aires
+
+  it("recién, hace unos minutos, hoy, ayer u otro día", () => {
+    expect(tiempoRelativo(new Date("2026-09-28T16:59:30Z"), ahora, ZONA)).toBe("recién");
+    expect(tiempoRelativo(new Date("2026-09-28T17:00:20Z"), ahora, ZONA)).toBe("recién");
+    expect(tiempoRelativo(new Date("2026-09-28T16:55:00Z"), ahora, ZONA)).toBe("hace 5 min");
+    expect(tiempoRelativo(new Date("2026-09-28T12:00:00Z"), ahora, ZONA)).toBe("hoy 09:00");
+    expect(tiempoRelativo(new Date("2026-09-28T19:00:00Z"), ahora, ZONA)).toBe("hoy 16:00");
+    expect(tiempoRelativo(new Date("2026-09-28T02:00:00Z"), ahora, ZONA)).toBe("ayer 23:00");
+    expect(tiempoRelativo(new Date("2026-09-21T21:05:00Z"), ahora, ZONA)).toBe("lun 21/09 18:05");
+  });
+
+  it("el título de cada día de la actividad", () => {
+    expect(tituloDeDia("2026-09-28", "2026-09-28")).toBe("Hoy");
+    expect(tituloDeDia("2026-09-27", "2026-09-28")).toBe("Ayer");
+    expect(tituloDeDia("2026-09-21", "2026-09-28")).toBe("Lunes 21/09");
+  });
+});

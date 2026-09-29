@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { obtenerBaseDatos } from "@/db/cliente";
+import { contarNotasSinLeer } from "@/modulos/colaboracion/notas";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
+import { Avatar } from "@/ui/avatar";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
 function Items({ grupo }: { grupo: GrupoMenu }) {
@@ -67,6 +70,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
   if (sesion.debeCambiarClave) redirect("/crear-clave");
 
   const grupos = menuDisponible(sesion.permisos);
+  const notasNuevas = await contarNotasSinLeer(obtenerBaseDatos(), authUserId);
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
@@ -87,8 +91,19 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
             Sistema Juan
           </Link>
           <div className="flex items-center gap-3">
-            <Link href="/mi-cuenta" className="flex min-h-11 items-center font-medium underline-offset-4 hover:underline">
-              {sesion.nombre}
+            <Link
+              href="/actividad?ver=notas"
+              aria-label={notasNuevas ? `${notasNuevas} ${notasNuevas === 1 ? "nota nueva" : "notas nuevas"}` : "Notas y actividad"}
+              className="relative flex size-11 items-center justify-center rounded-full text-xl hover:bg-fondo"
+            >
+              <span aria-hidden>🔔</span>
+              {notasNuevas > 0 && (
+                <span className="absolute top-1 right-0.5 min-w-5 rounded-full bg-error px-1 text-center text-xs leading-5 font-bold text-white">{notasNuevas > 9 ? "9+" : notasNuevas}</span>
+              )}
+            </Link>
+            <Link href="/mi-cuenta" className="flex min-h-11 items-center gap-2 font-medium underline-offset-4 hover:underline">
+              <Avatar persona={{ nombre: sesion.nombre, color: sesion.color }} />
+              <span className="hidden sm:inline">{sesion.nombre}</span>
             </Link>
             <BotonSalir />
           </div>

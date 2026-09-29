@@ -16,6 +16,7 @@ import { ejecutarComoUsuario } from "./contexto";
 export interface SesionVisible {
   usuarioId: string;
   nombre: string;
+  color: string;
   email: string;
   empresaId: string;
   zonaHoraria: string;
@@ -47,6 +48,7 @@ export const obtenerSesion = cache(async (): Promise<SesionVisible | null> => {
     return await ejecutarComoUsuario(obtenerBaseDatos(), authUserId, null, async (_tx, c) => ({
       usuarioId: c.usuarioId,
       nombre: c.nombre,
+      color: c.color,
       email: c.email,
       empresaId: c.empresaId,
       zonaHoraria: c.zonaHoraria,

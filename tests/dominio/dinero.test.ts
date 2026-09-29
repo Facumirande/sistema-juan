@@ -56,10 +56,12 @@ describe("formatos es-AR", () => {
   });
 
   it("formatea moneda, incluido el saldo a favor", () => {
-    expect(formatearMoneda("114400")).toBe("$114.400,00");
-    expect(formatearMoneda("-30000")).toBe("-$30.000,00");
-    expect(formatearMoneda("1156.6667")).toBe("$1.156,67");
-    expect(formatearMoneda("5", "U$S")).toBe("U$S5,00");
+    // La plata se muestra en pesos enteros, sin centavos (28/09/2026).
+    expect(formatearMoneda("114400")).toBe("$114.400");
+    expect(formatearMoneda("-30000")).toBe("-$30.000");
+    expect(formatearMoneda("1156.6667")).toBe("$1.157");
+    expect(formatearMoneda("1156.4")).toBe("$1.156");
+    expect(formatearMoneda("5", "U$S")).toBe("U$S5");
   });
 
   it("formatea porcentajes y cantidades sin ceros de más", () => {

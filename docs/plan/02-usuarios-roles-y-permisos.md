@@ -168,6 +168,8 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `usuarios.administrar` | Dar de alta, desactivar y reactivar usuarios; asignar roles; crear y editar roles personalizados; cerrar sesiones de otros. | Sí | P |
 | `auditoria.ver` | Consultar el registro de auditoría. | No | P |
 
+**Notas y actividad (28/09/2026).** No tienen permisos propios: cualquiera con sesión puede escribir notas y ver la actividad, pero una nota o una entrada de actividad solo se muestra —y solo se puede escribir una nota— si la persona puede ver lo que nombra (pedido → `pedidos.ver`, cliente → `clientes.ver`, proveedor → `proveedores.ver`, producto → `productos.ver`, compra → `compras.ver`, pago → `pagos.ver`, entrega → `entregas.ver`, reparto → `repartos.ver`, día → `jornada.ver`, lista de compra → `lista_compra.ver`, comprobante → `facturacion.ver`, usuario → `usuarios.administrar`; el REPARTIDOR, solo las entregas de sus repartos). Una nota la borra solo quien la escribió. Marcar la ubicación de un punto de entrega pide `clientes.editar` o `entregas.confirmar` (el repartidor en el lugar); la del depósito, `configuracion.editar`.
+
 ---
 
 ## 5. Matriz rol × permiso

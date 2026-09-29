@@ -7,3 +7,4 @@ export * from "./pedidos";
 export * from "./compras";
 export * from "./entregas";
 export * from "./facturacion";
+export * from "./colaboracion";

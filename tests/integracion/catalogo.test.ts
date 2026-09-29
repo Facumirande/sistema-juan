@@ -186,7 +186,7 @@ describe("proveedores (P-20, P-21)", () => {
     ids.D = await alta("Frutas Tropicales", null, "150.000", "10");
     ids.E = await alta("Mayorista Norte", null, "300.000", "7");
 
-    expect((await obtenerProveedor(base.db, admin, ids.A)).credito).toEqual({ limiteCredito: "500000.00", plazoPagoDias: 7, saldoActual: "0.00" });
+    expect((await obtenerProveedor(base.db, admin, ids.A)).credito).toEqual({ limiteCredito: "500000.00", plazoPagoDias: 7, saldoActual: "0.00", usoPct: "0.00", semaforo: "VERDE" });
     expect((await obtenerProveedor(base.db, admin, ids.C)).credito?.limiteCredito).toBeNull();
 
     // El COMPRADOR edita datos del proveedor pero no su límite.
@@ -289,7 +289,7 @@ describe("ofertas y lista general de precios de compra (05 §2.1, RN-067 a RN-07
     const [registro] = await enEmpresa(base.db, empresa.empresaId, (tx) =>
       tx.select().from(auditoria).where(and(eq(auditoria.accion, "CAMBIO_PRECIO_COMPRA"), eq(auditoria.entidadId, ids["tomate-B"]!))).orderBy(sql`ocurrido_en desc`).limit(1),
     );
-    expect(registro?.resumen).toBe("Tomate redondo en La Quinta: $17.100,00 → $17.550,00.");
+    expect(registro?.resumen).toBe("Tomate redondo en La Quinta: $17.100 → $17.550.");
   });
 
   it("una variación brusca pide confirmación (RN-070)", async () => {

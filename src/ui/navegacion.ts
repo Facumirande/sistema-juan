@@ -28,7 +28,9 @@ export const MENU: readonly GrupoMenu[] = [
     grupo: "Día de trabajo",
     items: [
       { pantalla: "P-02", etiqueta: "Hoy", ruta: "/inicio", permisos: [] },
+      { pantalla: "P-94", etiqueta: "Actividad y notas", ruta: "/actividad", permisos: [] },
       { pantalla: "P-77", etiqueta: "Mi reparto", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"] },
+      { pantalla: "P-78b", etiqueta: "Viaje de entrega", ruta: "/viaje", permisos: ["repartos.ver"] },
       { pantalla: "P-45", etiqueta: "Todos los días", ruta: "/jornadas", permisos: ["jornada.ver"] },
     ],
   },
