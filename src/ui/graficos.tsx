@@ -32,14 +32,20 @@ const MARGEN = { izq: 84, der: 16, aba: 28 };
 function escala(min: number, max: number) {
   let lo = Math.min(0, min);
   let hi = Math.max(0, max);
-  if (lo === hi) hi = lo + 1;
+  // Sin movimientos (todo en cero) igual se dibuja una escala de pesos enteros: $0 a $4.
+  if (lo === hi) hi = lo + 4;
   const bruto = (hi - lo) / 4;
   const potencia = 10 ** Math.floor(Math.log10(bruto));
-  const paso = [1, 2, 2.5, 5, 10].map((m) => m * potencia).find((p) => p >= bruto) ?? bruto;
+  // Las marcas son pesos enteros: el paso nunca es menor a $1 (con pasos de 0,25 las marcas se
+  // redondeaban al mismo número y React avisaba de claves repetidas en el balance).
+  const paso = Math.max(1, [1, 2, 2.5, 5, 10].map((m) => m * potencia).find((p) => p >= bruto) ?? bruto);
   lo = Math.floor(lo / paso) * paso;
   hi = Math.ceil(hi / paso) * paso;
   const marcas: number[] = [];
-  for (let t = lo; t <= hi + paso / 2; t += paso) marcas.push(Math.round(t));
+  for (let t = lo; t <= hi + paso / 2; t += paso) {
+    const marca = Math.round(t);
+    if (marcas.at(-1) !== marca) marcas.push(marca);
+  }
   return { lo, hi, marcas };
 }
 
@@ -208,8 +214,8 @@ export function GraficoBarras({
       <div ref={ref} className="relative w-full">
         <svg width={ancho} height={alto} role="img" aria-label={descripcion} className="block touch-pan-y" onPointerLeave={() => setI(null)}>
           <g>
-            {marcas.map((t) => (
-              <g key={t}>
+            {marcas.map((t, m) => (
+              <g key={m}>
                 <line x1={MARGEN.izq} x2={ancho - MARGEN.der} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--base-grafico)" : "var(--grilla)"} strokeWidth={1} />
                 <text x={MARGEN.izq - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={12} fill="var(--texto-suave)">
                   {plataCorta(t)}

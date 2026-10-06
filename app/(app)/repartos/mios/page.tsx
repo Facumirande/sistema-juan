@@ -8,6 +8,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { ESTADOS_ENTREGA, ESTADOS_REPARTO, fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Encabezado, clasesBoton } from "@/ui/formularios";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 import { regresarAccion, salirAccion } from "../acciones";
 
@@ -66,7 +67,7 @@ export default async function MiReparto() {
                   {p.estado !== "ENTREGADA" && (
                     <>
                       <a href={enlacesGoogleMaps([destino(p)])[0]} target="_blank" rel="noreferrer" className={clasesBoton("principal")}>
-                        🧭 Ir
+                        <FlechaNavegacion className="" /> Ir
                       </a>
                       <a href={enlaceWaze(destino(p))} target="_blank" rel="noreferrer" className={clasesBoton("secundario")}>
                         Waze
@@ -87,7 +88,7 @@ export default async function MiReparto() {
               <>
                 {enlacesGoogleMaps(r.paradas.filter((p) => p.estado !== "ENTREGADA").map(destino)).map((e, i, todos) => (
                   <a key={e} href={e} target="_blank" rel="noreferrer" className={clasesBoton("principal")}>
-                    🧭 {todos.length > 1 ? `Viaje en Google Maps (parte ${i + 1})` : "Todo el viaje en Google Maps"}
+                    <FlechaNavegacion className="" /> {todos.length > 1 ? `Viaje en Google Maps (parte ${i + 1})` : "Todo el viaje en Google Maps"}
                   </a>
                 ))}
                 <Link href={`/repartos/${r.id}#recorrido`} className={clasesBoton("secundario")}>

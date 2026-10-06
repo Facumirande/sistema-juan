@@ -37,7 +37,8 @@ export type AccionActividad =
   | "MODIFICAR"
   | "TILDAR"
   | "IMPORTAR"
-  | "PRECIO";
+  | "PRECIO"
+  | "MOVER";
 
 export interface DatosActividad {
   accion: AccionActividad;

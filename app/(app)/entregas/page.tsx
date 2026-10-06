@@ -11,6 +11,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { ESTADOS_ENTREGA, fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 export const metadata: Metadata = { title: "Entregas · Sistema Repartos" };
 
@@ -30,8 +31,11 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
         <Link href={`/preparacion/${fecha}`} className={clasesBoton("secundario")}>
           📦 Preparación
         </Link>
+        <Link href={`/entregas/remitos?fecha=${fecha}`} className={clasesBoton("secundario")}>
+          🧾 Remitos
+        </Link>
         <Link href={`/viaje?fecha=${fecha}`} className={clasesBoton("secundario")}>
-          🚚 Logística (viaje de entrega)
+          <FlechaNavegacion /> Logística (viaje de entrega)
         </Link>
       </Encabezado>
       <nav aria-label="Día" className="flex gap-2">
@@ -74,7 +78,19 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
                     {ESTADOS_ENTREGA[e.estado]}
                     {e.conDiferencias && <span className="block text-sm text-error">con diferencias</span>}
                   </td>
-                  <td>{e.estado === "ANULADA" ? "—" : e.documentosAlDia ? "✓ Hecho" : e.version > 0 ? <span className="text-error">Hay que rehacerlo</span> : "Sin hacer"}</td>
+                  <td>
+                    {e.estado === "ANULADA" ? (
+                      "—"
+                    ) : e.documentosAlDia ? (
+                      <Link href={`/entregas/${e.id}/documento/lista-entrega`} className="font-medium underline-offset-4 hover:underline">
+                        🧾 Ver
+                      </Link>
+                    ) : e.version > 0 ? (
+                      <span className="text-error">Hay que rehacerlo</span>
+                    ) : (
+                      "Sin hacer"
+                    )}
+                  </td>
                   {verVenta && <td className="text-right whitespace-nowrap">{e.total ? formatearMoneda(e.total) : "—"}</td>}
                 </tr>
               ))}

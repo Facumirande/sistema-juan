@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { configuracionSupabase } from "@/lib/supabase/configuracion";
-import { origenDelPedido } from "@/lib/supabase/proveedores";
+import { googleHabilitado, origenDelPedido } from "@/lib/supabase/proveedores";
 import { crearClienteSupabaseServidor } from "@/lib/supabase/servidor";
 import { interpretarIdentificador } from "@/seguridad/identificacion";
 
@@ -43,8 +43,14 @@ export async function ingresar(_estado: EstadoIngreso, formulario: FormData): Pr
   redirect("/inicio");
 }
 
-/** "Entrar con Google": Supabase lleva a Google y vuelve a /auth/callback con un código. */
+/**
+ * "Entrar con Google": Supabase lleva a Google y vuelve a /auth/callback con un código. Si Google
+ * todavía no está activado en Supabase, vuelve al ingreso con un aviso (en vez de la página de
+ * error de Supabase).
+ */
 export async function entrarConGoogle(): Promise<void> {
+  if (!configuracionSupabase()) redirect("/login");
+  if (!(await googleHabilitado(true))) redirect("/login?error=google-sin-activar");
   const supabase = await crearClienteSupabaseServidor();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",

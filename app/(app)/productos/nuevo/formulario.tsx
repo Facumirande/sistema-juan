@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 
-import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envasesSugeridos, explicarPresentacion, nombreDePresentacion } from "@/dominio/catalogo/productos";
+import { categoriaSugerida, CATEGORIAS_PREELEGIDAS, normalizar } from "@/dominio/catalogo/categorias";
+import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envasesSugeridos, explicarPresentacion, grupoDeProducto, nombreDePresentacion, unidadSugerida } from "@/dominio/catalogo/productos";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
@@ -10,8 +11,9 @@ import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
 import { crearProductoGuiadoAccion } from "../acciones";
 
 // Alta de un producto en tres preguntas (qué es, cómo se vende, en qué envase se compra), con la
-// tarjeta de cómo va a quedar. El código y el dibujo se arman solos con el nombre; la ganancia y
-// las notas quedan en "Más opciones".
+// tarjeta de cómo va a quedar. La ganancia, el código y las notas quedan en "Más opciones". La
+// categoría se elige entre las que ya se usan, las preelegidas (Duras, Blandas, Frágiles…),
+// "Ninguna" u otra escrita; mientras no se elija, se propone una según el nombre (RN-154).
 
 interface Categoria {
   id: string;
@@ -46,8 +48,11 @@ export function FormularioProducto({
   verRecargos: boolean;
 }) {
   const [nombre, setNombre] = useState("");
-  const [categoriaId, setCategoriaId] = useState(categorias[0]?.id ?? "");
+  /** "id:<uuid>", "nombre:<texto>" o "ninguna"; null = la que se propone por el nombre. */
+  const [elegida, setElegida] = useState<string | null>(null);
+  const [otraCategoria, setOtraCategoria] = useState<string | null>(null);
   const [unidad, setUnidad] = useState<(typeof UNIDADES)[number]["valor"]>("KG");
+  const [unidadAMano, setUnidadAMano] = useState(false);
   const [verTodas, setVerTodas] = useState(false);
   const [fraccion, setFraccion] = useState(true);
   const [envase, setEnvase] = useState("Cajón");
@@ -57,7 +62,23 @@ export function FormularioProducto({
   const [recargo, setRecargo] = useState("");
   const [precioEjemplo, setPrecioEjemplo] = useState("");
 
-  const categoria = categorias.find((c) => c.id === categoriaId);
+  // La categoría propuesta por el nombre: la que ya existe con ese nombre o la preelegida.
+  const sugerida = useMemo(() => {
+    const n = categoriaSugerida(nombre);
+    if (!n) return "ninguna";
+    const existente = categorias.find((c) => normalizar(c.nombre) === normalizar(n));
+    return existente ? `id:${existente.id}` : `nombre:${n}`;
+  }, [nombre, categorias]);
+  const valorCategoria = otraCategoria !== null ? (otraCategoria.trim() ? `nombre:${otraCategoria.trim()}` : "ninguna") : (elegida ?? sugerida);
+  const categoria = valorCategoria.startsWith("id:") ? categorias.find((c) => `id:${c.id}` === valorCategoria) : undefined;
+  const nombreCategoria = categoria?.nombre ?? (valorCategoria.startsWith("nombre:") ? valorCategoria.slice(7) : null);
+  const categoriaId = categoria?.id ?? "";
+  const usadas = new Set(categorias.map((c) => normalizar(c.nombre)));
+  const preelegidasLibres = CATEGORIAS_PREELEGIDAS.filter((c) => !usadas.has(normalizar(c.nombre)));
+  const elegirCategoria = (valor: string) => {
+    setElegida(valor);
+    setOtraCategoria(null);
+  };
   const u = UNIDADES.find((x) => x.valor === unidad)!;
   const codigoAuto = useMemo(() => (nombre.trim() ? codigoSugerido(nombre, new Set(codigos)) : "—"), [nombre, codigos]);
   const presentacion = envase.trim() ? nombreDePresentacion(envase, cantidad, u.corta) : "";
@@ -65,9 +86,11 @@ export function FormularioProducto({
   const recargoQueAplica = recargo.trim() || recargoPorCategoria[categoriaId] || recargoGlobal;
   const origenRecargo = recargo.trim() ? "la de este producto" : recargoPorCategoria[categoriaId] ? `la de ${categoria?.nombre ?? "la categoría"}` : "la general";
   const ejemplo = envase.trim() && precioEjemplo ? ejemploDeCostos({ precioEnvase: precioEjemplo, cantidad, recargoPct: recargoQueAplica }) : null;
-  const dibujo = dibujoDeProducto(nombre, categoria?.grupo);
+  const grupo = grupoDeProducto(nombre, categoria?.grupo);
+  const dibujo = dibujoDeProducto(nombre, grupo);
   const unidadesVisibles = UNIDADES.filter((x) => x.comun || verTodas || x.valor === unidad);
-  const elegirUnidad = (x: (typeof UNIDADES)[number]) => {
+  const elegirUnidad = (x: (typeof UNIDADES)[number], aMano = true) => {
+    if (aMano) setUnidadAMano(true);
     setUnidad(x.valor);
     setFraccion(x.fraccion);
     const primero = envasesSugeridos(x.valor)[0];
@@ -80,25 +103,59 @@ export function FormularioProducto({
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <FormularioAccion accion={crearProductoGuiadoAccion} boton="Crear el producto" className="flex flex-col gap-4">
         <input type="hidden" name="unidadBase" value={unidad} />
-        <input type="hidden" name="categoriaId" value={categoriaId} />
+        <input type="hidden" name="categoria" value={valorCategoria} />
         {fraccion && <input type="hidden" name="admiteFraccion" value="on" />}
         <input type="hidden" name="envase" value={envase} />
         <input type="hidden" name="cantidadEnvase" value={cantidad} />
         {codigoPropio !== null && <input type="hidden" name="codigo" value={codigoPropio} />}
 
         <Pregunta n={1} titulo="¿Qué producto es?" ayuda="El nombre como lo dicen ustedes y en qué grupo va.">
-          <input name="nombre" required autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Tomate redondo" aria-label="Nombre del producto" className={campoGrande} />
+          <input
+            name="nombre"
+            required
+            autoFocus
+            value={nombre}
+            onChange={(e) => {
+              setNombre(e.target.value);
+              // Mientras no se eligió a mano, la forma de vender sigue al nombre (huevos → maple).
+              if (!unidadAMano) {
+                const x = UNIDADES.find((y) => y.valor === unidadSugerida(e.target.value));
+                if (x && x.valor !== unidad) elegirUnidad(x, false);
+              }
+            }}
+            placeholder="Ej. Tomate redondo"
+            aria-label="Nombre del producto"
+            className={campoGrande}
+          />
+          <p className="text-sm font-medium">
+            Categoría{elegida === null && otraCategoria === null && nombre.trim() && sugerida !== "ninguna" && <span className="font-normal text-texto-suave"> (propuesta por el nombre: cambiala si querés)</span>}
+          </p>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Categoría">
             {categorias.map((c) => (
-              <button key={c.id} type="button" onClick={() => setCategoriaId(c.id)} aria-pressed={c.id === categoriaId} className={opcion(c.id === categoriaId)}>
-                <span aria-hidden>{dibujoDeProducto("", c.grupo)}</span>
+              <button key={c.id} type="button" onClick={() => elegirCategoria(`id:${c.id}`)} aria-pressed={valorCategoria === `id:${c.id}`} className={opcion(valorCategoria === `id:${c.id}`)}>
+                <span aria-hidden>{CATEGORIAS_PREELEGIDAS.find((p) => normalizar(p.nombre) === normalizar(c.nombre))?.icono ?? dibujoDeProducto("", c.grupo)}</span>
                 {c.nombre}
               </button>
             ))}
+            {preelegidasLibres.map((c) => (
+              <button key={c.nombre} type="button" title={c.ayuda} onClick={() => elegirCategoria(`nombre:${c.nombre}`)} aria-pressed={valorCategoria === `nombre:${c.nombre}`} className={opcion(valorCategoria === `nombre:${c.nombre}`)}>
+                <span aria-hidden>{c.icono}</span>
+                {c.nombre}
+              </button>
+            ))}
+            <button type="button" onClick={() => elegirCategoria("ninguna")} aria-pressed={valorCategoria === "ninguna" && otraCategoria === null} className={opcion(valorCategoria === "ninguna" && otraCategoria === null)}>
+              Ninguna
+            </button>
+            <button type="button" onClick={() => setOtraCategoria(otraCategoria ?? "")} aria-pressed={otraCategoria !== null} className={opcion(otraCategoria !== null)}>
+              Otra…
+            </button>
           </div>
           <p className="text-sm text-texto-suave">
             Su código y su dibujo se arman solos: <b className="text-texto">{codigoAuto}</b> <span aria-hidden>{dibujo}</span>. El código sirve para buscarlo y para las planillas de Excel.
           </p>
+          {otraCategoria !== null && (
+            <input value={otraCategoria} onChange={(e) => setOtraCategoria(e.target.value)} maxLength={80} placeholder="Nombre de la categoría (ej. Verduras de estación)" aria-label="Nombre de otra categoría" className={campoGrande} />
+          )}
         </Pregunta>
 
         <Pregunta n={2} titulo="¿Cómo se vende?" ayuda="Así se anotan los pedidos y se calculan los precios. Después no se puede cambiar.">
@@ -232,7 +289,7 @@ export function FormularioProducto({
       <aside className="flex flex-col gap-3 lg:sticky lg:top-4 lg:self-start">
         <p className="text-sm font-semibold text-texto-suave">Así va a quedar</p>
         <div className="flex flex-col overflow-hidden rounded-lg bg-tarjeta text-tarjeta-texto shadow-tarjeta">
-          <span aria-hidden className="h-2" style={{ background: FRANJA[categoria?.grupo ?? "OTRO"] ?? FRANJA.OTRO }} />
+          <span aria-hidden className="h-2" style={{ background: FRANJA[grupo] ?? FRANJA.OTRO }} />
           <div className="flex flex-col gap-2 p-3">
             <div className="flex items-start gap-3">
               <span aria-hidden className="flex size-11 items-center justify-center rounded-full bg-black/5 text-2xl dark:bg-white/10">
@@ -246,7 +303,7 @@ export function FormularioProducto({
               </div>
             </div>
             <p className="text-sm text-tarjeta-suave">📦 {presentacion ? `Se compra en ${presentacion}` : "Se compra suelto"}</p>
-            <p className="text-sm text-tarjeta-suave">🏷 {categoria?.nombre ?? "Sin categoría"}</p>
+            <p className="text-sm text-tarjeta-suave">🏷 {nombreCategoria ?? "Sin categoría"}</p>
           </div>
         </div>
         <p className="text-sm text-texto-suave">Después de crearlo, en su ficha le cargás qué proveedores lo venden y a qué precio (o se carga solo con la primera compra).</p>

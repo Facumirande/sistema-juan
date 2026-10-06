@@ -21,8 +21,9 @@ export const COLUMNAS: readonly Columna[] = [
   { clave: "en_lista", titulo: "Lista de compras", ayuda: "Se están comprando: tildá lo que ya está.", estados: ["EN_COMPRA"], seleccionable: true },
   // Pedidos en la lista con todo lo suyo ya comprado (la columna se decide con columnaDeTarjeta).
   { clave: "comprados", titulo: "Comprado", ayuda: "Ya está todo lo suyo: listo para preparar.", estados: [], seleccionable: false },
-  { clave: "preparando", titulo: "Preparando", ayuda: "Armándose con lo que se compró.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: false },
-  { clave: "en_camino", titulo: "En camino", ayuda: "Salieron en un reparto.", estados: ["EN_REPARTO"], seleccionable: false },
+  // Desde "Preparando" se arrastran (o se eligen) a "En camino" cuando salen a entregar.
+  { clave: "preparando", titulo: "Preparando", ayuda: "Separándose. Cuando sale, arrastralo a En camino.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: true },
+  { clave: "en_camino", titulo: "En camino", ayuda: "Salieron a entregar.", estados: ["EN_REPARTO"], seleccionable: false },
   { clave: "entregados", titulo: "Entregados", ayuda: "Ya los recibió el cliente.", estados: ["ENTREGADO"], seleccionable: false },
 ];
 
@@ -85,17 +86,23 @@ export function textoPlazo(desde: string | null, hasta: string | null): string |
   return null;
 }
 
-export type AccionAlMover = "AGREGAR_A_LISTA" | "AGREGAR_Y_COMPRAR" | "SACAR_DE_LISTA" | "MARCAR_COMPRADO" | "DESMARCAR_COMPRADO" | "PREPARAR";
+export type AccionAlMover = "AGREGAR_A_LISTA" | "AGREGAR_Y_COMPRAR" | "SACAR_DE_LISTA" | "MARCAR_COMPRADO" | "DESMARCAR_COMPRADO" | "PREPARAR" | "SALIR";
 
-/** Columnas cuyas tarjetas se pueden arrastrar: desde que empieza la preparación, avanzan solas. */
-export const COLUMNAS_ARRASTRABLES: readonly ClaveColumna[] = ["pedidos", "en_lista", "comprados"];
+/** Columnas entre las que una tarjeta va y vuelve: lo anterior a la preparación. */
+const VAN_Y_VUELVEN: readonly ClaveColumna[] = ["pedidos", "en_lista", "comprados"];
+
+/** Columnas cuyas tarjetas se pueden arrastrar: las de antes de preparar y "Preparando" (para que salgan). */
+export const COLUMNAS_ARRASTRABLES: readonly ClaveColumna[] = [...VAN_Y_VUELVEN, "preparando"];
 
 /**
  * Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). Entre Pedidos,
- * Lista de compras y Comprado se va y se vuelve; soltarla en Preparando empieza a preparar el día.
+ * Lista de compras y Comprado se va y se vuelve; soltarla en Preparando empieza a preparar el
+ * día; de "Preparando" a "En camino" sale a entregar: se termina de preparar, se hace el remito y
+ * sale el reparto.
  */
 export function accionAlMover(desde: ClaveColumna, hacia: ClaveColumna): AccionAlMover | null {
-  if (desde === hacia || !COLUMNAS_ARRASTRABLES.includes(desde)) return null;
+  if (desde === "preparando") return hacia === "en_camino" ? "SALIR" : null;
+  if (desde === hacia || !VAN_Y_VUELVEN.includes(desde)) return null;
   if (hacia === "preparando") return "PREPARAR";
   if (hacia === "pedidos") return "SACAR_DE_LISTA";
   if (hacia === "en_lista") return desde === "pedidos" ? "AGREGAR_A_LISTA" : "DESMARCAR_COMPRADO";
@@ -108,21 +115,27 @@ export type DondeSeHace = "preparacion" | "viaje";
 
 /** Por qué una tarjeta no se puede soltar ahí y dónde se hace ese paso (para decirlo con su botón). */
 export function porQueNoSeMueve(desde: ClaveColumna, hacia: ClaveColumna): { mensaje: string; ir: DondeSeHace } {
-  if (!COLUMNAS_ARRASTRABLES.includes(desde)) {
+  if (!VAN_Y_VUELVEN.includes(desde)) {
     if (hacia === "entregados" && desde === "en_camino") return { mensaje: "Pasa a Entregados cuando tocás “✅ Entregar” en Logística.", ir: "viaje" };
-    if (hacia === "en_camino" && desde === "preparando") return { mensaje: "Pasa a En camino cuando terminás de prepararlo y sale el reparto: se arma en Logística.", ir: "viaje" };
+    if (hacia === "entregados" && desde === "preparando") return { mensaje: "Primero tiene que salir: arrastralo a “En camino” y, cuando lo recibe el cliente, tocá “✅ Entregar” en Logística.", ir: "viaje" };
     return { mensaje: "Este pedido ya se está preparando o ya salió: no vuelve atrás desde el tablero. Si hay que corregir algo, se hace en la preparación.", ir: "preparacion" };
   }
   if (hacia === "entregados") return { mensaje: "Para que quede Entregado primero hay que prepararlo y llevarlo: pasa solo al tocar “✅ Entregar” en el viaje.", ir: "preparacion" };
   return { mensaje: "Para que salga En camino primero hay que prepararlo: después se arma el viaje en Logística y pasa solo.", ir: "preparacion" };
 }
 
-/** Qué se puede hacer con las tarjetas elegidas. */
-export function resumenDeSeleccion(estados: readonly EstadoPedido[]): { total: number; paraLista: number; paraSacar: number } {
+/** Qué se puede hacer con las tarjetas elegidas (según su estado y la columna en la que están). */
+export function resumenDeSeleccion(tarjetas: readonly { estado: EstadoPedido; columna: ClaveColumna | null }[]): {
+  total: number;
+  paraLista: number;
+  paraSacar: number;
+  paraSalir: number;
+} {
   return {
-    total: estados.length,
-    paraLista: estados.filter((e) => e === "BORRADOR" || e === "CONFIRMADO").length,
-    paraSacar: estados.filter((e) => e === "EN_COMPRA").length,
+    total: tarjetas.length,
+    paraLista: tarjetas.filter((t) => t.columna === "pedidos" && (t.estado === "BORRADOR" || t.estado === "CONFIRMADO")).length,
+    paraSacar: tarjetas.filter((t) => t.estado === "EN_COMPRA" && t.columna !== "preparando").length,
+    paraSalir: tarjetas.filter((t) => t.columna === "preparando").length,
   };
 }
 

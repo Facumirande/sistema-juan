@@ -10,6 +10,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { ESTADOS_ENTREGA, ESTADOS_REPARTO, fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, Encabezado, Selector, Tarjeta, clasesBoton } from "@/ui/formularios";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 import {
   actualizarRepartoAccion,
@@ -61,6 +62,39 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
       </Encabezado>
       {r.estado === "ANULADO" && <Aviso>Anulado: {r.motivoAnulacion}</Aviso>}
 
+      {r.estado !== "ANULADO" && r.estado !== "FINALIZADO" && (puedeGestionar || r.esMio) && (
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 p-4 ${planificado ? "border-marca bg-superficie" : "border-[var(--pastel-verde)] bg-[var(--pastel-verde)] text-[var(--pastel-verde-texto)]"}`}>
+          <p className="text-lg font-semibold">
+            {!planificado
+              ? "🚚 En camino: al dejar cada pedido, tocá ✅ Entregar en su parada."
+              : r.paradas.length === 0
+                ? "Agregá las entregas que lleva este reparto."
+                : sinPreparar.length > 0
+                  ? `Todavía se están preparando: ${sinPreparar.map((p) => p.cliente).join(", ")}.`
+                  : sinDocumentos.length > 0
+                    ? "Falta hacer algún remito antes de salir."
+                    : "✓ Todo preparado y con su remito: listo para salir."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {planificado && sinDocumentos.length > 0 && sinPreparar.length === 0 && sesion.permisos.includes("entregas.emitir_documentos") && (
+              <FormularioAccion accion={emitirPendientesAccion} boton="🧾 Hacer los remitos que faltan" variante="secundario" enLinea>
+                {oculto("repartoId", r.id)}
+              </FormularioAccion>
+            )}
+            {planificado && r.paradas.length > 0 && (
+              <FormularioAccion accion={salirAccion} boton="🚚 Salir: pasan a En camino" confirmar="¿Sale el reparto? Las entregas pasan a estar en camino." enLinea>
+                {oculto("repartoId", r.id)}
+              </FormularioAccion>
+            )}
+            {r.estado === "EN_CURSO" && (
+              <FormularioAccion accion={regresarAccion} boton="Regresé" variante="secundario" enLinea>
+                {oculto("repartoId", r.id)}
+              </FormularioAccion>
+            )}
+          </div>
+        </section>
+      )}
+
       {puedeGestionar && planificado && (
         <Tarjeta titulo="Datos del reparto">
           <FormularioAccion accion={actualizarRepartoAccion} boton="Guardar" variante="secundario">
@@ -76,7 +110,13 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
 
       {r.paradas.length > 0 && r.estado !== "ANULADO" && (
         <div id="recorrido">
-          <Tarjeta titulo="🧭 Recorrido y GPS">
+          <Tarjeta
+            titulo={
+              <span className="flex items-center gap-2">
+                <FlechaNavegacion /> Recorrido y GPS
+              </span>
+            }
+          >
             <PlanificadorDeViaje paradas={paradasDeReparto(r.paradas)} salida={salida} guardar={puedeOrdenar ? { tipo: "reparto", repartoId: r.id } : null} />
           </Tarjeta>
         </div>
@@ -103,7 +143,15 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
                     </Link>
                     {" · "}
                     {ESTADOS_ENTREGA[p.estado]}
-                    {!p.documentosAlDia && p.estado !== "ENTREGADA" && <b className="text-error"> · sin documentos</b>}
+                    {!p.documentosAlDia && p.estado !== "ENTREGADA" && <b className="text-error"> · sin remito</b>}
+                    {p.documentosAlDia && sesion.permisos.includes("documentos.imprimir_entrega") && (
+                      <>
+                        {" · "}
+                        <Link href={`/entregas/${p.id}/documento/lista-entrega`} className="font-medium underline-offset-4 hover:underline">
+                          🧾 remito
+                        </Link>
+                      </>
+                    )}
                   </p>
                 </div>
                 {p.estado === "EN_REPARTO" && sesion.permisos.includes("entregas.confirmar") && (
@@ -163,26 +211,6 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
         </Tarjeta>
       )}
 
-      {r.estado !== "ANULADO" && r.estado !== "FINALIZADO" && (
-        <div className="flex flex-col gap-3">
-          {sinPreparar.length > 0 && <Aviso>Todavía se están preparando: {sinPreparar.map((p) => p.cliente).join(", ")}.</Aviso>}
-          {sinDocumentos.length > 0 && sesion.permisos.includes("entregas.emitir_documentos") && sinPreparar.length === 0 && (
-            <FormularioAccion accion={emitirPendientesAccion} boton="Emitir los documentos que faltan" variante="secundario">
-              {oculto("repartoId", r.id)}
-            </FormularioAccion>
-          )}
-          {planificado && (puedeGestionar || r.esMio) && (
-            <FormularioAccion accion={salirAccion} boton="Salir" confirmar="¿Sale el reparto? Las entregas pasan a estar en camino.">
-              {oculto("repartoId", r.id)}
-            </FormularioAccion>
-          )}
-          {r.estado === "EN_CURSO" && (puedeGestionar || r.esMio) && (
-            <FormularioAccion accion={regresarAccion} boton="Regresé" variante="secundario">
-              {oculto("repartoId", r.id)}
-            </FormularioAccion>
-          )}
-        </div>
-      )}
 
       {puedeGestionar && r.estado !== "ANULADO" && !r.paradas.some((p) => p.estado === "ENTREGADA") && (
         <details className="rounded-lg border border-borde bg-superficie p-4">

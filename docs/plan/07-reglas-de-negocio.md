@@ -49,13 +49,14 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-002 | Toda presentación tiene `factor_a_base` > 0 y al menos uno de los indicadores `usable_en_compra` / `usable_en_venta`. | Alta y edición de presentación | BLOQUEA |
 | RN-003 | El `factor_a_base` de una presentación usada en pedidos o compras no se modifica: se crea una presentación nueva y se desactiva la anterior. | Edición de presentación | BLOQUEA |
 | RN-004b | **Código y dibujo automáticos (06/10/2026):** al crear un producto, si no se escribe un código se arma con el nombre: las 4 primeras letras de la primera palabra y la inicial de la segunda ("Tomate redondo" → `TOMA-R`), sin acentos ni palabras vacías; si ya existe se le agrega un número (`TOMA-R2`). El código sirve para buscar el producto y para identificarlo en las planillas de Excel. El dibujo del producto no se elige: sale solo de su nombre (🍅 para "tomate", 🫛 para "chaucha"…) y, si el nombre no dice nada, del grupo de su categoría (🥦 verdura, 🍎 fruta, 📦 otro). (`src/dominio/catalogo/productos.ts`) | Alta y edición de producto; toda pantalla que lo muestra | CALCULA |
-| RN-004c | **Productos desde una planilla (07/10/2026):** una planilla de Excel (o CSV) con una fila por producto crea productos nuevos. Son obligatorios el nombre y la categoría; lo demás toma el valor de siempre: se vende por kg, se compra suelto, se pide en partes si va por kilo o litro, sin ganancia propia y con el código armado solo. Un producto que ya existe (mismo nombre o mismo código) se saltea: la planilla nunca cambia productos cargados. Una categoría que no existe se crea (con el grupo que sugiere su nombre), salvo que sea casi igual a una existente (una o dos letras de diferencia), que se toma como error de tipeo. Primero se revisa sin guardar; si alguna fila no se entiende (falta el nombre o la categoría, repetido dentro de la planilla, unidad desconocida, envase sin cuánto trae, ganancia que no es un número, categoría dada de baja) no se carga nada y cada problema se informa con su fila. Al cargar, todos los productos y las categorías nuevas se crean en una sola transacción. La columna de ganancia solo la puede usar quien tiene `precios.editar_reglas`. (`src/dominio/catalogo/planilla.ts`) | Subir una planilla de productos | BLOQUEA |
 | RN-004 | El nombre y el código de producto son únicos por empresa (sin distinguir mayúsculas). Calidades distintas se cargan como productos distintos ("Tomate redondo primera" / "segunda"). | Alta y edición de producto | BLOQUEA |
-| RN-005 | Todo producto pertenece a una categoría. | Alta y edición de producto | BLOQUEA |
+| RN-005 | Todo producto pertenece a una categoría. Si se elige "Ninguna", va a "Sin categoría" (RN-154). | Alta y edición de producto | BLOQUEA + CALCULA |
 | RN-006 | Todo producto tiene alícuota de IVA; si no se indica, toma la de la empresa. | Alta de producto | CALCULA |
 | RN-007 | Un producto desactivado no se ofrece en pedidos, compras ni listas nuevas; su historial queda intacto. Si tiene pedidos en curso, se advierte al desactivarlo. | Desactivación; carga de pedidos y compras | BLOQUEA (uso nuevo) + ADVIERTE |
 | RN-008 | `cantidad_base = cantidad × factor_a_base` de la presentación elegida (o = cantidad si se carga en unidad base). Todo cálculo interno se hace en unidad base. | Pedidos, compras, entregas | CALCULA |
 | RN-009 | Si el producto no admite fracción (`admite_fraccion = false`, ej. lechuga por unidad), las cantidades en unidad base son enteras; el reparto de faltantes usa paso 1 (o 0,1 si admite fracción). | Carga de cantidades; reparto de faltantes | BLOQUEA + CALCULA |
+| RN-154 | Una categoría existe para la persona solo si tiene al menos un producto activo: nace al asignársela a un producto (al cargarlo, desde la planilla o al moverlo), y cuando se queda sin productos activos se oculta sola (`activo = false`); si se vuelve a usar su nombre o se reactiva uno de sus productos, reaparece la misma (con su orden y su ganancia). Hay categorías preelegidas por cómo se manipula la mercadería, con su orden de carga: Duras (1), Blandas (2), De hoja (3), Aromáticas (4), Frágiles (5), Secos (6); "Sin categoría" (99) va siempre al final y las nuevas antes de ella. | Alta, edición, movimiento, baja y reactivación de productos | CALCULA |
+| RN-155 | La carga desde la planilla modelo crea solo los productos nuevos (sin repetir nombres que ya existen ni repetidos en la planilla), todos en una transacción. El código se arma solo con el nombre (o se usa el de la planilla si está libre); el dibujo sale del nombre; si la categoría o la forma de vender quedaron vacías, se proponen por el nombre (la categoría vacía sin propuesta queda "Sin categoría"; "Ninguna" la deja sin categoría). Se avisa solo lo importante que falta: cómo se vende (vacío o no reconocido) y un envase sin lo que trae; lo opcional mal escrito (ganancia) se ignora. Hasta 500 productos por vez. | Cargar productos desde una planilla | CALCULA + ADVIERTE |
 
 ### 2.2 Clientes
 
@@ -226,7 +227,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 |---|---|---|---|
 | RN-120 | `DOC-02` (lista de entrega sin precios) y `DOC-03` (lista contable) se emiten siempre juntos, de la misma entrega y la misma versión. | Emisión | BLOQUEA |
 | RN-121 | La emisión congela los precios (RN-089) y exige que todas las líneas tengan precio (RN-087). | Emisión | BLOQUEA + CALCULA |
-| RN-122 | Una entrega no pasa a `EN_REPARTO` sin documentos emitidos de su versión vigente. | Salida del reparto | BLOQUEA |
+| RN-122 | Una entrega no pasa a `EN_REPARTO` sin documentos emitidos de su versión vigente. Un reparto sale con todas sus paradas preparadas y con sus documentos; si no se eligió quién lo hace, queda a cargo de quien lo manda a salir. | Salida del reparto | BLOQUEA |
 | RN-123 | Una entrega pertenece a un solo reparto a la vez, de su misma jornada. | Armado de repartos | BLOQUEA |
 | RN-124 | Las rutas y consultas de documentos y vistas sin precios no leen campos de precio ni costo (control en el servidor, no solo en la interfaz). | `DOC-02`, `DOC-04`, `DOC-07`, vistas de preparación y reparto | BLOQUEA |
 | RN-125 | La confirmación exige nombre de quien recibe; la hora la registra el servidor. | Confirmar entrega | BLOQUEA |
@@ -239,6 +240,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-132 | Anular una entrega requiere `entregas.anular` y motivo; si está `FACTURADA`, antes se anula la factura; sus líneas se reasignan a una entrega nueva o correcta. | Anular entrega | BLOQUEA + AUDITA |
 | RN-133 | Reimprimir una versión ya emitida no genera versión nueva (las reimpresiones no se registran). | Reimpresión | CALCULA |
 | RN-134 | Si el cliente no recibe nada (cerrado o cancela en la puerta o después de preparado), la entrega se confirma con todas las cantidades en 0 y motivo `CAMBIO_CLIENTE` u `OTRO` con detalle; total $0. | Confirmar entrega | CALCULA |
+| RN-153 | **Sale ahora** (de Preparando a En camino en un paso): las entregas de los pedidos elegidos (que ya tienen su preparación armada) se completan con lo propuesto en las líneas sin tildar solo si la persona lo confirma (motivo `FALTANTE` si va menos de lo pedido), pasan a `PREPARADA`, se emiten sus documentos si faltan (RN-121; sin precio no sale nada y se ofrece cargarlo) y salen: las que están en un reparto armado salen con ese reparto (todas sus paradas tienen que estar listas, RN-122); las sueltas se suman a ese reparto si hay uno solo entre las elegidas, o salen juntas en un reparto nuevo a cargo de quien las manda (RN-123). Todo en una transacción. Exige `repartos.gestionar` (y `preparacion.registrar` / `entregas.emitir_documentos` si hay que preparar o emitir). Las ya salidas no cambian. | Tablero (arrastrar o elegir), tarjeta abierta, preparación | BLOQUEA + CALCULA |
 
 ### 2.12 Facturación
 
@@ -367,7 +369,7 @@ Claves del catálogo de `02-usuarios-roles-y-permisos.md` que usan los documento
 | Permiso | Para qué se usa en estos documentos | Reglas |
 |---|---|---|
 | `clientes.editar` | Alta y edición de clientes y puntos de entrega (sin recargos) | RN-010 a RN-016 |
-| `productos.editar` | Alta de productos, presentaciones y proveedor preferido | RN-001 a RN-009, RN-073 |
+| `productos.editar` | Alta de productos (también desde la planilla), presentaciones, categorías y proveedor preferido | RN-001 a RN-009, RN-073, RN-154, RN-155 |
 | `proveedores.editar` | Alta y edición de proveedores | RN-108 |
 | `proveedores.ver_credito` | Ver límite, disponible, semáforo y deuda vencida | RN-104, RN-107 |
 | `proveedores.editar_limite` | Cambiar límite de crédito y plazo de pago | RN-105 |
@@ -394,7 +396,7 @@ Claves del catálogo de `02-usuarios-roles-y-permisos.md` que usan los documento
 | `pagos.ajustar` | Registrar ajustes y saldo inicial | RN-102, RN-110 |
 | `preparacion.registrar` | Registrar cantidades preparadas y pasar la entrega a `PREPARADA` | RN-111 a RN-118 |
 | `preparacion.asignar_faltantes` | Ajustar el reparto de faltantes | RN-116 |
-| `repartos.gestionar` | Armar repartos, ordenar paradas | RN-123 |
+| `repartos.gestionar` | Armar repartos, ordenar paradas, mandar pedidos a En camino ("Sale ahora") | RN-123, RN-153 |
 | `repartos.ver_propios` | El repartidor ve solo sus repartos | RN-131 |
 | `entregas.gestionar` | Armar entregas y pasarlas a `EN_REPARTO` | RN-122 |
 | `entregas.emitir_documentos` | Emitir y reemitir `DOC-02` y `DOC-03` de una entrega | RN-120, RN-121 |

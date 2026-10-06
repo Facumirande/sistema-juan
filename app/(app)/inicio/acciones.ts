@@ -4,11 +4,13 @@ import { accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/domini
 import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
 import { desmarcarPedidoComprado, generarListaCompra, marcarNoConseguido, marcarPedidoComprado, sacarPedidoDeLista, tildarLinea } from "@/modulos/compras/lista-compra";
 import { iniciarPreparacion } from "@/modulos/entregas/preparacion";
+import { mandarEnCamino } from "@/modulos/entregas/repartos";
 import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido } from "@/modulos/pedidos/pedidos";
 import { estadosDePedidos } from "@/modulos/pedidos/tablero";
-import { ejecutarAccion } from "@/ui/accion-servidor";
+import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, esEnlace, type EstadoAccion } from "@/ui/estado-accion";
+import { resultadoDeSalida } from "@/ui/texto-salida";
 
 // Acciones del tablero de pedidos (estilo Trello). Los permisos los verifica cada caso de uso.
 
@@ -98,7 +100,7 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
   return ejecutarAccion(async ({ db, authUserId }) => {
     const id = campo(datos, "pedido");
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
-    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: desde que empieza la preparación, los pedidos avanzan solos cuando se hace cada paso." };
+    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: de Preparando solo sale a En camino, y la entrega se marca al dejar el pedido." };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
     if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
     const aLaLista = async () => {
@@ -121,6 +123,8 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
       case "DESMARCAR_COMPRADO":
         await desmarcarPedidoComprado(db, authUserId, id);
         return { ok: true, mensaje: `${p.cliente} volvió a la lista de compras: lo suyo quedó sin tildar.` };
+      case "SALIR":
+        return resultadoDeSalida(await mandarEnCamino(db, authUserId, { pedidoIds: [id], confirmar: tildada(datos, "confirmarVariacion") }));
       case "PREPARAR": {
         const { problemas } = await completarPedidosDelDia(db, authUserId, p.fecha);
         const r = await iniciarPreparacion(db, authUserId, p.fecha);

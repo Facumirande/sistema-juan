@@ -1,30 +1,45 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Fragment, Suspense, type ReactNode } from "react";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { avisosPara, type BandejaDeAvisos } from "@/modulos/colaboracion/avisos";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
+import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
 import { EnlaceDeMenu } from "@/ui/enlace-menu";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
 import { Campanita } from "./actividad/campanita";
+import { EtapasDelDia, EtapasSueltas } from "./etapas-del-dia";
 
-function Items({ grupo }: { grupo: GrupoMenu }) {
-  return grupo.items.map((item) =>
-    item.enConstruccion ? (
+function Items({ grupo, etapas }: { grupo: GrupoMenu; etapas: ReactNode }) {
+  const primeraEtapa = grupo.items.findIndex((i) => i.etapa);
+  return grupo.items.map((item, i) => {
+    // Las etapas del día van todas juntas donde está la primera (debajo del tablero).
+    if (item.etapa) return i === primeraEtapa ? <Fragment key="etapas">{etapas}</Fragment> : null;
+    return item.enConstruccion ? (
       <span key={item.pantalla} className="flex min-h-11 items-center justify-between rounded-lg px-3 text-texto-suave">
         {item.etiqueta}
         <span className="text-xs">próximamente</span>
       </span>
     ) : (
       <EnlaceDeMenu key={item.pantalla} href={item.ruta} icono={item.icono} etiqueta={item.etiqueta} destacado={item.destacado} />
-    ),
-  );
+    );
+  });
 }
 
-function Menu({ grupos }: { grupos: GrupoMenu[] }) {
+function Menu({ grupos, authUserId, permisos }: { grupos: GrupoMenu[]; authUserId: string; permisos: readonly Permiso[] }) {
   const titulo = "px-3 text-xs font-semibold uppercase tracking-wide text-texto-suave";
+  const etapasDe = (g: GrupoMenu) => {
+    const items = g.items.filter((i) => i.etapa);
+    if (items.length === 0) return null;
+    return (
+      <Suspense fallback={<EtapasSueltas items={items} />}>
+        <EtapasDelDia authUserId={authUserId} permisos={permisos} items={items} />
+      </Suspense>
+    );
+  };
   return (
     <nav aria-label="Menú principal" className="flex flex-col gap-5">
       {grupos.map((g) =>
@@ -35,13 +50,13 @@ function Menu({ grupos }: { grupos: GrupoMenu[] }) {
               <span aria-hidden className="text-base transition-transform group-open:rotate-90">›</span>
             </summary>
             <div className="mt-1 flex flex-col gap-1">
-              <Items grupo={g} />
+              <Items grupo={g} etapas={etapasDe(g)} />
             </div>
           </details>
         ) : (
           <div key={g.grupo} className="flex flex-col gap-1">
             <p className={titulo}>{g.grupo}</p>
-            <Items grupo={g} />
+            <Items grupo={g} etapas={etapasDe(g)} />
           </div>
         ),
       )}
@@ -83,11 +98,11 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
         <details className="md:hidden">
           <summary className="flex min-h-12 cursor-pointer items-center px-4 font-semibold">Menú</summary>
           <div className="px-2 pb-4">
-            <Menu grupos={grupos} />
+            <Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} />
           </div>
         </details>
         <div className="hidden p-3 md:block">
-          <Menu grupos={grupos} />
+          <Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} />
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">

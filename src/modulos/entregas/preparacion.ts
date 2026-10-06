@@ -211,6 +211,8 @@ export interface EntregaEnPreparacion {
   sustituciones: number;
   bultos: number | null;
   documentosPendientes: boolean;
+  /** El remito (lista de entrega) de la versión vigente ya está hecho. */
+  remito: boolean;
   /** Lo que hay que separar para el cliente, con lo ya separado tildado y lo que faltó y por qué. */
   detalle: { producto: string; cantidad: string; hecha: boolean; aviso: string | null; reemplazo: boolean }[];
 }
@@ -304,6 +306,7 @@ export async function obtenerPreparacion(
         sustituciones: propias.filter((i) => i.esSustitucion).length,
         bultos: f.bultos,
         documentosPendientes: f.estado === "PREPARADA" && !alDia.has(f.id),
+        remito: alDia.has(f.id),
         detalle: propias.map((i) => ({
           producto: i.producto,
           cantidad: formatearCantidad(i.esSustitucion ? (i.preparada ?? i.pedida) : i.pedida, i.unidad as UnidadMedida),
@@ -390,6 +393,7 @@ export async function obtenerEntregaParaPreparar(db: BaseDatos, authUserId: stri
       .where(eq(entrega.id, entregaId));
     if (!f) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la entrega.");
     const empresa = await configuracionEmpresa(tx);
+    const alDia = await documentosAlDia(tx, f.e.id, f.e.version);
     const lineas: LineaAPreparar[] = (await lineasOperativas(tx, entregaId)).map((l) => {
       const n = l.factor && l.presentacion && dec(l.factor).gt(1) ? dec(l.cantidadPedida).div(l.factor) : null;
       const ev = l.cantidadPreparada !== null ? evaluarPreparado(l.cantidadPedida, l.cantidadPreparada, empresa.toleranciaPesoPct) : null;
@@ -424,7 +428,8 @@ export async function obtenerEntregaParaPreparar(db: BaseDatos, authUserId: stri
       orden: f.e.ordenEnReparto,
       bultos: f.e.cantidadBultos,
       tolerancia: empresa.toleranciaPesoPct,
-      documentosPendientes: f.e.estado === "PREPARADA" && !(await documentosAlDia(tx, f.e.id, f.e.version)),
+      documentosPendientes: f.e.estado === "PREPARADA" && !alDia,
+      remito: alDia,
       lineas,
     };
   });

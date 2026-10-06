@@ -10,11 +10,14 @@ import { listarProductos } from "@/modulos/catalogo/productos";
 import { obtenerEntregaParaPreparar, type LineaAPreparar } from "@/modulos/entregas/preparacion";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import { BotonAccion } from "@/ui/boton-accion";
 import { ESTADOS_ENTREGA, MOTIVOS_FALTANTE, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, CampoNumero, Encabezado, Selector, clasesBoton } from "@/ui/formularios";
 
+import { salenAhoraAccion } from "../../../../repartos/acciones";
 import { marcarPreparadaAccion, preparadoAccion, sustituirAccion, todoPropuestoAccion } from "../../../acciones";
+import { PasosDePreparacion, pasoDeEntrega } from "../../../pasos";
 
 export const metadata: Metadata = { title: "Preparar un pedido · Sistema Repartos" };
 
@@ -115,6 +118,9 @@ export default async function PrepararEntrega({ params }: PageProps<"/preparacio
   const e = await cargarFicha(obtenerEntregaParaPreparar(db, sesion.authUserId, idDeRuta(id)));
   const puedeRegistrar = sesion.permisos.includes("preparacion.registrar");
   const editable = puedeRegistrar && ["BORRADOR", "EN_PREPARACION", "PREPARADA"].includes(e.estado);
+  const separando = ["BORRADOR", "EN_PREPARACION"].includes(e.estado);
+  const salio = ["EN_REPARTO", "ENTREGADA"].includes(e.estado);
+  const verRemito = e.remito && sesion.permisos.includes("documentos.imprimir_entrega");
   const productos = editable ? (await listarProductos(db, sesion.authUserId)).map((p) => ({ valor: p.id, etiqueta: p.nombre })) : [];
   const separadas = e.lineas.filter((l) => l.preparada !== null).length;
   const faltas = e.lineas.map((l) => ({ l, falta: aviso(l) })).filter((x) => x.falta);
@@ -130,20 +136,48 @@ export default async function PrepararEntrega({ params }: PageProps<"/preparacio
         <span className="rounded-full border border-borde px-3 py-1 text-sm">{ESTADOS_ENTREGA[e.estado]}</span>
       </Encabezado>
 
-      <div className="flex flex-col gap-2 rounded-2xl bg-[var(--pastel-amarillo)] p-4 text-[var(--pastel-amarillo-texto)]">
-        <p className="text-lg font-semibold">
-          {separadas === e.lineas.length ? "✓ Está todo separado" : `Separados ${separadas} de ${e.lineas.length} productos`}
-          {faltas.length > 0 && ` · falta algo en ${faltas.length}`}
-        </p>
-        <div className="h-3 overflow-hidden rounded-full bg-black/10" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Avance de la preparación">
-          <div className="h-3 rounded-full bg-[var(--listo-fondo)]" style={{ width: `${pct}%` }} />
+      <PasosDePreparacion actual={pasoDeEntrega(e.estado, separadas, e.lineas.length)} />
+
+      {separando ? (
+        <div className="flex flex-col gap-2 rounded-2xl bg-[var(--pastel-amarillo)] p-4 text-[var(--pastel-amarillo-texto)]">
+          <p className="text-lg font-semibold">
+            {separadas === e.lineas.length ? "✓ Está todo separado: falta marcarlo como preparado (abajo)" : `Separados ${separadas} de ${e.lineas.length} productos`}
+            {faltas.length > 0 && ` · falta algo en ${faltas.length}`}
+          </p>
+          <div className="h-3 overflow-hidden rounded-full bg-black/10" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Avance de la preparación">
+            <div className="h-3 rounded-full bg-[var(--listo-fondo)]" style={{ width: `${pct}%` }} />
+          </div>
+          {editable && separadas < e.lineas.length && (
+            <FormularioAccion accion={todoPropuestoAccion} boton="✓ Está todo en los que faltan" enLinea confirmar="¿Marcar como separado lo pedido (o lo que alcanzó) en todos los productos que faltan? Después podés corregir cualquiera.">
+              <input type="hidden" name="entregaId" value={e.id} />
+            </FormularioAccion>
+          )}
         </div>
-        {editable && separadas < e.lineas.length && (
-          <FormularioAccion accion={todoPropuestoAccion} boton="✓ Está todo en los que faltan" enLinea confirmar="¿Marcar como separado lo pedido (o lo que alcanzó) en todos los productos que faltan? Después podés corregir cualquiera.">
-            <input type="hidden" name="entregaId" value={e.id} />
-          </FormularioAccion>
-        )}
-      </div>
+      ) : (
+        <div className="flex flex-col gap-3 rounded-2xl bg-[var(--pastel-verde)] p-4 text-[var(--pastel-verde-texto)]">
+          <p className="text-lg font-semibold">
+            {salio ? (e.estado === "ENTREGADA" ? "✅ Ya se entregó" : "🚚 Ya salió: está en camino") : e.remito ? "✓ Preparado y con el remito hecho: listo para salir" : "✓ Preparado"}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {verRemito && (
+              <Link href={`/entregas/${e.id}/documento/lista-entrega`} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-superficie px-4 font-semibold text-texto">
+                🧾 Ver o imprimir el remito
+              </Link>
+            )}
+            {e.estado === "PREPARADA" && sesion.permisos.includes("repartos.gestionar") && (
+              <BotonAccion accion={salenAhoraAccion} datos={{ entrega: e.id }} mostrarExito className={clasesBoton("principal")}>
+                🚚 Sale ahora (pasa a En camino)
+              </BotonAccion>
+            )}
+          </div>
+          {e.estado === "PREPARADA" && editable && (
+            <FormularioAccion accion={marcarPreparadaAccion} boton="Guardar los bultos" variante="secundario" enLinea>
+              <input type="hidden" name="entregaId" value={e.id} />
+              <CampoNumero etiqueta="¿Cuántos bultos?" name="bultos" defaultValue={e.bultos?.toString() ?? ""} inputMode="numeric" className="w-28" />
+            </FormularioAccion>
+          )}
+        </div>
+      )}
 
       {(e.observaciones || e.instrucciones) && (
         <div className="rounded-2xl border-2 border-marca p-4">
@@ -171,25 +205,18 @@ export default async function PrepararEntrega({ params }: PageProps<"/preparacio
         ))}
       </ul>
 
-      {editable && (
-        <div className="sticky bottom-0 flex flex-col gap-2 rounded-2xl border border-borde bg-superficie p-4 shadow-lg">
+      {editable && separando && (
+        <div className="sticky bottom-0 flex flex-col gap-2 rounded-2xl border-2 border-marca bg-superficie p-4 shadow-lg">
           <p className="font-semibold">
             {separadas < e.lineas.length
-              ? `Faltan separar ${e.lineas.length - separadas} producto(s).`
-              : e.estado === "PREPARADA"
-                ? "Está preparado: el remito ya está hecho."
-                : "Todo separado: marcalo como preparado y se hace el remito."}
+              ? `Paso 1: faltan separar ${e.lineas.length - separadas} ${e.lineas.length - separadas === 1 ? "producto" : "productos"}. Después marcalo como preparado.`
+              : "Paso 2: todo separado. Marcalo como preparado y el remito se hace solo."}
           </p>
-          <FormularioAccion accion={marcarPreparadaAccion} boton={e.estado === "PREPARADA" ? "Guardar los bultos" : "📦 Marcar como preparado"} enLinea>
+          <FormularioAccion accion={marcarPreparadaAccion} boton="🧾 Marcar como preparado" variante={separadas < e.lineas.length ? "secundario" : "principal"} enLinea>
             <input type="hidden" name="entregaId" value={e.id} />
-            <CampoNumero etiqueta="¿Cuántos bultos?" name="bultos" defaultValue={e.bultos?.toString() ?? ""} inputMode="numeric" className="w-28" />
+            <CampoNumero etiqueta="¿Cuántos bultos? (opcional)" name="bultos" defaultValue={e.bultos?.toString() ?? ""} inputMode="numeric" className="w-28" />
           </FormularioAccion>
         </div>
-      )}
-      {["PREPARADA", "EN_REPARTO", "ENTREGADA"].includes(e.estado) && sesion.permisos.includes("documentos.imprimir_entrega") && !e.documentosPendientes && (
-        <Link href={`/entregas/${e.id}/documento/lista-entrega`} className={clasesBoton("principal")}>
-          🖨️ Imprimir el remito (sin precios)
-        </Link>
       )}
     </section>
   );

@@ -3,23 +3,28 @@ import { strToU8 } from "fflate";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { esErrorDeNegocio } from "@/dominio/errores";
 import { hojaCsv, planillaXlsx } from "@/lib/planilla";
-import { hojaDeProductos, planillaModeloDeProductos } from "@/modulos/catalogo/planilla";
+import { planillaModeloDeProductos } from "@/modulos/catalogo/importacion";
+import { hojaDeProductos } from "@/modulos/catalogo/planilla";
 import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
 
-/** Descarga en Excel: la lista de productos (o, con `formato=csv`, un CSV) o la planilla modelo para cargarlos (`?modelo=1`). */
+/**
+ * Descargas de productos en Excel. Sin parámetros: la planilla modelo para cargarlos (RN-155), con
+ * listas para elegir y "Ninguna". Con `?lista=1`: la lista de productos ya cargados (o, con
+ * `&formato=csv`, un CSV).
+ */
 export async function GET(pedido: Request): Promise<Response> {
   const authUserId = await obtenerAuthUserId();
   if (!authUserId) return new Response("Ingresá de nuevo.", { status: 401 });
   const url = new URL(pedido.url);
-  const modelo = url.searchParams.get("modelo") === "1";
-  const csv = !modelo && url.searchParams.get("formato") === "csv";
+  const lista = url.searchParams.get("lista") === "1";
+  const csv = lista && url.searchParams.get("formato") === "csv";
   try {
     const db = obtenerBaseDatos();
-    const archivo = modelo ? planillaXlsx(await planillaModeloDeProductos(db, authUserId)) : csv ? strToU8(hojaCsv(await hojaDeProductos(db, authUserId))) : planillaXlsx([await hojaDeProductos(db, authUserId)]);
+    const archivo = !lista ? planillaXlsx(await planillaModeloDeProductos(db, authUserId)) : csv ? strToU8(hojaCsv(await hojaDeProductos(db, authUserId))) : planillaXlsx([await hojaDeProductos(db, authUserId)]);
     return new Response(Buffer.from(archivo), {
       headers: {
         "Content-Type": csv ? "text/csv; charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${modelo ? "planilla-de-productos" : "productos"}.${csv ? "csv" : "xlsx"}"`,
+        "Content-Disposition": `attachment; filename="${lista ? "productos" : "planilla-de-productos"}.${csv ? "csv" : "xlsx"}"`,
         "Cache-Control": "no-store",
       },
     });

@@ -61,7 +61,7 @@ describe("tablero de pedidos", () => {
     expect(estadoDelPlazo({ ...base, hoy: "2026-09-28", hora: "23:00" })).toBe("a_tiempo");
   });
 
-  it("arrastrar una tarjeta: confirmar, agregar a la lista o sacarla", () => {
+  it("arrastrar una tarjeta: agregar a la lista, sacarla o mandarla en camino", () => {
     expect(accionAlMover("pedidos", "en_lista")).toBe("AGREGAR_A_LISTA");
     expect(accionAlMover("en_lista", "pedidos")).toBe("SACAR_DE_LISTA");
     // A Comprado se pasa sin tildar producto por producto, y se puede volver.
@@ -71,7 +71,12 @@ describe("tablero de pedidos", () => {
     expect(accionAlMover("comprados", "pedidos")).toBe("SACAR_DE_LISTA");
     // Soltar en Preparando empieza a preparar el día; de ahí en más avanzan solas.
     expect(["pedidos", "en_lista", "comprados"].map((c) => accionAlMover(c as "pedidos", "preparando"))).toEqual(["PREPARAR", "PREPARAR", "PREPARAR"]);
+    // De Preparando sale a En camino (y a ningún otro lado).
+    expect(accionAlMover("preparando", "en_camino")).toBe("SALIR");
     expect(accionAlMover("preparando", "en_lista")).toBeNull();
+    expect(accionAlMover("preparando", "preparando")).toBeNull();
+    expect(accionAlMover("comprados", "en_camino")).toBeNull();
+    expect(COLUMNAS.find((c) => c.clave === "preparando")?.seleccionable).toBe(true);
     expect(accionAlMover("en_lista", "en_camino")).toBeNull();
     expect(accionAlMover("en_camino", "entregados")).toBeNull();
     expect(accionAlMover("pedidos", "pedidos")).toBeNull();
@@ -79,15 +84,25 @@ describe("tablero de pedidos", () => {
 
   it("lo que no se mueve arrastrando dice dónde se hace", () => {
     expect(porQueNoSeMueve("en_camino", "entregados")).toMatchObject({ ir: "viaje" });
-    expect(porQueNoSeMueve("preparando", "en_camino")).toMatchObject({ ir: "viaje" });
+    expect(porQueNoSeMueve("preparando", "entregados")).toMatchObject({ ir: "viaje" });
     expect(porQueNoSeMueve("preparando", "pedidos")).toMatchObject({ ir: "preparacion" });
     expect(porQueNoSeMueve("en_lista", "en_camino").mensaje).toContain("primero hay que prepararlo");
     expect(porQueNoSeMueve("pedidos", "entregados")).toMatchObject({ ir: "preparacion" });
   });
 
   it("qué se puede hacer con lo elegido", () => {
-    expect(resumenDeSeleccion(["BORRADOR", "CONFIRMADO", "CONFIRMADO", "EN_COMPRA"])).toEqual({ total: 4, paraLista: 3, paraSacar: 1 });
-    expect(resumenDeSeleccion([])).toEqual({ total: 0, paraLista: 0, paraSacar: 0 });
+    expect(
+      resumenDeSeleccion([
+        { estado: "BORRADOR", columna: "pedidos" },
+        { estado: "CONFIRMADO", columna: "pedidos" },
+        { estado: "CONFIRMADO", columna: "pedidos" },
+        { estado: "EN_COMPRA", columna: "en_lista" },
+        { estado: "EN_COMPRA", columna: "comprados" },
+        { estado: "EN_COMPRA", columna: "preparando" },
+        { estado: "PREPARADO", columna: "preparando" },
+      ]),
+    ).toEqual({ total: 7, paraLista: 3, paraSacar: 2, paraSalir: 2 });
+    expect(resumenDeSeleccion([])).toEqual({ total: 0, paraLista: 0, paraSacar: 0, paraSalir: 0 });
   });
 
   it("con faltantes, primero los pedidos de prioridad alta y dentro de cada grupo la del cliente", () => {

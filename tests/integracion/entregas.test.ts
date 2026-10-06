@@ -138,13 +138,12 @@ describe("preparación (04 §5.e, RN-111 a RN-119)", () => {
 });
 
 describe("repartos y entregas (04 §5.f, RN-120 a RN-134)", () => {
-  it("el reparto no sale sin repartidor ni con entregas sin documentos (RN-122)", async () => {
+  it("una entrega va en un solo reparto (RN-123)", async () => {
     const usuario = (await obtenerEntrega(j.base.db, j.admin, entregas["Hospital San Martín"]!)).confirmadaPor;
     expect(usuario).toBeNull();
     entregas.reparto = await crearReparto(j.base.db, j.admin, { fecha: j.manana, vehiculo: "Camioneta AB123CD", salida: "07:00" });
     for (const c of ["Hospital San Martín", "Verdulería Don Pepe", "Restaurante La Esquina"]) await agregarAlReparto(j.base.db, j.admin, { repartoId: entregas.reparto, entregaId: entregas[c]! });
     await proponerOrden(j.base.db, j.admin, entregas.reparto);
-    expect(await mensajeDeError(salirDeReparto(j.base.db, j.admin, entregas.reparto))).toMatch(/quién hace el reparto/);
     // Una entrega no está en dos repartos (RN-123).
     const otro = await crearReparto(j.base.db, j.admin, { fecha: j.manana });
     expect(await mensajeDeError(agregarAlReparto(j.base.db, j.admin, { repartoId: otro, entregaId: entregas["Hospital San Martín"]! }))).toMatch(/otro reparto/);

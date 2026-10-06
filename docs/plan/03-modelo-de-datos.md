@@ -507,16 +507,16 @@ erDiagram
 
 ### 5.1 categoria
 
-Agrupa productos (ej. "Hortalizas de hoja", "Tubérculos", "Cítricos") y define su recargo por defecto.
+Agrupa productos y define su recargo por defecto. Hay preelegidas por cómo se manipula la mercadería (Duras, Blandas, De hoja, Aromáticas, Frágiles, Secos) y "Sin categoría" para los productos sin ninguna; se pueden crear otras. Una categoría existe para la persona mientras tenga productos activos (RN-154): se crea al asignársela al primero y queda `activo = false` sola cuando se queda sin productos (vuelve si se usa de nuevo).
 
 | Campo | Tipo | Nulo | Default | Descripción / regla |
 |---|---|---|---|---|
 | + campos comunes | | | | |
 | nombre | text | No | — | `unique (empresa_id, lower(nombre))`. |
-| grupo | grupo_producto | No | `'VERDURA'` | FRUTA, VERDURA u OTRO. |
+| grupo | grupo_producto | No | `'VERDURA'` | FRUTA, VERDURA u OTRO (las preelegidas De hoja y Aromáticas son VERDURA; las demás, OTRO). El color de la tarjeta de un producto sale de su nombre y, si no se reconoce, de este grupo. |
 | recargo_default | numeric(7,3) | Sí | — | Nivel 6 de la precedencia. `> -100`. |
-| orden | int | No | `0` | Orden en listas (recorrido del mercado y del depósito). |
-| activo | boolean | No | `true` | |
+| orden | int | No | `0` | Orden en listas (recorrido del mercado y del depósito): las preelegidas de 1 (Duras) a 6 (Secos), las nuevas a continuación y "Sin categoría" en 99. |
+| activo | boolean | No | `true` | `false` = sin productos activos: no se ve (RN-154). |
 
 ### 5.2 producto
 
@@ -684,7 +684,7 @@ Dirección o servicio donde se entrega (ej. "Cocina central" y "Cocina pediatrí
 | direccion | text | No | — | |
 | localidad | text | Sí | — | |
 | referencias | text | Sí | — | "Ingreso por calle lateral, andén 2". |
-| latitud, longitud | numeric(9,6) | Sí | — | Para abrir el mapa y el GPS y calcular el viaje de entrega. Ambas o ninguna, en rango válido (check `punto_entrega_coordenadas`). Se marcan desde la ficha del cliente o el viaje: con el GPS del celular, buscando la dirección o pegando un enlace de Google Maps. |
+| latitud, longitud | numeric(9,6) | Sí | — | Para abrir el mapa y el GPS y calcular el viaje de entrega. Ambas o ninguna, en rango válido (check `punto_entrega_coordenadas`). Se marcan desde la ficha del cliente o el viaje: desde la computadora, en el mapa incrustado; desde el celular, también con el GPS, buscando la dirección o pegando un enlace de Google Maps. |
 | contacto_nombre | text | Sí | — | Quien recibe habitualmente (ej. jefa de cocina). |
 | contacto_telefono | text | Sí | — | |
 | horario_desde, horario_hasta | time | Sí | — | Franja de recepción. |

@@ -59,12 +59,6 @@ export const NOMBRES_DE_UNIDAD: Readonly<Record<UnidadMedida, readonly string[]>
   LITRO: ["l", "lt", "lts", "litro", "litros"],
 };
 
-/** La unidad que quiso decir la persona ("kg", "Kilos", "por unidad"), o null si no es ninguna. */
-export function unidadEscrita(texto: string): UnidadMedida | null {
-  const t = normalizarBusqueda(texto).replace(/^por /, "");
-  return (Object.keys(NOMBRES_DE_UNIDAD) as UnidadMedida[]).find((u) => NOMBRES_DE_UNIDAD[u].includes(t)) ?? null;
-}
-
 /** Entre varios nombres, el único que contiene lo escrito o está contenido en él (para sugerir "¿quisiste decir…?"). */
 export function parecido(escrito: string, nombres: readonly string[]): string | null {
   const e = normalizarBusqueda(escrito);
@@ -74,27 +68,4 @@ export function parecido(escrito: string, nombres: readonly string[]): string | 
     return x.includes(e) || e.includes(x);
   });
   return candidatos.length === 1 ? candidatos[0]! : null;
-}
-
-/** Cuántas letras hay que cambiar, agregar o sacar para pasar de un texto a otro. */
-function letrasDeDiferencia(a: string, b: string): number {
-  let anterior = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const actual = [i];
-    for (let j = 1; j <= b.length; j++) {
-      actual.push(Math.min(anterior[j]! + 1, actual[j - 1]! + 1, anterior[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1)));
-    }
-    anterior = actual;
-  }
-  return anterior[b.length]!;
-}
-
-/**
- * Un nombre que ya existe y es casi igual a lo escrito (una o dos letras de diferencia): lo más
- * probable es que sea un error de tipeo ("Verduas" por "Verduras") y no algo nuevo.
- */
-export function casiIgual(escrito: string, nombres: readonly string[]): string | null {
-  const e = normalizarBusqueda(escrito);
-  if (e.length < 4) return null;
-  return nombres.find((n) => letrasDeDiferencia(e, normalizarBusqueda(n)) <= 2) ?? null;
 }

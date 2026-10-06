@@ -436,17 +436,104 @@ export async function documentoDeEntrega(db: BaseDatos, authUserId: string, dato
   });
 }
 
-/** Entregas de la jornada con sus documentos al día, para imprimir todas juntas (P-79). */
-export async function entregasConDocumentos(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<string[]> {
-  return ejecutarComoUsuario(db, authUserId, "documentos.imprimir_entrega", async (tx) => {
+export interface RemitoDelDia {
+  entregaId: string;
+  numero: string;
+  cliente: string;
+  punto: string;
+  estado: EstadoEntrega;
+  reparto: string | null;
+  orden: number | null;
+  bultos: number | null;
+  /** El remito de la versión vigente está hecho (listo para ver o imprimir). */
+  hecho: boolean;
+  /** Tuvo remito pero la entrega cambió después: hay que rehacerlo. */
+  desactualizado: boolean;
+  /** Cuándo se hizo el último remito. */
+  emitidoEn: Date | null;
+}
+
+const ORDEN_DEL_REPARTO = [sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre)];
+
+/**
+ * P-81 Remitos del día (pedido del usuario, 06/10/2026: tenerlos a mano para verlos e imprimirlos):
+ * cada entrega con el estado de su remito, en el orden del reparto. Un repartidor ve solo los de
+ * sus repartos (RN-131). Sin precios.
+ */
+export async function remitosDelDia(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<RemitoDelDia[]> {
+  return ejecutarComoUsuario(db, authUserId, "documentos.imprimir_entrega", async (tx, c) => {
     const j = await jornadaDeFecha(tx, fecha);
     if (!j) return [];
     const filas = await tx
-      .select({ id: entrega.id })
+      .select({
+        id: entrega.id,
+        numero: entrega.numero,
+        version: entrega.version,
+        cliente: cliente.nombre,
+        punto: puntoEntrega.nombre,
+        estado: entrega.estado,
+        reparto: reparto.numero,
+        repartidorId: reparto.repartidorId,
+        orden: entrega.ordenEnReparto,
+        bultos: entrega.cantidadBultos,
+        emitidoEn: sql<Date | null>`(select max(d.emitido_en) from ${documentoEmitido} d where d.entrega_id = entrega.id and d.tipo = 'DOC_02' and d.evento = 'EMISION')`,
+      })
       .from(entrega)
+      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+      .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
       .leftJoin(reparto, eq(reparto.id, entrega.repartoId))
-      .where(and(eq(entrega.jornadaId, j.id), inArray(entrega.estado, ["PREPARADA", "EN_REPARTO", "ENTREGADA"]), sql`${entrega.version} > 0`))
-      .orderBy(sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`);
-    return filas.map((f) => f.id);
+      .where(and(eq(entrega.jornadaId, j.id), ne(entrega.estado, "ANULADA")))
+      .orderBy(...ORDEN_DEL_REPARTO);
+    const propias = soloSusRepartos(c) ? filas.filter((f) => f.repartidorId === c.usuarioId) : filas;
+    const alDia = await documentosAlDiaDe(tx, propias);
+    return propias.map((f) => ({
+      entregaId: f.id,
+      numero: numeroEntrega(f.numero),
+      cliente: f.cliente,
+      punto: f.punto,
+      estado: f.estado,
+      reparto: f.reparto !== null ? numeroReparto(f.reparto) : null,
+      orden: f.orden,
+      bultos: f.bultos,
+      hecho: alDia.has(f.id),
+      desactualizado: !alDia.has(f.id) && f.emitidoEn !== null,
+      emitidoEn: f.emitidoEn ? new Date(f.emitidoEn) : null,
+    }));
+  });
+}
+
+/**
+ * Los remitos vigentes del día (DOC-02) o sus listas contables (DOC-03), en el orden del reparto,
+ * para imprimirlos todos juntos; con `entregaIds`, solo esos. Una sola consulta.
+ */
+export async function documentosDelDia(
+  db: BaseDatos,
+  authUserId: string,
+  datos: { fecha: FechaISO; tipo: "DOC_02" | "DOC_03"; entregaIds?: readonly string[] },
+): Promise<DocumentoDeEntrega[]> {
+  const permiso = datos.tipo === "DOC_03" ? "documentos.imprimir_contable" : "documentos.imprimir_entrega";
+  return ejecutarComoUsuario(db, authUserId, permiso, async (tx, c) => {
+    const j = await jornadaDeFecha(tx, datos.fecha);
+    if (!j) return [];
+    const filas = await tx
+      .select({ contenido: documentoEmitido.contenido, version: documentoEmitido.version, repartidorId: reparto.repartidorId })
+      .from(documentoEmitido)
+      .innerJoin(entrega, and(eq(entrega.id, documentoEmitido.entregaId), eq(entrega.version, documentoEmitido.version)))
+      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+      .leftJoin(reparto, eq(reparto.id, entrega.repartoId))
+      .where(
+        and(
+          eq(entrega.jornadaId, j.id),
+          inArray(entrega.estado, ["PREPARADA", "EN_REPARTO", "ENTREGADA"]),
+          eq(documentoEmitido.tipo, datos.tipo),
+          eq(documentoEmitido.evento, "EMISION"),
+          eq(documentoEmitido.estado, "VIGENTE"),
+          datos.entregaIds?.length ? inArray(entrega.id, [...datos.entregaIds]) : undefined,
+        ),
+      )
+      .orderBy(...ORDEN_DEL_REPARTO);
+    return filas
+      .filter((f) => !soloSusRepartos(c) || f.repartidorId === c.usuarioId)
+      .map((f) => ({ tipo: datos.tipo, contenido: f.contenido, estado: "VIGENTE", version: f.version, vigente: f.version }) as DocumentoDeEntrega);
   });
 }

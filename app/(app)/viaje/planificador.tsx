@@ -6,6 +6,7 @@ import { enlaceWaze, enlacesGoogleMaps, type DestinoGps } from "@/dominio/entreg
 import { estimarTramo, planearRecorrido, type Coordenada } from "@/dominio/entregas/recorrido";
 import { leerCoordenadas } from "@/dominio/entregas/ubicacion";
 import { ESTADO_INICIAL } from "@/ui/estado-accion";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 import { armarRepartoAccion, buscarEnMapaAccion, guardarOrdenAccion, leerEnlaceAccion } from "./acciones";
 
@@ -297,7 +298,7 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
         <div className="flex flex-wrap gap-2">
           {enlaces.map((e, i) => (
             <a key={e} href={e} target="_blank" rel="noreferrer" className="flex min-h-11 items-center rounded-lg bg-[var(--etiqueta-azul)] px-4 font-semibold text-etiqueta-texto">
-              🧭 {enlaces.length > 1 ? `Abrir el viaje en Google Maps (parte ${i + 1})` : "Abrir todo el viaje en Google Maps"}
+              <FlechaNavegacion className="" /> {enlaces.length > 1 ? `Abrir el viaje en Google Maps (parte ${i + 1})` : "Abrir todo el viaje en Google Maps"}
             </a>
           ))}
           {guardar && (

@@ -49,23 +49,28 @@ Documentos relacionados: 02 (permisos), 04 (qué hace cada paso), 05 (precios), 
 
 | Grupo | Pantallas | Visible si el usuario tiene… |
 |---|---|---|
-| Día de trabajo | Tablero de pedidos · **＋ Nuevo pedido** (destacado) · 🛒 Lista de compras · 🚚 Logística · Mi reparto (solo para quien no maneja todos los repartos) · Actividad y notas | Sesión · `pedidos.crear` · `lista_compra.ver` · `repartos.ver` · `repartos.ver_propios` sin `repartos.gestionar` · Sesión |
+| Día de trabajo | **＋ Nuevo pedido** (destacado) · Tablero de pedidos · **Etapas del día**: 🛒 Lista de compras · 📦 Preparación · 🧾 Remitos · Logística (y 🔒 Cierre del día cuando hay un día en curso) · Mi reparto (solo para quien no maneja todos los repartos) · Actividad y notas | `pedidos.crear` · Sesión · `lista_compra.ver` · `preparacion.ver` · `documentos.imprimir_entrega` · `repartos.ver` (· `jornada.cerrar`) · `repartos.ver_propios` sin `repartos.gestionar` · Sesión |
 | Registros | Clientes · Productos · Proveedores | `clientes.ver` · `productos.ver` · `proveedores.ver` |
 | Cuentas | Balance · Deudas con proveedores · Facturación | `reportes.ver` · `pagos.ver` · `facturacion.ver` |
 
-Los grupos sin ninguna pantalla visible no aparecen. Lo demás se abre desde donde se usa:
+Los grupos sin ninguna pantalla visible no aparecen.
+
+**Etapas del día (06/10):** con un día en curso (el mismo que abre el tablero: ya tiene pedidos cargados o pasó de "abierto", y no está cerrado), debajo de **Tablero de pedidos** aparecen sus etapas, cada una con un círculo de estado (✓ hecha, ● la que toca, … a medias, ○ falta), su avance en pocas palabras ("5 de 5 comprados", "2 de 3 listos", "2 hechos", "1 en camino · 1 entregado") y el enlace directo a esa etapa de ese día, sin pasar por el tablero. Se buscan aparte del resto de la pantalla (no la demoran); mientras tanto, y si no hay un día en curso, se ven Lista de compras, Preparación, Remitos y Viaje de entrega sueltos. La regla está en `src/dominio/jornadas/etapas.ts`.
+
+Lo demás se abre desde donde se usa:
 
 | Pantalla | Se llega desde |
 |---|---|
 | El día paso a paso | Pestaña "☰ Paso a paso" del tablero |
 | Otros días y cierre del día | "📅 Otros días" del tablero; paso "Cierre" |
 | Compras anotadas | Lista de compras |
-| Preparación | Columnas "Comprado" y "Preparando" del tablero; tarjeta abierta; paso a paso |
+| Preparación y remitos de otro día | Columnas "Comprado" y "Preparando" del tablero; tarjeta abierta; paso a paso; ← → en cada pantalla |
 | Armar un reparto y entregas | Logística, preparación, paso a paso |
+| Cargar productos desde una planilla y categorías | Productos |
 | Precios de compra | Productos, ficha del proveedor |
 | Precios de venta | Productos ("Precios de venta") |
 | Pedidos en Excel | Botón "📊 Excel" del tablero; "📥 Cargar desde Excel" en Nuevo pedido |
-| Productos en Excel | Botón "📊 Excel" de Productos |
+| Bajar la lista de productos a Excel | Botón "📊 Bajar a Excel" de Productos |
 | Movimientos y reportes | Balance |
 | Usuarios y configuración | Mi cuenta → Administración |
 
@@ -82,8 +87,9 @@ Enfoque: **M** = celular primero; **D** = PC primero (usable en celular); **M/D*
 | P-03 | Mi cuenta | `/mi-cuenta` | M/D | Sesión | P (propios) |
 | P-10 | Productos (y nuevo producto) | `/productos`, `/productos/nuevo` | D | `productos.ver` | O +C |
 | P-11 | Ficha de producto | `/productos/[id]` | D | `productos.ver` | O +C +V +M |
-| P-13 | Productos en Excel (subir y bajar) | `/productos/importar`; descargas en `/productos/planilla`, `?formato=csv` y `?modelo=1` | D | `productos.ver` (subir: `productos.editar`) | O +M |
+| P-13 | Lista de productos en Excel (bajar) | `/productos/planilla?lista=1`, `&formato=csv` | D | `productos.ver` | O +M |
 | P-12 | Categorías | `/productos/categorias` | D | `productos.ver` | O +M |
+| P-28 | Cargar productos desde una planilla | `/productos/cargar` (la planilla modelo se baja de `/productos/planilla`) | D | `productos.editar` | O |
 | P-15 | Clientes (y nuevo cliente) | `/clientes`, `/clientes/nuevo` | M/D | `clientes.ver` | O |
 | P-16 | Ficha de cliente | `/clientes/[id]` | M/D | `clientes.ver` | O +V +M |
 | P-20 | Proveedores (y nuevo proveedor) | `/proveedores`, `/proveedores/nuevo` | D | `proveedores.ver` | O +F |
@@ -113,7 +119,8 @@ Enfoque: **M** = celular primero; **D** = PC primero (usable en celular); **M/D*
 | P-77 | Mi reparto | `/repartos/mios` | M | `repartos.ver_propios` | O |
 | P-78 | Confirmar entrega | `/repartos/mios/entrega/[id]` | M | `entregas.confirmar` | O |
 | P-78b | Logística (viaje de entrega) | `/viaje` | M/D | `repartos.ver` | O |
-| P-79 | Entregas y remitos del día | `/entregas`, `/entregas/remitos` | M/D | `entregas.ver` | O +V |
+| P-79 | Entregas del día | `/entregas` | M/D | `entregas.ver` | O +V |
+| P-81 | Remitos del día (y todos juntos para imprimir) | `/entregas/remitos`, `/entregas/remitos/imprimir` | M/D | `documentos.imprimir_entrega` (con precios: `documentos.imprimir_contable`) | O (+V) |
 | P-80 | Detalle de entrega | `/entregas/[id]` | D | `entregas.ver` | O +V +C +M |
 | P-85 | Facturación (y facturar período) | `/facturacion` | D | `facturacion.ver` | V |
 | P-87 | Detalle de comprobante | `/facturacion/[id]` | D | `facturacion.ver` | V |
@@ -141,6 +148,9 @@ Las vistas de impresión se describen en 09. Las direcciones viejas `/pedidos`, 
 | **Notas** | En las tarjetas de pedido y en las fichas: se elige "Para" quién es; se borran solo por quien las escribió. |
 | **Gráficos** | SVG propios con tabla ("Ver tabla") y valores al pasar el dedo o el mouse. |
 | **Estado vacío** | Explica qué falta y ofrece la acción siguiente ("Todavía no hay pedidos. ＋ Nuevo pedido"). |
+| **Flecha de navegación** | Todo lo que lleva a un lugar (viaje de entrega, cómo llegar, abrir el GPS, recorrido) usa la flecha de navegación del GPS (un dibujo SVG propio, `src/ui/iconos.tsx`), en azul o del color del botón. |
+| **Marcar una ubicación** | En la computadora (mouse) hay una sola forma: **🗺️ Marcar en el mapa**, un mapa incrustado (Leaflet con OpenStreetMap) donde se hace clic en el lugar, se arrastra el punto para afinarlo y se guarda; arriba, un campo para llevar el mapa a una calle. En el celular (dedo), además: **📱 Estoy en el lugar** (GPS), **🔎 Buscar la dirección** y pegar un enlace de Google Maps. Qué se ve lo decide el tipo de puntero con CSS. |
+| **🚚 Sale ahora** | Manda pedidos de Preparando a En camino en un paso (RN-153): si falta tildar algo pide confirmar, se marca preparado, se hace el remito y sale el reparto. Está en el tablero (arrastrar o elegir), la tarjeta abierta, la preparación y el viaje. |
 
 ---
 
@@ -150,7 +160,7 @@ Las vistas de impresión se describen en 09. Las direcciones viejas `/pedidos`, 
 
 #### P-01 Ingreso
 
-Usuario (o correo) y contraseña con botón para verla; **Entrar con Google** si está activado; **Creá una cuenta**. Las cuentas nuevas esperan en `/acceso-pendiente` hasta que las habiliten (02 §10). El primer uso (`/configuracion-inicial`) crea el negocio y al primer ADMIN.
+Usuario (o correo) y contraseña con botón para verla; **Entrar con Google** siempre a la vista (también "Seguir con Google" al crear una cuenta); **Creá una cuenta**. Si Google todavía no está activado en Supabase, al tocarlo vuelve al ingreso con el aviso "Entrar con Google todavía no está activado en este sistema…" (los pasos para activarlo están en 10 §3). Las cuentas nuevas esperan en `/acceso-pendiente` hasta que las habiliten (02 §10). El primer uso (`/configuracion-inicial`) crea el negocio y al primer ADMIN.
 
 #### P-02 Tablero de pedidos (pantalla principal)
 
@@ -161,8 +171,8 @@ Imita la presentación de Trello sobre una imagen de campo: cada lista es de un 
 | **Pedidos** | Los pedidos cargados. Se mandan a la lista de compras cuando se quiera. Al pie, "＋ Nuevo pedido". | Azul |
 | **Lista de compras** | Los que se están comprando. En la misma tarjeta se **tilda** cada producto: ✓ ya se compró, ✕ no se consiguió. | Violeta |
 | **Comprado** | Ya está todo lo suyo (tildado, con la compra anotada o marcado "no se consiguió"): listo para preparar. Los tildes se pueden sacar desde acá. | Naranja |
-| **Preparando** | Tienen armada su preparación. Se ven **todos** sus productos con ✓ (separado) o ⬜ y, en naranja, lo que falta y por qué ("Va 6 kg de 30 kg · no se consiguió", "Alcanza para 126 kg de 160 kg"). | Amarillo |
-| **En camino** | Salieron en un reparto. | Verde |
+| **Preparando** | Tienen armada su preparación. Se ven **todos** sus productos con ✓ (separado) o ⬜ y, en naranja, lo que falta y por qué ("Va 6 kg de 30 kg · no se consiguió", "Alcanza para 126 kg de 160 kg"). Cuando salen, se arrastran a En camino. | Amarillo |
+| **En camino** | Salieron a entregar. Vacía, dice "Arrastrá acá desde Preparando lo que sale a entregar". | Verde |
 | **Entregados** | Ya se entregaron. | Rosa |
 
 - **Tarjeta:** franja de color con el dibujo del tipo de cliente, el nombre, el número y quién se encarga; etiquetas (tipo de cliente, "Urgente", "Llegó tarde"); lo que lleva con el dibujo de cada producto (hasta 4, "y N más"; en Lista de compras, Comprado y Preparando, todos, con **scroll dentro de la tarjeta** si la lista es larga); ⏰ plazo (rojo vencido, amarillo pronto, verde listo), 💬 notas, ☑ avance y total estimado. Una tarjeta sin productos lo dice y lleva a cargarlos.
@@ -177,9 +187,11 @@ Imita la presentación de Trello sobre una imagen de campo: cada lista es de un 
   | Comprado → Lista de compras | Saca los tildes puestos a mano en lo suyo. |
   | Lista de compras o Comprado → Pedidos | La saca de la lista. |
   | Pedidos, Lista de compras o Comprado → Preparando | Empieza a preparar **el día entero** (pregunta antes: no es solo esa tarjeta). |
-  | Preparando, En camino, Entregados | Avanzan solas al preparar, salir a repartir y entregar: al soltarlas en otro lado se explica dónde se hace ese paso, con el botón para ir. |
-- **Elegir pedidos:** "☑ Elegir pedidos" pone casillas; "🛒 Elegir todos los pedidos para la lista" marca de una vez los de la columna Pedidos (sin los vacíos, diciendo cuáles son). Con elegidos aparece una barra: **🛒 Mandar a la lista de compras**, sacar de la lista, prioridad o quién se encarga.
-- **Tarjeta abierta** (`?pedido=`): **Lo que lleva** en recuadros con su avance y lo que falta, **✏️ Cambiar productos**, dónde se entrega (Google Maps y Waze), la nota, las notas entre las personas y el historial. Al costado: mandar a la lista, **✓ Pasar a Comprado** o volver a Pedidos, **📦 Preparar su pedido** (cuando está comprado o preparándose), ver el pedido completo, prioridad, quién se encarga y horario.
+  | Preparando → En camino | **Sale a entregar** (RN-153): lo que falte tildar se confirma en el aviso ("Confirmar"), se marca preparado, se hace el remito y sale el reparto (el armado en el que estaba, o uno nuevo a cargo de quien la arrastra). |
+  | En camino, Entregados (y Preparando hacia atrás) | Avanzan al entregar o no vuelven atrás: al soltarlas en otro lado se explica dónde se hace ese paso, con el botón para ir. |
+- **Elegir pedidos:** "☑ Elegir pedidos" pone casillas (en Pedidos, Lista de compras y Preparando); "🛒 Elegir todos los pedidos para la lista" marca de una vez los de la columna Pedidos (sin los vacíos, diciendo cuáles son). Con elegidos aparece una barra: **🛒 Mandar a la lista de compras**, **🚚 Salen ahora** (los de Preparando, juntos en un reparto), sacar de la lista, prioridad o quién se encarga.
+- **Tarjeta abierta** (`?pedido=`): **Lo que lleva** en recuadros con su avance y lo que falta, **✏️ Cambiar productos**, dónde se entrega (Cómo llegar con Google Maps y Waze), la nota, las notas entre las personas y el historial. Al costado: mandar a la lista, **✓ Pasar a Comprado** o volver a Pedidos, **📦 Preparar su pedido** (cuando está comprado o preparándose), **🚚 Sale ahora (En camino)** (en Preparando), **🧾 Ver o imprimir el remito** (preparado o después), ver el pedido completo, prioridad, quién se encarga y horario.
+- Al pie de cada columna, el enlace a su etapa (lista de compras, preparación, viaje y GPS, **🧾 Ver los remitos** en Entregados).
 - **Filtros:** por persona y "Urgentes". **📊 Excel** abre Pedidos en Excel (P-43). En el celular, "＋" flotante para un pedido nuevo.
 - Arriba, los avisos como píldoras: notas sin leer, pedidos de acceso, deuda que vence.
 - El tablero se vuelve a dibujar solo cuando la otra persona carga o cambia algo (lo detecta la campanita, §5.13).
@@ -211,40 +223,42 @@ Nombre y color del avatar (con vista previa), cambio de contraseña y, para quie
 
 #### P-10 Productos
 
-Tarjetas agrupadas por categoría (o "☰ Lista"): dibujo, **código**, en qué se cuenta, envase de compra, "Desde $X el kg", cuántos puestos lo venden y el preferido. El buscador encuentra por nombre o por código. Arriba, **📊 Excel** (P-13) y **Precios de venta**.
+Tarjetas agrupadas por categoría (o "☰ Lista"): dibujo, en qué se cuenta, envase de compra, "Desde $X el kg" (o ⚠ "Sin precio de compra"), cuántos puestos lo venden y el preferido; la franja es naranja para las frutas y verde para las verduras (según el nombre). Solo se ven las categorías con productos (RN-154). Arriba, **＋ Nuevo producto**, **📥 Cargar desde una planilla** (P-28), **📊 Bajar a Excel** (P-13), Categorías y los precios. El buscador encuentra por nombre o por código.
 
-**＋ Nuevo producto** (tres preguntas): qué es y su categoría; cómo se vende (kilo, unidad, atado, docena u "otra forma"); en qué envase se compra ("Suelto", los sugeridos u "Otro envase…"). La ganancia con su cuenta de ejemplo, si se pide en partes, poner otro código y las notas quedan en "Más opciones".
+- **Cambiar de categoría:** se arrastra la tarjeta a otra categoría (con el mouse, o en el celular manteniendo el dedo apretado un momento) o se toca **↔** en la tarjeta y se elige: las que ya se usan, las preelegidas (Duras, Blandas, De hoja, Aromáticas, Frágiles, Secos), otra escrita o **Ninguna**. Soltarla en **＋ Nueva categoría** abre la misma elección con las que todavía no se usan. La categoría que queda vacía desaparece.
+
+**＋ Nuevo producto** (tres preguntas): qué es y su categoría (mientras no se elija, se propone una por el nombre: papa → Duras, frutilla → Frágiles; se puede elegir otra, una preelegida, "Ninguna" u "Otra…"); cómo se vende (kilo, unidad, atado, docena u "otra forma"; también se propone por el nombre hasta que se elige: huevos → maple, perejil → atado); en qué envase se compra ("Suelto", los sugeridos u "Otro envase…"). La ganancia con su cuenta de ejemplo, si se pide en partes, el código y las notas quedan en "Más opciones". No hace falta crear antes ninguna categoría.
 
 - **Código:** se arma solo con el nombre ("Tomate redondo" → `TOMA-R`; si ya existe, `TOMA-R2`) y se muestra mientras se escribe. Sirve para buscar el producto (en Productos y en Nuevo pedido) y para las planillas de Excel (P-43).
 - **Dibujo:** un emoji para reconocer el producto de un vistazo en el tablero, los pedidos y las listas. **No se elige: sale solo** del nombre (🍅 para "tomate", 🥔 para "papa", 🫛 para "chaucha"…) y, si el nombre no dice nada, del grupo de su categoría (🥦 verdura, 🍎 fruta, 📦 otro). La lista de palabras está en `src/dominio/catalogo/productos.ts` (RN-004b).
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
-| Nuevo producto | `productos.editar` | RN-001, RN-004 a RN-006 | Crea el producto con su envase de unidad base y el de compra. |
-| Desactivar / reactivar | `productos.editar` | RN-007 | Advierte si tiene pedidos en curso. |
+| Nuevo producto | `productos.editar` | RN-001, RN-004 a RN-006, RN-154 | Crea el producto con su envase de unidad base y el de compra; la categoría elegida se crea o reaparece. |
+| Mover a otra categoría | `productos.editar` | RN-154 | La de destino se crea o reaparece; la que queda vacía se oculta. |
+| Desactivar / reactivar | `productos.editar` | RN-007, RN-154 | Advierte si tiene pedidos en curso; su categoría se oculta si queda vacía y reaparece al reactivarlo. |
 
 #### P-11 Ficha de producto
 
 **🏪 ¿Dónde se compra y a cuánto?**: una tarjeta por puesto que lo vende, con el precio del envase en grande, la frase "Te sale $X el kg", hace cuánto se cargó el precio y las marcas "★ El que preferís", "✓ El más barato" o "X % más caro que el más barato". A la vista, **¿Cambió el precio?** con "Guardar el precio nuevo"; plegado en "Más opciones de este puesto", cada botón con su explicación: "✓ Hoy sigue al mismo precio", "🚫 Hoy no tiene", "★ Es el que prefiero", "📈 Ver cómo fue cambiando el precio" y "Este puesto ya no lo vende". Debajo, "＋ Agregar otro puesto que lo vende" (qué puesto, en qué envase, a cuánto). **📦 ¿En qué envases viene?**: envases como tarjetas ("1 cajón = 18 kg", para comprar / para vender). Además, precio de venta por cliente y notas. Los datos y el código se editan desde "✏️ Editar los datos del producto (o darlo de baja)" (plegado).
 
+La categoría del producto se elige (en "✏️ Editar los datos del producto") entre las que se usan, las preelegidas y "Ninguna".
+
 #### P-12 Categorías
 
-Nombre, grupo (fruta, verdura, otro), orden y ganancia de la categoría.
+Las categorías con productos, con su cantidad (abre Productos filtrado), y **Cambiar nombre u orden** (nombre, grupo fruta/verdura/otro, orden). El orden es el de las listas impresas: lo duro primero (va abajo en el cajón), lo frágil al final. Arriba, las preelegidas que todavía no se usan con para qué sirve cada una. No se crean categorías vacías ni se desactivan a mano: nacen con su primer producto y desaparecen solas (RN-154). La ganancia de cada categoría se edita en Precios de venta.
 
-#### P-13 Productos en Excel
+#### P-28 Cargar productos desde una planilla
 
-Para cargar muchos productos de una vez (por ejemplo, al empezar) y para sacar la lista de los que ya están. Se abre con "📊 Excel" en Productos.
+Para cargar toda la lista de frutas y verduras de una vez (RN-155), en tres pasos:
 
-- **📥 Subir productos desde Excel** (`productos.editar`): se baja la **planilla modelo** (hoja "Productos" con los títulos, "Cómo llenarla" y "Categorías" con las que ya existen), se escribe **una fila por producto** y se sube el archivo (.xlsx o .csv, hasta 900 KB). Columnas, reconocidas por su título y en cualquier orden: **Producto** y **Categoría** (obligatorias), **Código** (vacío = se arma solo), **Se vende por** (kg, unidad, atado, docena, maple, bandeja, paquete o litro; vacío = kg), **Envase de compra** y **Trae** ("Cajón" y 18 → "Cajón 18 kg"; vacíos = se compra suelto), **Se pide en partes** (sí o no), **Ganancia %** y **Notas**.
-- **Primero se revisa:** muestra los productos nuevos con su dibujo, las categorías que se van a crear y los que ya estaban cargados (se saltean: la planilla no cambia productos que ya existen). Si hay algo que no entiende lo dice **fila por fila** con cómo arreglarlo ("no existe la categoría… ¿Quisiste decir…?", "falta cuántos kg trae el envase", "está repetido en la fila 5") y **no carga nada**.
-- **✓ Cargar estos N productos** los crea todos juntos (o ninguno), con sus categorías nuevas. Los precios de cada puesto se cargan después, en la ficha o solos con la primera compra.
-- **📤 Bajar la lista de productos** (`productos.ver`): todos los productos, uno por fila, en Excel o CSV, con las mismas columnas más si están activos. La ganancia sale solo para quien puede ver márgenes. Esa misma planilla se puede volver a subir después de agregarle filas.
+1. **📄 Bajar la planilla (.xlsx):** hoja **Productos** con las columnas Producto · Categoría · Se vende por · Envase en que se compra · Cuánto trae el envase · Ganancia % · Código; Categoría, Se vende por y Envase tienen **listas para elegir** (las categorías preelegidas, las del negocio y **Ninguna**; kilo, unidad, atado… y Ninguna; cajón, bolsa, caja… y Ninguno), con una ayuda al pararse en la celda. Hoja **Cómo llenarla** con un ejemplo; las listas van en una hoja oculta.
+2. **Completarla** en Excel, LibreOffice o Google Sheets: alcanza con los nombres uno debajo del otro (también sirve un .csv o una hoja sin títulos).
+3. **Subirla y revisar:** cada fila como va a quedar: dibujo, nombre, **código que se arma solo** (o el de la planilla si está libre), categoría y cómo se vende (con "(propuesta)" si lo puso el sistema, y para cambiar ahí mismo), el envase y la ganancia. En naranja, solo **lo importante que falta**: cómo se vende (si quedó vacío o no se entiende, se propone y se avisa) o un envase sin lo que trae. Lo que ya existe o se repite en la planilla se muestra apagado y no se carga. **✓ Cargar N productos** los crea todos juntos (si algo falla, ninguno); después, el aviso de que les falta el precio de compra con el botón a Precios en el puesto.
 
-| Acción | Permiso | Reglas | Resultado |
-|---|---|---|---|
-| Revisar una planilla | `productos.editar` | RN-004c | Los productos que se crearían y los problemas por fila; no guarda nada. |
-| Cargar los productos | `productos.editar` (y `precios.editar_reglas` si trae ganancias) | RN-004b, RN-004c | Todos en una transacción; cada uno queda registrado en la actividad. |
-| Bajar la lista o la planilla modelo | `productos.ver` | — | Un .xlsx (o .csv). |
+#### P-13 Lista de productos en Excel
+
+**📊 Bajar a Excel**, en Productos (`productos.ver`): todos los productos, uno por fila, en un .xlsx (o .csv con `&formato=csv`), con las mismas columnas que la planilla modelo de P-28 (Producto · Categoría · Se vende por · Envase en que se compra · Cuánto trae el envase · Ganancia % · Código) más si están activos. La ganancia sale solo para quien puede ver márgenes. Sirve para tener la lista en un archivo o imprimirla; los productos nuevos se cargan con P-28.
 
 ---
 
@@ -258,7 +272,7 @@ Tarjetas agrupadas por tipo (hospital, restaurante, comercio…) con dirección,
 
 #### P-16 Ficha de cliente
 
-Datos (plegados en "✏️ Editar los datos del cliente"), **Dónde se le entrega** (cada lugar con Cómo llegar en Google Maps y Waze y **Marcar en el mapa**: "Estoy en el lugar" con el GPS, buscar la dirección o pegar un enlace de Google Maps), pedidos recientes, **Ganancia propia** y precios pactados (P-33), notas.
+Datos (plegados en "✏️ Editar los datos del cliente"), **Dónde se le entrega** (cada lugar con Cómo llegar en Google Maps y Waze y su ubicación: desde la computadora, solo **🗺️ Marcar en el mapa** incrustado; en el celular, además "Estoy en el lugar" con el GPS, buscar la dirección o pegar un enlace de Google Maps), pedidos recientes, **Ganancia propia** y precios pactados (P-33), notas.
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -433,26 +447,28 @@ Convención de 06 §10: pagado verde, pendiente ámbar, vencido rojo con reloj, 
 
 #### P-70 Preparación del día
 
-Lo que hay que separar para cada cliente. **Empezar a preparar** arma una tarjeta por cliente y punto de entrega con lo que pidió (RN-111); si algo de lo comprado no alcanza para todos, se reparte empezando por los urgentes y la prioridad de cada cliente (RN-115), y queda anotado qué falta. "Sumar los pedidos nuevos" agrega los que llegaron después.
+Lo que hay que separar para cada cliente, con **los tres pasos siempre a la vista** (el que toca, resaltado): **1 📦 Separar** (tildar cada producto), **2 🧾 Marcar preparado** (el remito se hace solo) y **3 🚚 Sale** (pasa a En camino). Antes de empezar, una tarjeta explica qué hace **📦 Empezar a preparar**: arma una tarjeta por cliente y punto de entrega con lo que pidió (RN-111); si algo de lo comprado no alcanza para todos, se reparte empezando por los urgentes y la prioridad de cada cliente (RN-115), y queda anotado qué falta. Si llegaron pedidos después, un aviso con **Sumar los pedidos nuevos**.
 
-- **👤 Por cliente:** cada cliente es una tarjeta con **todos** sus productos: ✓ separado o ⬜ por separar, la cantidad y, en naranja, lo que falta y por qué. Botón **📦 Preparar este pedido** (o "Seguir preparando", "Ver o corregir").
-- **🥬 Por producto:** comprado, pedido, preparado y si sobra o falta; cada producto abre P-72.
-- **🖨️ Imprimir para separar** (DOC-07) y **🚚 Logística (viaje de entrega)**.
+- **Resumen:** 📦 por separar · ✓ listos para salir · 🚚 en camino o entregados, con la barra de avance.
+- **👤 Por cliente,** en tres grupos: **1. Por separar** (tarjeta con **todos** sus productos: ✓ separado o ⬜ por separar, la cantidad y, en naranja, lo que falta y por qué; botón **📦 Separar este pedido** / **Seguir separando** / **🧾 Marcar como preparado** cuando ya está todo tildado), **2. Listos para salir** (con su remito: **🚚 Sale ahora**, **🧾 Remito** y **✏️ Ver o corregir**; arriba, **🚚 Salen todos**; si falta un precio para el remito, el aviso con "Ver qué falta") y **3. En camino y entregados**.
+- **🥬 Por producto:** comprado, pedido, separado y si sobra o falta; cada producto abre P-72.
+- Arriba: **🖨️ Imprimir para separar** (DOC-07), **🧾 Remitos del día** y **Logística (viaje de entrega)**.
 
 #### P-71 Preparar el pedido de un cliente
 
-Arriba, "Separados N de M productos" con su barra, **✓ Está todo en los que faltan** y, si falta algo, **Lo que falta (para avisarle al cliente)**. Cada producto es una tarjeta:
+Arriba, los tres pasos con el que toca. Mientras se separa: "Separados N de M productos" con su barra y **✓ Está todo en los que faltan**; ya preparado, una tarjeta verde con **🧾 Ver o imprimir el remito**, **🚚 Sale ahora (pasa a En camino)** y los bultos; después de salir, "Ya salió" con el remito. Si falta algo, **Lo que falta (para avisarle al cliente)**. Cada producto es una tarjeta:
 
 - **Separar 36 kg** (y el envase pedido), el estado (⬜ Por separar, ✓ la cantidad, ⚠ Faltó) y el aviso en naranja ("Alcanza para 30 kg de 36 kg", "Va 30 kg de 36 kg · no se consiguió").
 - **✓ Está todo (36 kg)** en un toque; si no alcanzó, **✓ Separé 30 kg (lo que hay)**, o **✗ No va (no hay)**.
 - **⚠ Falta algo o pesa distinto** (plegado): ¿cuánto se manda? y **si falta, ¿por qué?** con botones: No se consiguió · No alcanzó lo comprado · Estaba en mal estado · Error al preparar · El cliente lo sacó · Otro motivo. Dentro, **🔁 Mandar otro producto en su lugar** (RN-117).
-- Abajo, fijo: cuántos faltan, ¿cuántos bultos? y **📦 Marcar como preparado**: el remito sin precios y la lista con precios se hacen solos.
+- Abajo, fijo mientras se separa: en qué paso está ("Paso 1: faltan separar 2 productos" / "Paso 2: todo separado"), ¿cuántos bultos? y **🧾 Marcar como preparado**: el remito sin precios y la lista con precios se hacen solos.
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
 | Está todo / cuánto se manda | `preparacion.registrar` | RN-113, RN-114 | Peso real con tolerancia; si falta de verdad, el motivo es obligatorio; más de lo comprado pide confirmar. La entrega y sus pedidos pasan a preparándose. |
 | Mandar otro producto | `preparacion.registrar` | RN-117 | Si el cliente no acepta reemplazos, pide quién lo autorizó. |
 | Marcar como preparado | `preparacion.registrar` | RN-118, RN-120, RN-121 | Emite DOC-02 y DOC-03 con los precios congelados; una línea sin precio deja los remitos pendientes; con margen negativo, pide confirmar. |
+| 🚚 Sale ahora | `repartos.gestionar` | RN-122, RN-123, RN-153 | Pasa a En camino: hace el remito si falta y sale el reparto (el armado en el que estaba o uno nuevo). |
 
 #### P-72 Preparar por producto
 
@@ -468,25 +484,30 @@ En el menú figura como **🚚 Logística**. Las entregas que faltan llevar, el 
 
 - **🚚 En camino:** las entregas que ya salieron, en el orden del reparto, cada una con **✅ Entregar**, que abre la confirmación (quién recibió, diferencias) y vuelve al viaje. Es el camino corto para quien reparte desde el celular; el mismo botón está en cada parada de "Armar reparto".
 
-- **🏬 De dónde salen los repartos (depósito o mercado):** se marca una vez, de tres formas numeradas: 1) "Estoy en el lugar" (GPS del celular), 2) escribiendo la dirección y eligiendo el resultado (la dirección buscada queda guardada), 3) pegando un enlace de Google Maps o las coordenadas.
-- **📍 Lugares sin la ubicación marcada:** cartel amarillo que nombra cada cliente y lugar de entrega del día al que le falta, con su dirección; al tocarlo se marca ahí mismo con las mismas tres formas.
+- **Repartos armados:** cada uno con sus paradas y su estado (preparándose, ✓ listo para salir, 🚚 en camino), **🚚 Salir** cuando todas sus paradas están listas y **Ver el recorrido**.
+- **🏬 De dónde salen los repartos (depósito o mercado):** se marca una vez. **En la computadora, solo en el mapa incrustado** (se lleva el mapa a una calle o barrio y se hace clic en el lugar; el punto se puede arrastrar). En el celular, además: "Estoy en el lugar" (GPS), escribiendo la dirección y eligiendo el resultado, o pegando un enlace de Google Maps o las coordenadas. La dirección que se buscó queda guardada.
+- **📍 Lugares sin la ubicación marcada:** cartel amarillo que nombra cada cliente y lugar de entrega del día al que le falta, con su dirección; al tocarlo se marca ahí mismo de la misma forma (el mapa; en el celular, también GPS, dirección o enlace).
 - **¿De dónde salís?** (al calcular): tres botones grandes, "🏬 Del depósito", "📱 De donde estoy ahora" (GPS) o "✍️ De otra dirección" (se escribe y se busca, o se pega un enlace).
 - **Calcular el viaje:** empezar por una parada o por la más cómoda, y volver o no. El orden es el de menos kilómetros (exacto hasta 8 paradas; con más, el vecino más cercano mejorado). Cada tramo con kilómetros y minutos aproximados. Las paradas sin ubicación van al final y el aviso las nombra una por una.
 - Ajuste a mano con ↑ ↓; por parada **Ir** (Google Maps), **Waze** y 📞; "Abrir todo el viaje en Google Maps".
 - **Armar el reparto con este orden** o **Guardar este orden**.
-- La búsqueda de direcciones usa OpenStreetMap desde el servidor, solo al tocar "Buscar".
+- La búsqueda de direcciones usa OpenStreetMap (Nominatim) desde el servidor, solo al tocar "Buscar" o al abrir el mapa para marcar (lo lleva a la dirección escrita); los mapas incrustados usan los mapas de OpenStreetMap.
 
 #### P-76 Armar reparto
 
-Se abre desde "Repartos armados" del viaje de entrega: las entregas sin reparto a un lado y las paradas ordenadas al otro, la tarjeta "Recorrido y GPS", **🖨️ Hoja de ruta** (DOC-04), **Hacer los remitos que faltan**, **Salir** (exige los remitos al día, RN-122) y **Anular** (sin entregas confirmadas, con motivo).
+Se abre desde "Repartos armados" del viaje de entrega. Arriba, una tarjeta dice en qué está y qué hacer: **🧾 Hacer los remitos que faltan** si falta alguno, **🚚 Salir: pasan a En camino** (exige todas las paradas preparadas y con su remito, RN-122; si no se eligió quién lo hace, lo hace quien toca Salir) y, ya en camino, **Regresé**. Después: quién lo hace, vehículo y hora; la tarjeta "Recorrido y GPS"; las paradas ordenadas (cada una con su 🧾 remito) y las entregas sin reparto para agregar; **🖨️ Hoja de ruta** (DOC-04) y **Anular** (sin entregas confirmadas, con motivo).
 
 #### P-77 Mi reparto y P-78 Confirmar entrega (celular)
 
 Solo los repartos de la persona (RN-131). Por parada: llamar, Ir, Waze, **Entregar**. Al confirmar: **Entregado completo** (pide quién recibió), **Con diferencias** (por producto: cuánto se entregó, motivo y detalle) o **No recibió**. Nunca muestra importes. Si hubo diferencias, sube la versión y se rehacen los remitos; a los clientes que facturan por entrega se les hace el comprobante (RN-143). **Regresé** cierra el reparto.
 
-#### P-79 Entregas y remitos y P-80 Detalle de entrega
+#### P-81 Remitos del día
 
-Entregas del día con su estado, reparto, diferencias, facturación y remitos. **Imprimir todos los remitos del día** (una o dos copias) o todas las listas contables (`/entregas/remitos`). El detalle muestra las líneas (pedida, propuesta, preparada, entregada, motivos y, con permisos, precio congelado, importe y margen), las versiones de los documentos y quién recibió.
+En el menú (etapa "Remitos") y desde la preparación, el tablero y el paso a paso (pedido del usuario, 06/10/2026: darles importancia y poder verlos o imprimirlos fácil). Explica qué es el remito (la lista de entrega que firma el cliente, sin precios) y cuándo se hace. Arriba, cuántos están hechos y **🖨️ Imprimir todos** (abre la impresión sola), **🖨️ Todos con 2 copias (cliente y negocio)**, **👁 Ver todos** y, con permiso, **💲 Listas con precios** (DOC-03). Después, una tarjeta por cliente en el orden del reparto: estado (sin preparar, preparándose, listo para salir, en camino, entregado), cuándo se hizo el remito y **👁 Ver**, **🖨️ Imprimir**, **🖨️ 2 copias** y **💲 Con precios**; si todavía no está, por qué ("se hace solo al marcar preparado", "suele faltar un precio", "el pedido cambió: hay que rehacerlo") con el botón para arreglarlo. Un repartidor ve solo los de sus repartos. La impresión de todos juntos es `/entregas/remitos/imprimir` (una o dos copias, o las listas con precios); cada remito suelto, `/entregas/[id]/documento/lista-entrega` (con `?imprimir=1` abre el diálogo solo, `?copias=2` dos copias).
+
+#### P-79 Entregas y P-80 Detalle de entrega
+
+Entregas del día con su estado, reparto, diferencias, facturación y el remito (🧾 Ver). El detalle muestra arriba **🧾 Remito y lista con precios** (👁 Ver el remito, 🖨️ Imprimir el remito, 💲 Lista con precios, o **🧾 Hacer el remito** si falta), las líneas (pedida, propuesta, preparada, entregada, motivos y, con permisos, precio congelado, importe y margen), las versiones de los documentos y quién recibió.
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -542,7 +563,7 @@ Pedidos de acceso con **Habilitar** / **Rechazar**; las personas con acceso, con
 
 ## 6. Acceso por rol
 
-Hoy todos los usuarios son ADMIN y ven todo. Si algún día entra alguien con un rol limitado, cada pantalla y cada entrada del menú dependen del permiso de la tabla de §3 (02 §5): por ejemplo, un REPARTIDOR ve solo "Día de trabajo" con Mi reparto, y nunca pantallas con precios.
+Hoy todos los usuarios son ADMIN y ven todo. Si algún día entra alguien con un rol limitado, cada pantalla y cada entrada del menú dependen del permiso de la tabla de §3 (02 §5): por ejemplo, un REPARTIDOR ve solo "Día de trabajo" con Mi reparto y los remitos de sus repartos, y nunca pantallas con precios.
 
 ---
 
@@ -562,7 +583,7 @@ Hoy todos los usuarios son ADMIN y ven todo. Si algún día entra alguien con un
 | `TRANSICION_INVALIDA` | "Ese pedido ya se está preparando: no se puede cancelar." | La alternativa (anotar la diferencia en la entrega). |
 | `JORNADA_CERRADA` | "Ese día ya está cerrado: para seguir con sus pedidos, primero reabrilo desde “Cierre del día”." | Reabrir. |
 | `LIMITE_CREDITO_EXCEDIDO` | Límite, deuda, compra, deuda después y exceso (06 §9.3). | Pagar el exceso, pagar todo o seguir con motivo (con permiso). |
-| `PRECIO_SIN_COSTO` | "No se pueden hacer los remitos: Kale no tiene precio." | Anotar la compra o fijar el precio. |
+| `PRECIO_SIN_COSTO` | "No se puede hacer el remito de Hospital San Martín: falta el precio de Kale. Cargale el precio de compra y volvé a mandarlo." | "Poner el precio de Kale →" (su ficha). |
 
 ---
 
@@ -573,6 +594,9 @@ Hoy todos los usuarios son ADMIN y ven todo. Si algún día entra alguien con un
 | Anotar algo que se compró de la lista | 3 toques y el precio | P-50 |
 | Cargar un pedido de 10 productos | Menos de 2 minutos | P-41 |
 | Separar un producto que está completo | 1 toque ("✓ Está todo") | P-71 |
+| Mandar un pedido preparado a En camino | 1 arrastre o 1 toque ("🚚 Sale ahora") | P-02, P-70, P-71 |
+| Imprimir todos los remitos del día | 2 toques desde el menú (Remitos → Imprimir todos) | P-81 |
+| Cargar la lista de productos del negocio | Bajar la planilla, escribir los nombres, subirla y "Cargar" | P-28 |
 | Confirmar una entrega sin diferencias | 3 toques y el nombre de quien recibe | P-78 |
 | Encontrar lo que se le debe a un proveedor | 2 toques desde el menú | P-60 → P-61 |
 | Que preparación y reparto no muestren precios | Nunca | P-70 a P-78 (prueba automática, 02 §8) |

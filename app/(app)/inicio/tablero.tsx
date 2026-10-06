@@ -12,6 +12,7 @@ import { Avatar } from "@/ui/avatar";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 
+import { salenAhoraAccion } from "../repartos/acciones";
 import {
   armarListaConElegidosAccion,
   asignarElegidosAccion,
@@ -24,9 +25,10 @@ import {
 // Tablero de pedidos estilo Trello: una columna de color por etapa y una tarjeta grande por pedido,
 // con lo que lleva a la vista, etiquetas, plazo, notas, avance y quién se encarga. Las tarjetas se
 // arrastran entre Pedidos, Lista de compras y Comprado (con el mouse o manteniendo el dedo apretado
-// en el celular), y soltarlas en Preparando empieza a preparar el día. En "Lista de compras" se
+// en el celular), soltarlas en Preparando empieza a preparar el día, y de Preparando a En camino
+// salen a entregar (se termina de preparar, se hace el remito y sale el reparto). En "Lista de compras" se
 // tilda en la misma tarjeta lo que ya se compró y lo que no se consiguió. En "Elegir pedidos" se
-// marcan varias (o todas) para mandarlas juntas a la lista de compras.
+// marcan varias (o todas) para mandarlas juntas a la lista de compras o a entregar.
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
 type Tilde = "SI" | "NO" | "PENDIENTE";
@@ -40,7 +42,8 @@ interface Props {
   yo: string;
   /** "/inicio?fecha=…": las tarjetas se abren agregando `&pedido=…`. */
   base: string;
-  puede: { crear: boolean; armar: boolean; editar: boolean; tildar: boolean };
+  /** `salir`: puede mandar pedidos a En camino (arma el reparto y sale). */
+  puede: { crear: boolean; armar: boolean; editar: boolean; tildar: boolean; salir: boolean };
   /** Destino de cada columna para ir a la pantalla de esa etapa. */
   enlaces: Partial<Record<ClaveColumna, { href: string; texto: string }>>;
 }
@@ -302,13 +305,18 @@ function Tarjeta({
   );
 }
 
-function Aviso({ estado, cerrar }: { estado: EstadoAccion; cerrar: () => void }) {
+function Aviso({ estado, cerrar, confirmar }: { estado: EstadoAccion; cerrar: () => void; confirmar: (() => void) | null }) {
   return (
     <div
       role={estado.ok ? "status" : "alert"}
       className={`flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-base font-medium shadow-tarjeta ${estado.ok ? "bg-tarjeta text-tarjeta-texto" : "bg-[var(--vence-fondo)] text-[var(--vence-texto)]"}`}
     >
       <span className="min-w-0 flex-1">{estado.mensaje}</span>
+      {estado.requiereConfirmacion && confirmar && (
+        <button type="button" onClick={confirmar} className="rounded-lg bg-[#172b4d] px-4 py-2 font-semibold text-white shadow-sm">
+          Confirmar
+        </button>
+      )}
       {estado.enlace && (
         <Link href={estado.enlace.href} className="rounded-lg bg-white px-4 py-2 font-semibold text-[#172b4d] shadow-sm">
           {estado.enlace.texto} →
@@ -348,6 +356,8 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
   const [sobre, setSobre] = useState<ClaveColumna | null>(null);
   const [llegada, setLlegada] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<EstadoAccion>(ESTADO_INICIAL);
+  // Lo último que se mandó, para reenviarlo con "Confirmar" si el servidor lo pide.
+  const [ultimo, setUltimo] = useState<{ accion: Accion; datos: Record<string, string | string[]>; opciones: { aLaVista?: CambioALaVista; despues?: () => void } } | null>(null);
   const [pendiente, empezar] = useTransition();
   const [verCancelados, setVerCancelados] = useState(false);
   const [columnas, mostrarCambio] = useOptimistic(columnasGuardadas, conElCambio);
@@ -361,11 +371,12 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
   const todas = useMemo(() => columnas.flatMap((c) => c.tarjetas), [columnas]);
   const pasaFiltro = (t: TarjetaPedido) => (!filtroPersona || t.responsable?.id === filtroPersona) && (!soloUrgentes || t.prioridad === "ALTA");
   const elegidasTarjetas = todas.filter((t) => elegidas.has(t.id));
-  const resumen = resumenDeSeleccion(elegidasTarjetas.map((t) => t.estado));
+  const resumen = resumenDeSeleccion(elegidasTarjetas);
 
   const ejecutar = (accion: Accion, datos: Record<string, string | string[]>, opciones: { aLaVista?: CambioALaVista; despues?: () => void } = {}) => {
     const fd = new FormData();
     for (const [clave, valor] of Object.entries(datos)) for (const v of Array.isArray(valor) ? valor : [valor]) fd.append(clave, v);
+    setUltimo({ accion, datos, opciones });
     empezar(async () => {
       if (opciones.aLaVista) mostrarCambio(opciones.aLaVista);
       const r = await accion(ESTADO_INICIAL, fd);
@@ -374,6 +385,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
       if (r.ok) opciones.despues?.();
     });
   };
+  const confirmarUltimo = ultimo ? () => ejecutar(ultimo.accion, { ...ultimo.datos, confirmarVariacion: "on" }, ultimo.opciones) : null;
   const alternar = (id: string) =>
     setElegidas((previas) => {
       const nuevas = new Set(previas);
@@ -627,7 +639,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         </div>
       </div>
 
-      {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} />}
+      {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} confirmar={pendiente ? null : confirmarUltimo} />}
 
       <nav aria-label="Ir a una columna" className="sin-barra -mx-1 flex gap-2 overflow-x-auto px-1 md:hidden">
         {columnas.map((col) => (
@@ -649,7 +661,8 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
           const aceptaSoltar = destino && accionAlMover(arrastrando.desde, col.clave) !== null;
           const encima = destino && sobre === col.clave;
           const todasElegidas = visibles.length > 0 && visibles.every((t) => elegidas.has(t.id));
-          const arrastrable = puede.editar && !eligiendo && COLUMNAS_ARRASTRABLES.includes(col.clave);
+          // De Preparando se arrastra solo para que salga a entregar (quien puede armar repartos).
+          const arrastrable = !eligiendo && (col.clave === "preparando" ? puede.salir : puede.editar && COLUMNAS_ARRASTRABLES.includes(col.clave));
           const seTilda = puede.tildar && (col.clave === "en_lista" || col.clave === "comprados");
           return (
             <section
@@ -703,7 +716,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                     />
                   </li>
                 ))}
-                {visibles.length === 0 && !encima && <li className="px-1 py-3 font-medium opacity-80">{col.tarjetas.length ? "Nada con este filtro." : "Sin pedidos."}</li>}
+                {visibles.length === 0 && !encima && <li className="px-1 py-3 font-medium opacity-80">{col.tarjetas.length ? "Nada con este filtro." : col.clave === "en_camino" && puede.salir ? "Arrastrá acá desde Preparando lo que sale a entregar." : "Sin pedidos."}</li>}
               </ol>
               <footer className="px-3 pt-2 pb-3">
                 {col.clave === "pedidos" && puede.crear ? (
@@ -773,6 +786,16 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
           {puede.armar && resumen.paraLista > 0 && (
             <button type="button" disabled={pendiente} onClick={() => ejecutar(armarListaConElegidosAccion, { pedido: [...elegidas] }, { despues: terminar })} className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60">
               🛒 Mandar a la lista de compras ({resumen.paraLista})
+            </button>
+          )}
+          {puede.salir && resumen.paraSalir > 0 && (
+            <button
+              type="button"
+              disabled={pendiente}
+              onClick={() => ejecutar(salenAhoraAccion, { pedido: elegidasTarjetas.filter((t) => t.columna === "preparando").map((t) => t.id) }, { despues: terminar })}
+              className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60"
+            >
+              🚚 Salen ahora ({resumen.paraSalir})
             </button>
           )}
           {puede.armar && resumen.paraSacar > 0 && (

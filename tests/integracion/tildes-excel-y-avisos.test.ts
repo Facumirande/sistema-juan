@@ -1,12 +1,13 @@
 import { count, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { pedido, producto, usuario } from "@/db/esquema";
+import { pedido, usuario } from "@/db/esquema";
 import { formatearFecha, sumarDias } from "@/dominio/fechas/fechas";
-import { COLUMNAS_DE_PRODUCTOS } from "@/dominio/catalogo/planilla";
+import { COLUMNAS_PLANILLA } from "@/dominio/catalogo/importacion";
 import { COLUMNAS_DE_PEDIDOS } from "@/dominio/pedidos/planilla";
-import { planillaXlsx, type Celda } from "@/lib/planilla";
-import { hojaDeProductos, importarProductos, planillaModeloDeProductos, revisarPlanillaDeProductos } from "@/modulos/catalogo/planilla";
+import { leerXlsx, planillaXlsx, type Celda } from "@/lib/planilla";
+import { previsualizarProductos } from "@/modulos/catalogo/importacion";
+import { hojaDeProductos } from "@/modulos/catalogo/planilla";
 import { crearProducto, editarProducto, listarProductos, obtenerProducto } from "@/modulos/catalogo/productos";
 import { avisosPara, marcarAvisosVistos } from "@/modulos/colaboracion/avisos";
 import { escribirNota, marcarNotasLeidas } from "@/modulos/colaboracion/notas";
@@ -238,9 +239,7 @@ describe("la lista de compras explica para quién es cada cosa y se baja a Excel
   });
 });
 
-describe("productos: el código se arma solo y se cargan desde una planilla de Excel", () => {
-  const planillaDeProductos = (filas: Celda[][]) => planillaXlsx([{ nombre: "Productos", columnas: [...COLUMNAS_DE_PRODUCTOS], filas }]);
-  const cuantosProductos = async () => Number((await j.base.comoSuperusuario(() => j.base.db.select({ n: count() }).from(producto)))[0]!.n);
+describe("productos: el código se arma solo y la lista se baja a Excel", () => {
 
   it("el código se arma solo y sirve para buscar", async () => {
     const id = await crearProducto(j.base.db, j.admin, { nombre: "Champiñón blanco", categoriaId: j.ids.verduras!, unidadBase: "BANDEJA", admiteFraccion: false });
@@ -252,85 +251,15 @@ describe("productos: el código se arma solo y se cargan desde una planilla de E
     expect((await obtenerProducto(j.base.db, j.admin, id)).observaciones).toBe("Elegir los más blancos");
   });
 
-  it("subir una planilla: se revisa, se crean todos juntos con sus categorías nuevas y los que ya estaban se saltean", async () => {
-    const bytes = planillaDeProductos([
-      [null, "Zapallito verde", "Verduras", "kg", "Cajón", { numero: "15" }, null, { numero: "35" }, "tiernos"],
-      ["RUC", "Rúcula", "Verduras de hoja", "atado", null, null, null, null, null],
-      [null, "Huevo blanco", "Granja", "maple", "Caja", { numero: "12" }, "no", null, null],
-      [null, "Tomate redondo", "Verduras", null, null, null, null, null, null],
-    ]);
-    const antes = await cuantosProductos();
-    const r = await revisarPlanillaDeProductos(j.base.db, j.admin, bytes);
-    expect(r.problemas).toEqual([]);
-    expect(r.yaEstan).toEqual(["Tomate redondo"]);
-    expect(r.categoriasNuevas).toEqual([{ nombre: "Verduras de hoja", grupo: "VERDURA" }, { nombre: "Granja", grupo: "OTRO" }]);
-    expect(r.nuevos.map((p) => [p.nombre, p.categoria, p.unidadBase, p.envase?.nombre ?? null, p.admiteFraccion, p.ganancia])).toEqual([
-      ["Zapallito verde", "Verduras", "KG", "Cajón 15 kg", true, "35"],
-      ["Rúcula", "Verduras de hoja", "ATADO", null, false, null],
-      ["Huevo blanco", "Granja", "MAPLE", "Caja 12 maple", false, null],
-    ]);
-    // Revisar no carga nada.
-    expect(await cuantosProductos()).toBe(antes);
-
-    const creado = await importarProductos(j.base.db, j.admin, r.nuevos);
-    expect(creado.productos.map((p) => [p.nombre, p.codigo])).toEqual([["Zapallito verde", "ZAPA-V"], ["Rúcula", "RUC"], ["Huevo blanco", "HUEV-B"]]);
-    expect(creado.categoriasCreadas).toEqual(["Verduras de hoja", "Granja"]);
-    const zapallito = await obtenerProducto(j.base.db, j.admin, creado.productos[0]!.id);
-    expect([zapallito.categoria, zapallito.observaciones, zapallito.presentaciones.map((x) => `${x.nombre}=${x.factorABase}`).sort()]).toEqual(["Verduras", "tiernos", ["Cajón 15 kg=15.000", "kg=1.000"]]);
-    const [guardado] = await j.base.comoSuperusuario(() => j.base.db.select({ recargo: producto.recargoDefault }).from(producto).where(eq(producto.id, zapallito.id)));
-    expect(guardado!.recargo).toBe("35.000");
-    expect((await obtenerProducto(j.base.db, j.admin, creado.productos[1]!.id)).categoria).toBe("Verduras de hoja");
-
-    // Volver a subir la misma planilla no duplica nada: ya están todos.
-    const otraVez = await revisarPlanillaDeProductos(j.base.db, j.admin, bytes);
-    expect([otraVez.nuevos.length, otraVez.yaEstan.length, otraVez.problemas.length]).toEqual([0, 4, 0]);
-  });
-
-  it("con errores no se carga nada, y sin permiso para las ganancias no se pueden subir", async () => {
-    const r = await revisarPlanillaDeProductos(
-      j.base.db,
-      j.admin,
-      planillaDeProductos([
-        [null, "Acelga", "Verduas", null, null, null, null, null, null],
-        [null, "Perejil", "Verduras", "ramito", null, null, null, null, null],
-        [null, "Naranja", "Frutas", "kg", "Cajón", null, null, null, null],
-        [null, "Pera", "Frutas", null, null, null, null, null, null],
-      ]),
-    );
-    expect([r.nuevos, r.categoriasNuevas]).toEqual([[], []]);
-    expect(r.problemas.map((p) => p.fila)).toEqual([2, 3, 4]);
-    expect(r.problemas[0]!.mensaje).toContain("¿Quisiste decir “Verduras”?");
-
-    // Pedro (comprador) puede cargar productos pero no cambiar ganancias.
-    const conGanancia = planillaDeProductos([[null, "Pera", "Frutas", null, null, null, null, { numero: "40" }, null]]);
-    expect((await revisarPlanillaDeProductos(j.base.db, j.comprador, conGanancia)).problemas).toEqual([{ fila: 0, mensaje: expect.stringContaining("tu usuario no puede cambiarlas") }]);
-    expect((await revisarPlanillaDeProductos(j.base.db, j.admin, conGanancia)).nuevos).toHaveLength(1);
-    // Un archivo que no es una planilla: mensaje claro.
-    expect(await codigoDeError(revisarPlanillaDeProductos(j.base.db, j.admin, new Uint8Array([0x50, 0x4b, 9, 9])))).toBe("VALIDACION");
-
-    // Si uno no se puede crear (ya hay una Papa), no queda ninguno a medias.
-    const antes = await cuantosProductos();
-    const comun = { codigo: null, categoria: "Frutas", categoriaId: j.ids.frutas!, unidadBase: "KG" as const, admiteFraccion: true, envase: null, ganancia: null, notas: null };
-    expect(await codigoDeError(importarProductos(j.base.db, j.admin, [{ ...comun, nombre: "Kiwi" }, { ...comun, nombre: "Papa" }]))).toBe("VALIDACION");
-    expect(await cuantosProductos()).toBe(antes);
-  });
-
-  it("la lista de productos se baja a Excel con las mismas columnas, y la planilla modelo trae las categorías", async () => {
+  it("la lista de productos se baja a Excel con las columnas de la planilla modelo", async () => {
     const hoja = await hojaDeProductos(j.base.db, j.admin);
-    expect(hoja.columnas).toEqual([...COLUMNAS_DE_PRODUCTOS, "Estado"]);
-    expect(hoja.filas.find((f) => f[1] === "Zapallito verde")).toEqual(["ZAPA-V", "Zapallito verde", "Verduras", "kg", "Cajón 15 kg", { numero: "15" }, "sí", { numero: "35" }, "tiernos", "Activo"]);
-    expect(hoja.filas.find((f) => f[1] === "Rúcula")).toEqual(["RUC", "Rúcula", "Verduras de hoja", "atado", null, null, "no", null, null, "Activo"]);
-    // Quien no ve márgenes (Pedro) la baja sin las ganancias.
-    expect((await hojaDeProductos(j.base.db, j.comprador)).filas.find((f) => f[1] === "Zapallito verde")![7]).toBeNull();
-    // Lo bajado se puede volver a subir: no hay nada nuevo.
-    const vuelta = await revisarPlanillaDeProductos(j.base.db, j.admin, planillaXlsx([hoja]));
-    expect([vuelta.nuevos.length, vuelta.problemas.length, vuelta.yaEstan.length]).toEqual([0, 0, hoja.filas.length]);
-
-    const modelo = await planillaModeloDeProductos(j.base.db, j.admin);
-    expect(modelo.map((h) => h.nombre)).toEqual(["Productos", "Cómo llenarla", "Categorías"]);
-    expect(modelo[0]!.columnas).toEqual([...COLUMNAS_DE_PRODUCTOS]);
-    expect(modelo[2]!.filas.map((f) => f[0])).toEqual(expect.arrayContaining(["Verduras", "Frutas", "Verduras de hoja", "Granja"]));
-    expect((await revisarPlanillaDeProductos(j.base.db, j.admin, planillaXlsx(modelo))).problemas).toEqual([{ fila: 0, mensaje: "La planilla no tiene ningún producto debajo de los títulos." }]);
+    expect(hoja.columnas).toEqual([...COLUMNAS_PLANILLA, "Estado"]);
+    const fila = hoja.filas.find((x) => x[0] === "Champiñón blanco")!;
+    expect([fila[1], fila[2], fila[6], fila[7]]).toEqual(["Verduras", "Bandeja", "CHAM-B", "Activo"]);
+    // Lo bajado se puede volver a subir: son todos productos que ya están.
+    const vuelta = await previsualizarProductos(j.base.db, j.admin, leerXlsx(planillaXlsx([hoja]))[0]!.filas);
+    expect(vuelta.productos.length).toBe(hoja.filas.length);
+    expect(vuelta.productos.every((p) => p.estado === "YA_EXISTE")).toBe(true);
   });
 });
 
