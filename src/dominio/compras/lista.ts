@@ -9,10 +9,14 @@ import { presentacionesNecesarias } from "../unidades/unidades";
 export type EstadoLineaLista = "PENDIENTE" | "PARCIAL" | "COMPRADO" | "NO_CONSEGUIDO";
 export type AlertaLista = "SIN_PROVEEDOR" | "CREDITO_INSUFICIENTE" | "PRECIO_DESACTUALIZADO";
 
-/** RN-051 */
-export function estadoLineaLista(necesidadBase: ValorDecimal, compradoBase: ValorDecimal, marcadaNoConseguido: boolean): EstadoLineaLista {
+/**
+ * RN-051. `tildada` = se marcó a mano como comprada (en la tarjeta del tablero o en la lista) sin
+ * anotar la compra: cuenta como comprada aunque no haya compras registradas.
+ */
+export function estadoLineaLista(necesidadBase: ValorDecimal, compradoBase: ValorDecimal, marcadaNoConseguido: boolean, tildada = false): EstadoLineaLista {
   const necesidad = dec(necesidadBase);
   const comprado = dec(compradoBase);
+  if (tildada) return "COMPRADO";
   if (marcadaNoConseguido && comprado.lt(necesidad)) return "NO_CONSEGUIDO";
   if (comprado.lte(0) && necesidad.gt(0)) return "PENDIENTE";
   if (comprado.lt(necesidad)) return "PARCIAL";
@@ -37,6 +41,7 @@ export function calcularLineaLista(p: {
   factor: ValorDecimal;
   cantidadManual: ValorDecimal | null;
   marcadaNoConseguido: boolean;
+  tildada?: boolean;
 }): CalculoLinea {
   const necesidad = dec(p.necesidadBase);
   const comprado = dec(p.compradoBase);
@@ -48,8 +53,16 @@ export function calcularLineaLista(p: {
     cantidadPresentaciones: cantidad,
     aComprarBase: aComprar,
     sobrantePrevistoBase: redondear3(aComprar.minus(pendiente).plus(Decimal.max(comprado.minus(necesidad), 0))),
-    estado: estadoLineaLista(necesidad, comprado, p.marcadaNoConseguido),
+    estado: estadoLineaLista(necesidad, comprado, p.marcadaNoConseguido, p.tildada ?? false),
   };
+}
+
+/**
+ * Un tilde vale para lo que se necesitaba cuando se puso: si después hace falta más (entró otro
+ * pedido o se agrandó uno), deja de valer y el producto vuelve a quedar por comprar.
+ */
+export function tildeSigueValiendo(tildada: boolean, necesidadAlTildar: ValorDecimal, necesidadAhora: ValorDecimal): boolean {
+  return tildada && dec(necesidadAhora).lte(dec(necesidadAlTildar));
 }
 
 export interface Candidato {

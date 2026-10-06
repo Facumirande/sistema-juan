@@ -9,7 +9,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
 import { fechaConDia } from "@/ui/etiquetas";
 
-export const metadata: Metadata = { title: "DOC-04 Hoja de ruta · Sistema Juan" };
+export const metadata: Metadata = { title: "DOC-04 Hoja de ruta · Sistema Repartos" };
 
 /** DOC-04 Hoja de ruta de reparto (09): paradas en orden, sin precios (RN-124). */
 export default async function HojaDeRuta({ params }: PageProps<"/repartos/[id]/imprimir">) {

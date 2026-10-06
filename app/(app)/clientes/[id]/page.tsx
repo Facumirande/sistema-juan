@@ -20,7 +20,7 @@ import { CamposCliente, CamposPunto } from "../campos-cliente";
 
 import { PedidosDelCliente, PreciosDelCliente } from "./secciones";
 
-export const metadata: Metadata = { title: "Cliente · Sistema Juan" };
+export const metadata: Metadata = { title: "Cliente · Sistema Repartos" };
 
 function dias(diasEntrega: number[]): string {
   return diasEntrega.map((d) => DIAS_SEMANA[d - 1]?.etiqueta).join(", ");

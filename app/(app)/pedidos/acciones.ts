@@ -106,7 +106,8 @@ export async function guardarPedidoVisualAccion(datos: PedidoVisual): Promise<Es
   const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
     const comun = {
       puntoEntregaId: datos.puntoEntregaId,
-      lineas: datos.lineas,
+      // La cantidad viaja con coma: escrita con punto, "1.125" se leería como mil ciento veinticinco.
+      lineas: datos.lineas.map((l) => ({ ...l, cantidad: l.cantidad.replace(".", ",") })),
       prioridad: datos.prioridad,
       entregaDesde: datos.entregaDesde,
       entregaHasta: datos.entregaHasta,

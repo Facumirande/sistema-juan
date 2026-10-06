@@ -261,6 +261,7 @@ export async function reimputarPago(db: BaseDatos, authUserId: string, datos: z.
       resumen: `Reimputación de ${numeroPago(pago.numero)} (${d.modo === "FIFO" ? "a las compras más viejas" : "manual"}).`,
       motivo: d.motivo,
     });
+    await registrarActividad(tx, c, { accion: "PAGAR", entidadTipo: "PAGO", entidadId: pago.id, resumen: `cambió a qué compras se aplica el pago ${numeroPago(pago.numero)}` });
   });
 }
 
@@ -322,6 +323,7 @@ export async function registrarAjuste(db: BaseDatos, authUserId: string, datos: 
       resumen: `${credito ? "Ajuste a nuestro favor" : "Ajuste a favor del proveedor"} con ${prov.nombre}: ${formatearMoneda(d.monto)}${referencia}.`,
       motivo: d.motivo,
     });
+    await registrarActividad(tx, c, { accion: "PAGAR", entidadTipo: "PROVEEDOR", entidadId: prov.id, resumen: `anotó un ajuste ${credito ? "a favor nuestro" : "a favor del proveedor"} en la cuenta de ${prov.nombre}` });
     const indicadores = indicadoresCredito(await saldoNeto(tx, prov.id), prov.limiteCredito, await umbralesSemaforo(tx));
     return { advertencia: !credito && indicadores.semaforo === "EXCEDIDO" ? `${prov.nombre} quedó por encima del límite de crédito.` : null };
   });

@@ -22,7 +22,7 @@ import { SemaforoCredito } from "@/ui/semaforo";
 
 import { FormularioCompra } from "./formulario-compra";
 
-export const metadata: Metadata = { title: "Registrar compra · Sistema Juan" };
+export const metadata: Metadata = { title: "Registrar compra · Sistema Repartos" };
 
 const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: true });
 

@@ -9,7 +9,7 @@ import { Campo, Desplegable, Encabezado, Estado, Selector } from "@/ui/formulari
 
 import { cambiarEstadoCategoriaAccion, guardarCategoriaAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Categorías · Sistema Juan" };
+export const metadata: Metadata = { title: "Categorías · Sistema Repartos" };
 
 /** P-12 Categorías: el orden es el del recorrido en el mercado y en el depósito. */
 export default async function PaginaCategorias() {

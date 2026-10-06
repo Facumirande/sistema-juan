@@ -10,7 +10,7 @@ import { dibujoDeCliente, etiquetaDeTipo } from "@/ui/etiquetas-tablero";
 import { Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Clientes · Sistema Juan" };
+export const metadata: Metadata = { title: "Clientes · Sistema Repartos" };
 
 const ORDEN_TIPOS = ["HOSPITAL", "RESTAURANTE", "COMERCIO", "INSTITUCION", "OTRO"];
 

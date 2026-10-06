@@ -15,7 +15,7 @@ import { parametro } from "@/ui/parametros";
 
 import { iniciarPreparacionAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Preparación · Sistema Juan" };
+export const metadata: Metadata = { title: "Preparación · Sistema Repartos" };
 
 const cant = (v: string, u: string) => formatearCantidad(v, u as UnidadMedida);
 
@@ -43,7 +43,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
         )}
         {p.entregas.length > 0 && (
           <Link href={`/viaje?fecha=${fecha}`} className={clasesBoton("secundario")}>
-            🧭 Viaje de entrega
+            🚚 Logística (viaje de entrega)
           </Link>
         )}
       </Encabezado>

@@ -151,7 +151,9 @@ function RecuadroProducto({
           {dibujo}
         </span>
         <span className="text-lg leading-tight font-semibold">{p.nombre}</span>
-        <span className="text-sm text-texto-suave">{inicial && !inicial.esUnidadBase ? inicial.nombre : `por ${unidad}`}</span>
+        <span className="text-sm text-texto-suave">
+          {inicial && !inicial.esUnidadBase ? inicial.nombre : `por ${unidad}`} · {p.codigo}
+        </span>
       </button>
     );
   }
@@ -290,7 +292,7 @@ export function CargadorDePedido({
   const porProducto = new Map(entradas.map((e) => [e.productoId, e]));
   const habituales = (cliente?.habituales ?? []).map((id) => productoPorId.get(id)).filter((p): p is ProductoParaCargar => Boolean(p));
   const clientesVisibles = datos.clientes.filter((c) => coincideBusqueda(`${c.nombre} ${c.direccion ?? ""}`, buscarCliente));
-  const productosVisibles = datos.productos.filter((p) => coincideBusqueda(`${p.nombre} ${p.categoria ?? ""}`, buscarProducto));
+  const productosVisibles = datos.productos.filter((p) => coincideBusqueda(`${p.nombre} ${p.codigo} ${p.categoria ?? ""}`, buscarProducto));
   const buscando = buscarProducto.trim() !== "";
   // Por categoría; sin búsqueda, lo que suele pedir el cliente va arriba y no se repite abajo.
   const grupos = [...new Set(productosVisibles.map((p) => p.categoria ?? "Otros"))]
@@ -452,9 +454,16 @@ export function CargadorDePedido({
               : "Tocá el cliente, el día y lo que lleva. Al final, guardalo."}
           </p>
         </div>
-        <Link href={`/inicio?fecha=${fecha}`} className="flex min-h-11 items-center rounded-lg border border-borde px-4 font-semibold">
-          ← Volver al tablero
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {!editando && (
+            <Link href={`/pedidos/importar?fecha=${fecha}`} className="flex min-h-11 items-center rounded-lg border border-borde px-4 font-semibold">
+              📥 Cargar desde Excel
+            </Link>
+          )}
+          <Link href={`/inicio?fecha=${fecha}`} className="flex min-h-11 items-center rounded-lg border border-borde px-4 font-semibold">
+            ← Volver al tablero
+          </Link>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
@@ -599,7 +608,7 @@ export function CargadorDePedido({
             <input
               value={buscarProducto}
               onChange={(e) => setBuscarProducto(e.target.value)}
-              placeholder="🔎 Buscar producto…"
+              placeholder="🔎 Buscar producto por nombre o código…"
               aria-label="Buscar producto"
               className="h-14 rounded-xl border-2 border-borde bg-superficie px-4 text-lg"
             />

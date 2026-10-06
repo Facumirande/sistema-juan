@@ -17,7 +17,7 @@ import { SemaforoCredito } from "@/ui/semaforo";
 import { registrarPagoAccion } from "../../acciones";
 import { ImputacionPago } from "../../imputacion-pago";
 
-export const metadata: Metadata = { title: "Registrar pago · Sistema Juan" };
+export const metadata: Metadata = { title: "Registrar pago · Sistema Repartos" };
 
 /** P-62 Registrar pago a un proveedor (06 §4.1). */
 export default async function RegistrarPago({ params }: PageProps<"/cuentas-proveedores/[id]/pago">) {

@@ -271,6 +271,7 @@ export async function guardarCliente(
       datosAntes: cambios.datosAntes,
       datosDespues: cambios.datosDespues,
     });
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "CLIENTE", entidadId: id, resumen: `cambió los datos del cliente ${d.nombre}` });
     return id;
   });
 }
@@ -292,6 +293,7 @@ export async function cambiarEstadoCliente(db: BaseDatos, authUserId: string, da
       datosAntes: { activo: actual.activo },
       datosDespues: { activo: datos.activo },
     });
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "CLIENTE", entidadId: datos.id, resumen: `${datos.activo ? "reactivó" : "dio de baja"} al cliente ${actual.nombre}` });
   });
 }
 
@@ -343,6 +345,7 @@ export async function guardarPuntoEntrega(db: BaseDatos, authUserId: string, dat
         resumen: `Nuevo punto de entrega "${d.nombre}" de ${cli.nombre}.`,
         datosDespues: valores,
       });
+      await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "CLIENTE", entidadId: datos.clienteId, resumen: `le agregó un lugar de entrega a ${cli.nombre}` });
       return nuevo!.id;
     }
 
@@ -364,6 +367,7 @@ export async function guardarPuntoEntrega(db: BaseDatos, authUserId: string, dat
       datosAntes: cambios.datosAntes,
       datosDespues: cambios.datosDespues,
     });
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "CLIENTE", entidadId: datos.clienteId, resumen: `cambió un lugar de entrega de ${cli.nombre}` });
     return d.id;
   });
 }

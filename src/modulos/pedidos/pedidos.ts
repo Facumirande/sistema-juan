@@ -675,6 +675,13 @@ export async function cambiarDatosPedido(db: BaseDatos, authUserId: string, dato
     if (jornadaId !== p.pedido.jornadaId) {
       await recalcularPedido(tx, d.pedidoId);
     }
+    await registrarActividad(tx, c, {
+      accion: "MODIFICAR",
+      entidadTipo: "PEDIDO",
+      entidadId: d.pedidoId,
+      jornadaId,
+      resumen: `cambió los datos del pedido ${numeroPedido(p.pedido.numero)} de ${cli.nombre}${d.fecha && d.fecha !== p.fecha ? ` (pasa al ${diaCorto(d.fecha)})` : ""}`,
+    });
   });
 }
 
@@ -1011,6 +1018,7 @@ export async function asignarResponsable(db: BaseDatos, authUserId: string, dato
         entidadTipo: "PEDIDO",
         entidadId: p.id,
         jornadaId: p.jornadaId,
+        paraUsuarioId: d.usuarioId,
         resumen: nombre
           ? d.usuarioId === c.usuarioId
             ? `se hizo cargo del pedido ${numeroPedido(p.numero)} de ${p.cliente}`
@@ -1117,21 +1125,38 @@ async function resumenDeCarga(tx: Transaccion, c: ContextoUsuario, pedidoId: str
  */
 export async function cargarPedido(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaCargaPedido>): Promise<PedidoCargado> {
   const d = validar(esquemaCargaPedido, datos);
+  return ejecutarComoUsuario(db, authUserId, "pedidos.crear", (tx, c) => cargarEnTransaccion(tx, c, d));
+}
+
+async function cargarEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.output<typeof esquemaCargaPedido>): Promise<PedidoCargado> {
+  if (d.confirmar) c.permisos.exigir("pedidos.confirmar");
+  const nuevo = await crearEnTransaccion(tx, c, {
+    fecha: d.fecha,
+    clienteId: d.clienteId,
+    puntoEntregaId: d.puntoEntregaId,
+    canal: null,
+    referenciaCliente: null,
+    observaciones: d.observaciones,
+  });
+  await insertarLineas(tx, c, nuevo.pedidoId, juntarLineas(d.lineas.map(lineaElegida)));
+  await tx.update(pedido).set({ prioridad: d.prioridad, entregaDesde: d.entregaDesde, entregaHasta: d.entregaHasta }).where(eq(pedido.id, nuevo.pedidoId));
+  await recalcularPedido(tx, nuevo.pedidoId);
+  if (d.confirmar) await confirmarEnTransaccion(tx, c, nuevo.pedidoId);
+  return resumenDeCarga(tx, c, nuevo.pedidoId, nuevo.duplicadoDe);
+}
+
+/**
+ * Varios pedidos de una vez (los de una planilla de Excel): se cargan todos en una sola
+ * transacción, así que si uno no se puede cargar no queda ninguno a medias.
+ */
+export async function cargarPedidos(db: BaseDatos, authUserId: string, datos: readonly z.input<typeof esquemaCargaPedido>[]): Promise<PedidoCargado[]> {
+  if (datos.length === 0) throw new ErrorDeNegocio("VALIDACION", "No hay ningún pedido para cargar.");
+  if (datos.length > 300) throw new ErrorDeNegocio("VALIDACION", "Son demasiados pedidos juntos: cargá hasta 300 por planilla.");
+  const pedidos = datos.map((d) => validar(esquemaCargaPedido, d));
   return ejecutarComoUsuario(db, authUserId, "pedidos.crear", async (tx, c) => {
-    if (d.confirmar) c.permisos.exigir("pedidos.confirmar");
-    const nuevo = await crearEnTransaccion(tx, c, {
-      fecha: d.fecha,
-      clienteId: d.clienteId,
-      puntoEntregaId: d.puntoEntregaId,
-      canal: null,
-      referenciaCliente: null,
-      observaciones: d.observaciones,
-    });
-    await insertarLineas(tx, c, nuevo.pedidoId, juntarLineas(d.lineas.map(lineaElegida)));
-    await tx.update(pedido).set({ prioridad: d.prioridad, entregaDesde: d.entregaDesde, entregaHasta: d.entregaHasta }).where(eq(pedido.id, nuevo.pedidoId));
-    await recalcularPedido(tx, nuevo.pedidoId);
-    if (d.confirmar) await confirmarEnTransaccion(tx, c, nuevo.pedidoId);
-    return resumenDeCarga(tx, c, nuevo.pedidoId, nuevo.duplicadoDe);
+    const cargados: PedidoCargado[] = [];
+    for (const d of pedidos) cargados.push(await cargarEnTransaccion(tx, c, d));
+    return cargados;
   });
 }
 

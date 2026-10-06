@@ -6,9 +6,9 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sistema Juan",
+  title: "Sistema Repartos",
   description: "Gestión para distribuidores de frutas y verduras.",
-  appleWebApp: { title: "Sistema Juan", statusBarStyle: "default" },
+  appleWebApp: { title: "Sistema Repartos", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = { themeColor: "#2f7d32" };

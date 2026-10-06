@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, ne } from "drizzle-orm";
 
 import { categoria, cliente, entrega, entregaItem, jornada, listaCompra, listaCompraItem, pedido, pedidoItem, presentacion, producto, puntoEntrega } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
+import type { EstadoLineaLista } from "@/dominio/compras/lista";
 import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { avisoDeFaltante } from "@/dominio/entregas/entregas";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
@@ -45,7 +46,7 @@ export interface TarjetaPedido {
   estadoPlazo: EstadoDelPlazo;
   lineas: number;
   /** Lo que lleva, para verlo en la tarjeta sin abrirla. */
-  productos: { nombre: string; cantidad: string; grupo: string | null; hecha: boolean; aviso: string | null }[];
+  productos: ProductoDeTarjeta[];
   avance: AvanceDePedido | null;
   /** Solo con `precios.ver_venta`. */
   totalEstimado: string | null;
@@ -54,6 +55,20 @@ export interface TarjetaPedido {
   responsable: PersonaVisible | null;
   observaciones: string | null;
   esTardio: boolean;
+}
+
+export interface ProductoDeTarjeta {
+  nombre: string;
+  cantidad: string;
+  grupo: string | null;
+  hecha: boolean;
+  aviso: string | null;
+  /** Su renglón en la lista de compras del día, para tildarlo desde la tarjeta. */
+  listaItemId: string | null;
+  /** Cómo va su compra en la lista (nulo si el pedido no está en la lista). */
+  compra: EstadoLineaLista | null;
+  /** Tildado a mano como comprado: se puede destildar (una compra anotada, no). */
+  tildado: boolean;
 }
 
 export interface ColumnaDelTablero {
@@ -82,6 +97,9 @@ export interface LineaConAvance {
   grupo: string | null;
   cantidad: string;
   hecha: boolean;
+  listaItemId: string | null;
+  compra: EstadoLineaLista | null;
+  tildado: boolean;
 }
 
 const hora = (t: string | null) => t?.slice(0, 5) ?? null;
@@ -111,12 +129,13 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
     .where(and(inArray(pedidoItem.pedidoId, ids), eq(pedidoItem.cancelado, false)))
     .orderBy(asc(pedidoItem.linea));
   const enLista = await tx
-    .select({ productoId: listaCompraItem.productoId, estado: listaCompraItem.estado })
+    .select({ id: listaCompraItem.id, productoId: listaCompraItem.productoId, estado: listaCompraItem.estado, tildado: listaCompraItem.tildado })
     .from(listaCompraItem)
     .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
     .where(eq(listaCompra.jornadaId, jornadaId));
   const comprado = new Set(enLista.filter((l) => RESUELTAS.includes(l.estado)).map((l) => l.productoId));
   const noConseguido = new Set(enLista.filter((l) => l.estado === "NO_CONSEGUIDO").map((l) => l.productoId));
+  const renglon = new Map(enLista.map((l) => [l.productoId, l]));
   // Lo que se separó para cada línea (y lo que faltó y por qué), para la columna "Preparando".
   const separado = new Map(
     (items.length
@@ -146,6 +165,9 @@ async function lineasConAvance(tx: Transaccion, jornadaId: string, pedidos: read
           id: i.id,
           producto: i.producto,
           grupo: i.grupo,
+          listaItemId: p.estado === "EN_COMPRA" ? (renglon.get(i.productoId)?.id ?? null) : null,
+          compra: p.estado === "EN_COMPRA" ? (renglon.get(i.productoId)?.estado ?? null) : null,
+          tildado: p.estado === "EN_COMPRA" && (renglon.get(i.productoId)?.tildado ?? false),
           cantidad: i.presentacion
             ? `${formatearNumero(i.cantidad, { decimales: 3, recortarCeros: true })} × ${i.presentacion}`
             : formatearCantidad(i.cantidadBase, i.unidad as UnidadMedida),
@@ -226,7 +248,7 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
         plazo: textoPlazo(f.entregaDesde, f.entregaHasta),
         estadoPlazo: estadoDelPlazo({ fecha, hasta: hora(f.entregaHasta), estado: f.estado, ...ahora }),
         lineas: a.lineas.length,
-        productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo, hecha: l.hecha, aviso: l.aviso })),
+        productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo, hecha: l.hecha, aviso: l.aviso, listaItemId: l.listaItemId, compra: l.compra, tildado: l.tildado })),
         avance: a.que ? { que: a.que, hechos: a.lineas.filter((l) => l.hecha).length, total: a.lineas.length } : null,
         totalEstimado: verVenta ? f.total : null,
         notas: notas.get(f.id) ?? { total: 0, sinLeer: 0 },

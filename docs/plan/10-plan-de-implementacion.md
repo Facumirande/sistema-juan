@@ -26,6 +26,7 @@
 | I6 | Preparación, repartos, entregas y documentos | Hecha |
 | I7 | Facturación interna, cierre del día y reportes | Hecha |
 | — | Interfaz para el uso diario: tablero de pedidos, paso a paso, carga visual de pedidos, lista de compras con "✓ Lo compré", preparación por cliente | Hecha |
+| — | Afinado del 06 y 07/10: código y dibujo automáticos de cada producto, productos y pedidos en Excel (subir y bajar), tablero de colores vivos con arrastre nuevo y tildes de compra en la tarjeta, lista de compras con cartel del día, "para quién" y descarga a Excel, balance con barras y balance del día, campanita de avisos | Hecha |
 | I8 | Puesta en marcha | En curso (§3) |
 
 El orden siguió el circuito del negocio; cada iteración quedó usable antes de pasar a la siguiente.
@@ -72,8 +73,8 @@ Los pedidos no se confirman a mano: se cargan completos y, al mandarlos a la lis
 | Ícono y manifiesto para agregarla a la pantalla de inicio del celular y abrirla sin la barra del navegador | Hecha |
 | Configuración del negocio desde la app (datos para los documentos, redondeo, margen mínimo, avisos de precios, colores y avisos de deuda, hora de corte de pedidos, tolerancia de peso) | Hecha |
 | Revisión de permisos y RLS | Hecha: las pruebas de integración recorren los permisos con dos empresas y el rol sin precios |
-| Base de producción: un proyecto de Supabase aparte (plan gratuito mientras alcance), con las migraciones aplicadas con `pnpm db:aplicar` | Pendiente |
-| Publicar en Vercel con las variables de `.env.example` (y el dominio gratuito de Vercel) | Pendiente |
+| Base de producción: se empieza con el proyecto de Supabase que ya existe (`sistema-juan-dev`, todavía sin datos reales, con las migraciones al día). Pasar a un proyecto aparte queda para cuando haga falta separar pruebas de datos reales | Hecha |
+| Publicar en Vercel (dominio gratuito de Vercel): importar el repositorio `Facumirande/sistema-juan` desde vercel.com, cargar las variables `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` y `DATABASE_URL` (las de `.env.local`) y desplegar. `vercel.json` ya fija la región São Paulo (`gru1`), la misma de la base. Después, en Supabase → Authentication → URL Configuration, poner la dirección de Vercel como Site URL y en Redirect URLs (para entrar con Google) | En curso: el código está listo; falta importar el repositorio en Vercel |
 | Primer uso en producción: configuración inicial, y habilitar al dueño y a su esposa desde Usuarios | Pendiente |
 | Cargar los datos reales (§5) | Pendiente |
 | Usar un día completo en paralelo con el papel y corregir lo que aparezca | Pendiente |
@@ -100,7 +101,7 @@ Cada prueba lleva en su nombre la regla o el caso que cubre (`RN-063`, `06 §12`
 | # | Qué | De dónde sale | Dónde se carga |
 |---|---|---|---|
 | 1 | Datos del negocio y valores por defecto | Dueño | Mi cuenta → Configuración del negocio |
-| 2 | Productos con sus envases de compra y venta | Lista de precios actual | Productos → Nuevo producto |
+| 2 | Productos con sus envases de compra y venta (el código y el dibujo se arman solos) | Lista de precios actual | Productos → 📊 Excel (todos juntos desde una planilla) o Nuevo producto (de a uno) |
 | 3 | Proveedores (puesto, teléfono, límite de crédito, días para pagar) | Cuaderno de deudas | Proveedores → Nuevo proveedor |
 | 4 | Precios de cada puesto | Última semana de compras | Precios de compra (o "✓ Lo compré" en la lista, que los actualiza) |
 | 5 | Clientes con su dirección, horario y cada cuánto se les factura | Cuaderno de pedidos | Clientes → Nuevo cliente |
@@ -133,6 +134,10 @@ Todas cerradas; cualquiera se revisa si el uso real lo pide. El detalle está en
 ## 7. Pendientes e ideas
 
 **Pendiente (pedido del usuario, 05/10/2026): facturación legal.** La factura válida es la electrónica de ARCA con CAE; hoy el sistema emite un comprobante interno. Para conectarlo con ARCA falta saber si el negocio es monotributista (Factura C, compatible con precios sin IVA) o responsable inscripto (A/B con IVA, cambia D-04), su CUIT con clave fiscal nivel 3, un punto de venta para web service y el certificado digital (la solicitud la prepara el sistema). Se prueba primero en el entorno de homologación de ARCA.
+
+**Pendiente de probar con el uso real (06/10/2026):** el arrastre de tarjetas con el dedo (se levanta manteniendo apretado un instante) se probó en la computadora; falta usarlo en los celulares del negocio y ajustar la espera si resulta corta o larga (`ESPERA_AL_TOCAR` en `app/(app)/inicio/tablero.tsx`). Las notificaciones fuera de la pestaña solo funcionan en la computadora: en el celular haría falta instalar un servicio de notificaciones (push), que no está hecho.
+
+**Para decidir con el uso (07/10/2026):** desde Excel se cargan productos y pedidos; cargar clientes, proveedores o los precios de cada puesto desde una planilla no está hecho. La planilla de productos solo crea productos nuevos: no cambia los que ya existen.
 
 **Ideas** (no pedidas; solo si el uso real las justifica):
 

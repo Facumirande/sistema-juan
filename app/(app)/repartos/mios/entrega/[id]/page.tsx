@@ -10,7 +10,7 @@ import { Aviso, Encabezado, clasesBoton } from "@/ui/formularios";
 
 import { FormulariosConfirmacion } from "../../../../entregas/confirmacion";
 
-export const metadata: Metadata = { title: "Confirmar entrega · Sistema Juan" };
+export const metadata: Metadata = { title: "Confirmar entrega · Sistema Repartos" };
 
 /** P-78 Confirmar entrega (celular del repartidor), sin precios. */
 export default async function ConfirmarEntrega({ params, searchParams }: PageProps<"/repartos/mios/entrega/[id]">) {
@@ -25,7 +25,7 @@ export default async function ConfirmarEntrega({ params, searchParams }: PagePro
     <section className="flex max-w-xl flex-col gap-4">
       <Encabezado
         titulo={e.cliente}
-        volver={{ ruta: volver, texto: volver.startsWith("/viaje") ? "Viaje de entrega" : volver === "/repartos/mios" ? "Mi reparto" : "Reparto" }}
+        volver={{ ruta: volver, texto: volver.startsWith("/viaje") ? "Logística" : volver === "/repartos/mios" ? "Mi reparto" : "Reparto" }}
         descripcion={[e.punto, e.direccion, e.horario && `recibe ${e.horario}`, e.orden && `parada ${e.orden}`].filter(Boolean).join(" · ")}
       />
       <div className="flex flex-wrap gap-2">

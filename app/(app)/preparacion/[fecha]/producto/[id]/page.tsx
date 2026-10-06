@@ -13,7 +13,7 @@ import { CampoNumero, Encabezado, Selector } from "@/ui/formularios";
 
 import { preparadoAccion } from "../../../acciones";
 
-export const metadata: Metadata = { title: "Preparar por producto · Sistema Juan" };
+export const metadata: Metadata = { title: "Preparar por producto · Sistema Repartos" };
 
 const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: true });
 

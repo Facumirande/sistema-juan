@@ -11,7 +11,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "DOC-05 Estado de cuenta · Sistema Juan" };
+export const metadata: Metadata = { title: "DOC-05 Estado de cuenta · Sistema Repartos" };
 
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 

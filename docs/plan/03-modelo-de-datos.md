@@ -334,6 +334,7 @@ Persona que usa el sistema. Vinculada 1 a 1 con el usuario de Supabase Auth. En 
 | invitacion_aceptada_en | timestamptz | Sí | — | Nulo = invitación pendiente. |
 | debe_cambiar_clave | boolean | No | `false` | |
 | ultimo_acceso_en | timestamptz | Sí | — | Actualizado como máximo una vez por hora. |
+| avisos_vistos_en | timestamptz | Sí | — | Cuándo abrió por última vez la campanita: lo que hicieron los demás después es "nuevo" (RN-161). |
 | preferencias | jsonb | No | `'{}'` | Solo interfaz (tamaño de letra, vista compacta, última jornada). `color`: color del avatar elegido en "Mi cuenta" (uno de la paleta); sin elegir, se asigna el primero libre sin repetir. |
 
 ### 4.3 rol
@@ -985,6 +986,7 @@ Una línea por producto: cuánto se necesita, cuánto ya se compró, cuánto com
 | costo_estimado | numeric(14,2) | Sí | — | `cantidad_presentaciones × precio_sugerido`. Nulo si no hay oferta (alerta SIN_PROVEEDOR). |
 | estado | estado_lista_compra_item | No | `'PENDIENTE'` | PENDIENTE (nada comprado), PARCIAL (`0 < comprado_base < necesidad_neta_base`), COMPRADO (`comprado_base >= necesidad_neta_base`), NO_CONSEGUIDO (marcado a mano, con motivo; se revierte si luego se completa la compra). |
 | motivo_no_conseguido | text | Sí | — | Obligatorio si NO_CONSEGUIDO. |
+| tildado | boolean | No | `false` | Tildado a mano como comprado, sin anotar la compra (RN-051b). Check `lista_compra_item_tildado`: solo con estado COMPRADO. |
 | sin_pedido | boolean | No | `false` | Producto comprado sin necesidad en los pedidos (necesidad 0: todo es sobrante previsto). |
 | alertas | text[] | No | `'{}'` | SIN_PROVEEDOR, CREDITO_INSUFICIENTE, PRECIO_DESACTUALIZADO. |
 | comprador_asignado_id | uuid | Sí | — | FK `usuario`. Sin uso. |
@@ -1442,11 +1444,12 @@ Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-
 | empresa_id, id | uuid | No | — | |
 | ocurrida_en | timestamptz | No | `now()` | |
 | usuario_id | uuid | No | — | Quién. |
-| accion | text | No | — | CREAR, CONFIRMAR, CANCELAR, PRIORIDAD, ASIGNAR, PLAZO, ARMAR_LISTA, COMPRAR, PAGAR, PREPARAR, ENTREGAR, SALIR, CERRAR, FACTURAR, UBICAR, etc. |
+| accion | text | No | — | CREAR, MODIFICAR, CONFIRMAR, CANCELAR, PRIORIDAD, ASIGNAR, PLAZO, ARMAR_LISTA, TILDAR, COMPRAR, PAGAR, PRECIO, PREPARAR, ENTREGAR, SALIR, CERRAR, FACTURAR, UBICAR, etc. |
 | entidad_tipo | tipo_entidad | No | — | |
 | entidad_id | uuid | Sí | — | |
 | jornada_id | uuid | Sí | — | Día al que pertenece, si corresponde. |
 | resumen | text | No | — | La frase que se muestra. |
+| para_usuario_id | uuid | Sí | — | A quién le toca enterarse en particular (le pasaron un pedido): le aparece como "Para vos" (RN-162). Nulo = para todos. FK `usuario`. |
 
 Índices: por fecha, por entidad y por persona (todos con `ocurrida_en desc`).
 

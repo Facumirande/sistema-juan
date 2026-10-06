@@ -113,6 +113,8 @@ export const usuario = pgTable(
     accesoAprobadoEn: marcaDeTiempo("invitacion_aceptada_en"),
     debeCambiarClave: boolean("debe_cambiar_clave").notNull().default(false),
     ultimoAccesoEn: marcaDeTiempo("ultimo_acceso_en"),
+    /** Hasta cuándo vio los avisos de la campanita: lo que hicieron los demás después es "nuevo". */
+    avisosVistosEn: marcaDeTiempo("avisos_vistos_en"),
     preferencias: jsonb("preferencias").$type<Record<string, unknown>>().notNull().default({}),
   },
   (t) => [

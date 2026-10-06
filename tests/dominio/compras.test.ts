@@ -14,7 +14,7 @@ import {
   validarImputacionManual,
   verificarLimite,
 } from "@/dominio/compras/credito";
-import { calcularLineaLista, estadoLineaLista, sugerirProveedor, type Candidato } from "@/dominio/compras/lista";
+import { calcularLineaLista, estadoLineaLista, sugerirProveedor, tildeSigueValiendo, type Candidato } from "@/dominio/compras/lista";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 
 const umbrales = { amarilloPct: "70", rojoPct: "90" };
@@ -279,5 +279,21 @@ describe("cuenta corriente: imputaciones, vencimientos y libro (06 §4, §7, §1
       ["180000", "0", "180000"],
       ["0", "200000", "-20000"],
     ]);
+  });
+});
+
+describe("tilde de comprado sin anotar la compra (tablero y lista)", () => {
+  it("un producto tildado cuenta como comprado aunque no haya compras; sin tilde, vale lo comprado", () => {
+    expect(estadoLineaLista("100", "0", false, true)).toBe("COMPRADO");
+    expect(estadoLineaLista("100", "40", false, true)).toBe("COMPRADO");
+    expect(estadoLineaLista("100", "0", false, false)).toBe("PENDIENTE");
+    expect(calcularLineaLista({ necesidadBase: "36", compradoBase: "0", factor: "18", cantidadManual: null, marcadaNoConseguido: false, tildada: true }).estado).toBe("COMPRADO");
+  });
+
+  it("el tilde vale para lo que hacía falta cuando se puso: si después hace falta más, se pierde", () => {
+    expect(tildeSigueValiendo(true, "36", "36")).toBe(true);
+    expect(tildeSigueValiendo(true, "36", "20")).toBe(true);
+    expect(tildeSigueValiendo(true, "36", "54")).toBe(false);
+    expect(tildeSigueValiendo(false, "36", "36")).toBe(false);
   });
 });

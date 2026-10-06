@@ -11,7 +11,7 @@ import { Aviso, Encabezado, Tarjeta } from "@/ui/formularios";
 
 import { cambiarEstadoAccion, responderPedidoAccion, restablecerClaveAccion } from "./acciones";
 
-export const metadata: Metadata = { title: "Usuarios · Sistema Juan" };
+export const metadata: Metadata = { title: "Usuarios · Sistema Repartos" };
 
 /**
  * P-96 Usuarios, simplificada: cada persona entra por su cuenta (Google o "Crear una cuenta") y

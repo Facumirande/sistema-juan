@@ -10,7 +10,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "DOC-08 Comprobante interno · Sistema Juan" };
+export const metadata: Metadata = { title: "DOC-08 Comprobante interno · Sistema Repartos" };
 
 const tabla = "w-full border-collapse text-left text-sm [&_td]:border-b [&_td]:border-borde [&_td]:px-1 [&_td]:py-1.5 [&_th]:border-b [&_th]:border-texto [&_th]:px-1";
 

@@ -7,7 +7,7 @@ import { parametro } from "@/ui/parametros";
 
 import { CargadorDePedido } from "../cargador";
 
-export const metadata: Metadata = { title: "Nuevo pedido · Sistema Juan" };
+export const metadata: Metadata = { title: "Nuevo pedido · Sistema Repartos" };
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 

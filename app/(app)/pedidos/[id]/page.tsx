@@ -23,7 +23,7 @@ import {
   recalcularAccion,
 } from "../acciones";
 
-export const metadata: Metadata = { title: "Pedido · Sistema Juan" };
+export const metadata: Metadata = { title: "Pedido · Sistema Repartos" };
 
 function Cantidad({ l }: { l: LineaDePedido }) {
   const base = formatearCantidad(l.cantidadBase, l.unidadBase as UnidadMedida);

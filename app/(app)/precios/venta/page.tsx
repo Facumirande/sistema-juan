@@ -14,7 +14,7 @@ import { parametro } from "@/ui/parametros";
 
 import { recargoAccion } from "./acciones";
 
-export const metadata: Metadata = { title: "Precios de venta · Sistema Juan" };
+export const metadata: Metadata = { title: "Precios de venta · Sistema Repartos" };
 
 const pct = (v: string | null) => (v === null ? "" : formatearNumero(v, { decimales: 3, recortarCeros: true }));
 

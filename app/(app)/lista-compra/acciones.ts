@@ -2,7 +2,7 @@
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
-import { cambiarLineaLista, generarListaCompra, marcarNoConseguido } from "@/modulos/compras/lista-compra";
+import { cambiarLineaLista, generarListaCompra, marcarNoConseguido, tildarLinea } from "@/modulos/compras/lista-compra";
 import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
@@ -59,5 +59,14 @@ export async function comprarDeLaListaAccion(_estado: EstadoAccion, datos: FormD
       claveIdempotencia: campo(datos, "claveIdempotencia") || null,
     });
     return { ok: true, mensaje: `Anotado: ${r.producto} en ${r.proveedor} por ${formatearMoneda(r.total)}.${r.advertencia ? ` ${r.advertencia}` : ""}` };
+  });
+}
+
+/** Tildar (o destildar) un producto como comprado, sin anotar en qué puesto ni a cuánto. */
+export async function tildarLineaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const tildado = campo(datos, "tildado") === "true";
+    const r = await tildarLinea(db, authUserId, { itemId: campo(datos, "itemId"), tildado });
+    return { ok: true, mensaje: tildado ? `Tildado: ${r.producto}.` : `${r.producto} vuelve a estar por comprar.` };
   });
 }

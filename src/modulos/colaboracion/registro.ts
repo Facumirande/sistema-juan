@@ -33,7 +33,11 @@ export type AccionActividad =
   | "FACTURAR"
   | "HABILITAR"
   | "UBICAR"
-  | "CAMBIAR_PRODUCTOS";
+  | "CAMBIAR_PRODUCTOS"
+  | "MODIFICAR"
+  | "TILDAR"
+  | "IMPORTAR"
+  | "PRECIO";
 
 export interface DatosActividad {
   accion: AccionActividad;
@@ -42,6 +46,8 @@ export interface DatosActividad {
   jornadaId?: string | null;
   /** Lo que hizo, sin el nombre de quien lo hizo y sin importes: "confirmó el pedido PED-000012 de Hospital San Martín". */
   resumen: string;
+  /** A quién le toca enterarse en particular (le pasaron algo): le llega como aviso "para vos". */
+  paraUsuarioId?: string | null;
 }
 
 export async function registrarActividad(tx: Transaccion, c: ContextoUsuario, datos: DatosActividad): Promise<void> {
@@ -53,5 +59,6 @@ export async function registrarActividad(tx: Transaccion, c: ContextoUsuario, da
     entidadId: datos.entidadId ?? null,
     jornadaId: datos.jornadaId ?? null,
     resumen: datos.resumen,
+    paraUsuarioId: datos.paraUsuarioId && datos.paraUsuarioId !== c.usuarioId ? datos.paraUsuarioId : null,
   });
 }

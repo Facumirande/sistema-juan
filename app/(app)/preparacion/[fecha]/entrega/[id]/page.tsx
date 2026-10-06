@@ -16,7 +16,7 @@ import { Aviso, Campo, CampoNumero, Encabezado, Selector, clasesBoton } from "@/
 
 import { marcarPreparadaAccion, preparadoAccion, sustituirAccion, todoPropuestoAccion } from "../../../acciones";
 
-export const metadata: Metadata = { title: "Preparar un pedido · Sistema Juan" };
+export const metadata: Metadata = { title: "Preparar un pedido · Sistema Repartos" };
 
 const cant = (v: string, u: string) => formatearCantidad(v, u as UnidadMedida);
 const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: true });

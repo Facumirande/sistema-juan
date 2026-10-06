@@ -11,7 +11,7 @@ import { Encabezado, clasesBoton } from "@/ui/formularios";
 
 import { regresarAccion, salirAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Mi reparto · Sistema Juan" };
+export const metadata: Metadata = { title: "Mi reparto · Sistema Repartos" };
 
 const destino = (p: { latitud: string | null; longitud: string | null; direccion: string; localidad: string | null }): DestinoGps => ({
   coordenada: p.latitud !== null && p.longitud !== null ? { lat: Number(p.latitud), lng: Number(p.longitud) } : null,

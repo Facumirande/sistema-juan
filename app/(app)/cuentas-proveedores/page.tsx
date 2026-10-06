@@ -11,7 +11,7 @@ import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
-export const metadata: Metadata = { title: "Deudas con proveedores · Sistema Juan" };
+export const metadata: Metadata = { title: "Deudas con proveedores · Sistema Repartos" };
 
 const FILTROS = { deuda: "Con deuda", vencidos: "Vencidos", rojo: "Rojo y excedido", todos: "Todos" } as const;
 

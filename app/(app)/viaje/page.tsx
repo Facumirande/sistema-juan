@@ -10,15 +10,15 @@ import { fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
-import { ubicarSalidaAccion } from "./acciones";
+import { ubicarPuntoAccion, ubicarSalidaAccion } from "./acciones";
 import { paradasDelDia } from "./paradas";
 import { PlanificadorDeViaje } from "./planificador";
 import { MarcarUbicacion } from "./ubicacion";
 
-export const metadata: Metadata = { title: "Viaje de entrega · Sistema Juan" };
+export const metadata: Metadata = { title: "Logística · Sistema Repartos" };
 
 /**
- * P-78b Viaje de entrega: las entregas del día que falta llevar, el mejor recorrido (eligiendo cuál
+ * P-78b Logística (el viaje de entrega): las entregas del día que falta llevar, el mejor recorrido (eligiendo cuál
  * va primero si se quiere) y el GPS para ir. Con las que no están en un reparto se arma uno.
  */
 export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">) {
@@ -29,11 +29,13 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
   const { salida, paradas } = await viajeDelDia(db, sesion.authUserId, fecha);
   const sueltas = paradas.filter((p) => !p.repartoId);
   const enCamino = paradas.filter((p) => p.estado === "EN_REPARTO").sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99));
+  // Los lugares a los que hay que ir y todavía no tienen su ubicación marcada, cada uno una sola vez.
+  const sinUbicar = [...new Map(paradas.filter((p) => !p.coordenada).map((p) => [p.puntoId, p])).values()];
   const repartos = [...new Map(paradas.filter((p) => p.repartoId).map((p) => [p.repartoId!, p.reparto!])).entries()];
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado titulo="Viaje de entrega" descripcion={`Las entregas del ${fechaConDia(fecha)} que faltan llevar. El sistema calcula el orden con menos kilómetros; tocá “Ir” para abrir el GPS en cada parada.`}>
+      <Encabezado titulo="Logística" descripcion={`El viaje de entrega del ${fechaConDia(fecha)}: lo que falta llevar, en qué orden conviene (el de menos kilómetros) y el GPS para ir a cada parada.`}>
         <Link href={`/inicio?fecha=${fecha}`} className={clasesBoton("secundario")}>
           Volver al tablero
         </Link>
@@ -48,12 +50,43 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
       </nav>
 
       {sesion.permisos.includes("configuracion.editar") && (
-        <details className="rounded-lg border border-borde bg-superficie p-4" open={!salida.coordenada}>
-          <summary className="cursor-pointer font-semibold">🏁 De dónde salen los repartos {salida.coordenada ? `· ${salida.direccion ?? "marcado"}` : "· sin marcar"}</summary>
-          <div className="mt-3">
-            <MarcarUbicacion accion={ubicarSalidaAccion} campos={{}} actual={salida.coordenada} direccion={salida.direccion ?? ""} titulo="Punto de salida" />
+        <details className="rounded-2xl border border-borde bg-superficie p-4" open={!salida.coordenada}>
+          <summary className="cursor-pointer text-lg font-semibold">
+            🏬 De dónde salen los repartos (depósito o mercado) {salida.coordenada ? <span className="font-normal text-texto-suave">· {salida.direccion ?? "marcado"} · cambiar</span> : <span className="text-error">· falta marcarlo</span>}
+          </summary>
+          <div className="mt-3 flex flex-col gap-3">
+            <p className="text-texto-suave">Es el lugar desde donde arranca el recorrido. Se marca una sola vez y sirve para calcular los kilómetros y el mejor orden de todos los días.</p>
+            <MarcarUbicacion accion={ubicarSalidaAccion} campos={{}} actual={salida.coordenada} direccion={salida.direccion ?? ""} titulo="Lugar de salida" guardaDireccion />
           </div>
         </details>
+      )}
+
+      {sinUbicar.length > 0 && (
+        <div className="color-amarillo flex flex-col gap-3 rounded-2xl bg-[var(--col)] p-4 text-[var(--col-texto)]">
+          <p className="text-lg font-bold">📍 {sinUbicar.length === 1 ? "Hay 1 lugar sin la ubicación marcada" : `Hay ${sinUbicar.length} lugares sin la ubicación marcada`}</p>
+          <p className="font-medium">Sin eso no se pueden calcular los kilómetros hasta ahí y quedan al final del recorrido (el GPS igual busca la dirección escrita). Tocá cada uno para marcarlo:</p>
+          <ul className="flex flex-col gap-2">
+            {sinUbicar.map((p) => (
+              <li key={p.puntoId}>
+                <details className="rounded-xl bg-superficie p-3 text-texto">
+                  <summary className="min-h-10 cursor-pointer">
+                    <b>{p.cliente}</b>
+                    {p.punto && p.punto !== p.cliente && ` · ${p.punto}`}
+                    <span className="text-texto-suave">
+                      {" "}
+                      · {p.direccion || "sin dirección escrita"}
+                      {p.localidad && `, ${p.localidad}`}
+                    </span>{" "}
+                    <span className="font-semibold text-marca">Marcar dónde queda</span>
+                  </summary>
+                  <div className="mt-3">
+                    <MarcarUbicacion accion={ubicarPuntoAccion} campos={{ puntoId: p.puntoId }} actual={null} direccion={[p.direccion, p.localidad].filter(Boolean).join(", ")} titulo={`Ubicación de ${p.cliente}`} />
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {enCamino.length > 0 && (

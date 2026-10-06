@@ -198,7 +198,7 @@ El cálculo de precios de venta necesita el costo real de las compras del día: 
 Organización por **dominio**, no por tipo técnico. Nombres en español; los propios del framework en inglés (`page.tsx`, `layout.tsx`).
 
 ```text
-sistema-juan/
+sistema-repartos/
 ├─ app/
 │  ├─ (publico)/        login, crear-cuenta, crear-clave, acceso-pendiente, configuracion-inicial
 │  ├─ (app)/            pantallas con sesión y menú según permisos

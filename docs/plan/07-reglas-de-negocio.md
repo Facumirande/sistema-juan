@@ -19,6 +19,7 @@
    - [2.11 Entregas y documentos](#211-entregas-y-documentos)
    - [2.12 Facturación](#212-facturación)
    - [2.13 Seguridad y auditoría](#213-seguridad-y-auditoría)
+   - [2.14 Avisos entre las personas](#214-avisos-entre-las-personas)
 3. [Casos borde y su resolución](#3-casos-borde-y-su-resolución)
 4. [Parámetros configurables por empresa](#4-parámetros-configurables-por-empresa)
 5. [Permisos referenciados](#5-permisos-referenciados)
@@ -47,6 +48,8 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-001 | Todo producto tiene exactamente una `unidad_base` (kg, unidad, atado, maple, bandeja…). No se puede cambiar si el producto ya tiene pedidos o compras. | Alta y edición de producto | BLOQUEA |
 | RN-002 | Toda presentación tiene `factor_a_base` > 0 y al menos uno de los indicadores `usable_en_compra` / `usable_en_venta`. | Alta y edición de presentación | BLOQUEA |
 | RN-003 | El `factor_a_base` de una presentación usada en pedidos o compras no se modifica: se crea una presentación nueva y se desactiva la anterior. | Edición de presentación | BLOQUEA |
+| RN-004b | **Código y dibujo automáticos (06/10/2026):** al crear un producto, si no se escribe un código se arma con el nombre: las 4 primeras letras de la primera palabra y la inicial de la segunda ("Tomate redondo" → `TOMA-R`), sin acentos ni palabras vacías; si ya existe se le agrega un número (`TOMA-R2`). El código sirve para buscar el producto y para identificarlo en las planillas de Excel. El dibujo del producto no se elige: sale solo de su nombre (🍅 para "tomate", 🫛 para "chaucha"…) y, si el nombre no dice nada, del grupo de su categoría (🥦 verdura, 🍎 fruta, 📦 otro). (`src/dominio/catalogo/productos.ts`) | Alta y edición de producto; toda pantalla que lo muestra | CALCULA |
+| RN-004c | **Productos desde una planilla (07/10/2026):** una planilla de Excel (o CSV) con una fila por producto crea productos nuevos. Son obligatorios el nombre y la categoría; lo demás toma el valor de siempre: se vende por kg, se compra suelto, se pide en partes si va por kilo o litro, sin ganancia propia y con el código armado solo. Un producto que ya existe (mismo nombre o mismo código) se saltea: la planilla nunca cambia productos cargados. Una categoría que no existe se crea (con el grupo que sugiere su nombre), salvo que sea casi igual a una existente (una o dos letras de diferencia), que se toma como error de tipeo. Primero se revisa sin guardar; si alguna fila no se entiende (falta el nombre o la categoría, repetido dentro de la planilla, unidad desconocida, envase sin cuánto trae, ganancia que no es un número, categoría dada de baja) no se carga nada y cada problema se informa con su fila. Al cargar, todos los productos y las categorías nuevas se crean en una sola transacción. La columna de ganancia solo la puede usar quien tiene `precios.editar_reglas`. (`src/dominio/catalogo/planilla.ts`) | Subir una planilla de productos | BLOQUEA |
 | RN-004 | El nombre y el código de producto son únicos por empresa (sin distinguir mayúsculas). Calidades distintas se cargan como productos distintos ("Tomate redondo primera" / "segunda"). | Alta y edición de producto | BLOQUEA |
 | RN-005 | Todo producto pertenece a una categoría. | Alta y edición de producto | BLOQUEA |
 | RN-006 | Todo producto tiene alícuota de IVA; si no se indica, toma la de la empresa. | Alta de producto | CALCULA |
@@ -73,6 +76,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-017 | Un pedido requiere cliente activo, punto de entrega activo de ese cliente y jornada (fecha de entrega) no `CERRADA` y con fecha ≥ hoy. Si el cliente tiene `requiere_orden_compra`, la referencia del cliente (orden de compra) es obligatoria para confirmar. | Crear y confirmar pedido | BLOQUEA |
 | RN-018 | Un pedido se guarda en `CONFIRMADO` (no hay confirmación a mano) y debe tener al menos una línea no cancelada con cantidad > 0. | Confirmar | BLOQUEA |
 | RN-018b | **Nunca un pedido vacío (29/09/2026):** la carga visual guarda el pedido con todos sus productos, la prioridad, el horario y la nota en una sola operación, o no guarda nada. Un pedido sin productos no se confirma ni pasa a la lista de compras, y el aviso ofrece el botón para agregarle productos. | Cargar, confirmar o armar la lista | BLOQUEA + explica cómo seguir |
+| RN-018c | **Pedidos desde una planilla (06/10/2026):** una planilla de Excel (o CSV) con una fila por producto se convierte en pedidos: las filas del mismo cliente y día forman un pedido; el producto se identifica por su código o, si no hay código, por su nombre exacto (sin distinguir mayúsculas ni acentos); el cliente, por su nombre; la fecha vacía vale el día elegido al subirla; la cantidad va en la unidad del producto o en el envase de venta que se indique. Primero se revisa sin guardar: si alguna fila no se entiende (cliente o producto que no existe, cantidad que no es un número o con decimales en un producto que va por unidad, fecha pasada o día cerrado, cliente sin lugar de entrega) no se carga ningún pedido y cada problema se informa con su fila y cómo arreglarlo. Al cargar, todos los pedidos se guardan en una sola transacción y quedan como los cargados a mano (RN-018b). Que un cliente ya tenga un pedido ese día se avisa, pero no lo impide (RN-022). (`src/dominio/pedidos/planilla.ts`) | Subir una planilla de pedidos | BLOQUEA |
 | RN-019 | La presentación elegida en una línea debe pertenecer al producto y ser `usable_en_venta`. | Carga de línea | BLOQUEA |
 | RN-020 | La `cantidad_base` de cada línea se calcula al guardar (RN-008). | Carga de línea | CALCULA |
 | RN-021 | Si un producto se repite en el mismo pedido, se ofrece sumar las cantidades en una sola línea. | Carga de línea | ADVIERTE |
@@ -115,6 +119,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-048 | Un producto sin oferta vigente queda en la lista como "sin proveedor / sin precio". | Generar; lista general de precios | ADVIERTE |
 | RN-049 | Hay una lista vigente por jornada; regenerar crea una nueva versión, registra las diferencias y **nunca** modifica ni anula compras registradas. | Regenerar | CALCULA |
 | RN-050 | Un proveedor asignado a mano y una cantidad ajustada a mano (`ajuste_manual`, con motivo) se conservan al regenerar; si la necesidad cambió, la línea se marca `necesidad_modificada`. Ajustar requiere `lista_compra.editar`. | Regenerar; edición de la lista | CALCULA + BLOQUEA (sin permiso) |
+| RN-051b | **Tilde de comprado (06/10/2026):** un producto de la lista se puede tildar a mano como comprado sin anotar la compra (`lista_compra.editar`), desde la tarjeta del tablero o desde la lista; queda `COMPRADO` con `tildado = true`. Pasar una tarjeta a "Comprado" tilda todo lo suyo que estaba pendiente o parcial (lo `NO_CONSEGUIDO` queda así); devolverla saca esos tildes. El tilde es del producto en la lista del día: vale para todos los pedidos que lo llevan. Vale para lo que hacía falta cuando se puso: si al rearmar la lista hace falta más, se pierde y la línea queda marcada "cambió un pedido después de comprar". Marcar `NO_CONSEGUIDO` saca el tilde; anotar la compra por todo lo necesario lo vuelve innecesario; volver a tildar saca el aviso de que cambió un pedido. No genera compra, deuda ni costo real. Una línea comprada con su compra anotada no se destilda: se anula la compra. | Tablero, lista de compras, rearmado de la lista | CALCULA |
 | RN-051 | El estado de cada línea se calcula con lo comprado (`PENDIENTE`, `PARCIAL`, `COMPRADO`, comparando con `necesidad_neta_base`); `NO_CONSEGUIDO` se marca a mano (`lista_compra.editar`) con motivo obligatorio y se revierte si luego se completa la compra. | Registro y anulación de compras; marca manual | CALCULA + BLOQUEA (sin motivo) |
 | RN-052 | Si los pedidos cambiaron después de la última versión, la lista se muestra "desactualizada" (pantalla y `DOC-01`). | Cambios en pedidos | ADVIERTE |
 | RN-053 | `DOC-01` muestra la fecha y hora en que se armó la lista; incluye precios solo si quien imprime tiene `precios.ver_costos` (también se puede imprimir sin precios). | Impresión | CALCULA + BLOQUEA (precios sin permiso) |
@@ -208,6 +213,7 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-112 | La cantidad preparada se registra en unidad base (peso real o unidades contadas). | Preparación | CALCULA |
 | RN-113 | Una diferencia entre preparado y pedido dentro de la tolerancia (3 % por defecto) no se considera diferencia; fuera de ella pide confirmación y marca la línea. | Preparación | ADVIERTE |
 | RN-114 | Si lo preparado de un producto supera lo comprado se pide confirmación con motivo. | Preparación | ADVIERTE |
+| RN-115b | Un producto tildado como comprado sin compra anotada (RN-051b) se toma como que alcanza: se propone preparar lo pedido, igual que cuando en el día no se anotó ninguna compra, y no se pide confirmar por preparar más de lo comprado. | Iniciar preparación, registrar lo preparado | CALCULA |
 | RN-115 | Si lo disponible no alcanza, se reparte según `empresa.politica_faltantes`: `PRIORIDAD_CLIENTE` (por defecto: por prioridad del cliente y, dentro del primer grupo que no alcanza, prorrateo proporcional), `PROPORCIONAL` o `MANUAL` (`04-procesos-y-flujos.md` §5.e.1). **Ampliada (28/09/2026):** con `PRIORIDAD_CLIENTE` manda primero la prioridad del pedido que se elige en el tablero (Urgente, Normal, Sin apuro) y, dentro de cada una, la del cliente. | Preparación | CALCULA |
 | RN-116 | El reparto propuesto se cambia a mano cargando otra cantidad en el cliente (preparar por cliente o por producto). | Preparación | CALCULA + AUDITA |
 | RN-117 | Una sustitución requiere producto sustituto, cantidad y motivo; si el cliente no acepta sustituciones, se debe registrar quién la autorizó. El precio del sustituto se calcula con sus propias reglas. | Preparación | BLOQUEA (sin datos) + ADVIERTE |
@@ -261,6 +267,15 @@ Una regla puede tener más de un efecto (ej.: BLOQUEA + AUDITA). Las reglas se c
 | RN-150 | Sin uso: no hay control de concurrencia; vale el último que guarda y cada cambio queda en la actividad. | Edición de pedidos, entregas, maestros | BLOQUEA |
 | RN-151 | Los documentos (pedidos, compras, pagos, entregas, facturas, cobros) nunca se borran: se anulan con motivo. Los maestros (productos, clientes, proveedores) se desactivan. | Toda eliminación | BLOQUEA |
 | RN-152 | Una moneda por empresa; montos con 2 decimales, precios unitarios y costos con 4 decimales internos (se muestran con 2), cantidades con 3, porcentajes con 3. | Todo cálculo y almacenamiento | CALCULA |
+
+### 2.14 Avisos entre las personas
+
+| ID | Regla | Cuándo se aplica | Efecto |
+|---|---|---|---|
+| RN-160 | Todo lo que se carga o se cambia deja un registro en `actividad` en la misma transacción (quién, qué, sobre qué), sin importes. Ese registro es el aviso para las demás personas: nadie recibe aviso de lo que hizo él mismo. | Toda alta o cambio (lista en 08 §5.13) | REGISTRA |
+| RN-161 | Para cada persona es **nuevo** lo que hicieron las demás después de la última vez que abrió la campanita (`usuario.avisos_vistos_en`; la primera vez, lo de las últimas 24 horas), más las notas sin leer dirigidas a ella o a todos. Abrir la campanita deja vista la actividad; las notas siguen contando hasta que se leen. Solo se cuenta lo que la persona puede ver según sus permisos. | Campanita, consulta periódica | CALCULA |
+| RN-162 | Un aviso es **para alguien en particular** cuando la acción lo nombra (`actividad.para_usuario_id`: le pasaron un pedido) o es una nota dirigida a esa persona; se destaca como "Para vos". Un aviso suelto ("pedirle algo") es una nota sobre la persona a la que va dirigido. | Asignar responsable, notas, pedir algo | REGISTRA |
+| RN-163 | Varios tildes seguidos de la misma persona en la misma lista de compras se muestran como un solo aviso con la cantidad; en la base queda un registro por cada uno. | Campanita | CALCULA |
 
 ---
 
@@ -369,7 +384,7 @@ Claves del catálogo de `02-usuarios-roles-y-permisos.md` que usan los documento
 | `jornada.cerrar` | Cerrar la jornada | RN-040 |
 | `jornada.reabrir` | Reabrir una jornada cerrada | RN-041 |
 | `lista_compra.generar` | Generar y regenerar la lista de compras | RN-043 a RN-049 |
-| `lista_compra.editar` | Ajustar cantidades, proveedor, comprador asignado; marcar `NO_CONSEGUIDO` | RN-050, RN-051 |
+| `lista_compra.editar` | Ajustar cantidades, proveedor, comprador asignado; marcar `NO_CONSEGUIDO`; tildar productos como comprados y pasar tarjetas a "Comprado" | RN-050, RN-051, RN-051b |
 | `compras.registrar` | Registrar compras (incluye el pago en el momento) | RN-054 a RN-062 |
 | `compras.anular` | Anular y corregir compras | RN-064, RN-065 |
 | `compras.exceder_limite` | Confirmar compras que superan el límite de crédito | RN-063 |

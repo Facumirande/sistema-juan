@@ -1,6 +1,6 @@
 # Plan del sistema de gestión para distribuidores de frutas y verduras
 
-Índice del plan de diseño de "Sistema Juan" (sistema de uso interno, sin nombre comercial). Las decisiones fijas del proyecto están resumidas en [`PARAMETROS-DEL-PROYECTO.md`](../../PARAMETROS-DEL-PROYECTO.md); estos documentos tienen el detalle completo.
+Índice del plan de diseño de "Sistema Repartos" (sistema de uso interno, sin nombre comercial). Las decisiones fijas del proyecto están resumidas en [`PARAMETROS-DEL-PROYECTO.md`](../../PARAMETROS-DEL-PROYECTO.md); estos documentos tienen el detalle completo.
 
 **Estado:** el sistema está construido (iteraciones 1 a 7 y la interfaz de uso diario); falta la puesta en marcha (`10-plan-de-implementacion.md` §3). Los documentos describen lo que existe.
 **Última actualización:** 29/09/2026.

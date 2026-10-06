@@ -11,7 +11,7 @@ import { parametro } from "@/ui/parametros";
 
 import { TablaOfertas, permisosOfertas } from "./tabla-ofertas";
 
-export const metadata: Metadata = { title: "Precios de compra · Sistema Juan" };
+export const metadata: Metadata = { title: "Precios de compra · Sistema Repartos" };
 
 /** P-25 Lista general de precios de compra (05 §2.1, 08 §5.5). */
 export default async function PaginaPreciosCompra({ searchParams }: PageProps<"/precios/compra">) {

@@ -12,7 +12,7 @@ import { Campo } from "@/ui/formularios";
 
 import { crearCuenta } from "./acciones";
 
-export const metadata: Metadata = { title: "Crear una cuenta · Sistema Juan" };
+export const metadata: Metadata = { title: "Crear una cuenta · Sistema Repartos" };
 
 /** Cualquiera puede crearse una cuenta, pero no ve nada hasta que un administrador la habilita. */
 export default async function PaginaCrearCuenta() {

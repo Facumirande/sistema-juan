@@ -34,7 +34,10 @@ export function ComprarLinea({
   proveedores,
   envases,
   puedeExceder,
+  secundario = false,
 }: {
+  /** Para un producto ya tildado: el botón es chico y dice "Anotar puesto y precio". */
+  secundario?: boolean;
   itemId: string;
   producto: string;
   cantidadSugerida: string;
@@ -62,8 +65,12 @@ export function ComprarLinea({
 
   if (!abierto) {
     return (
-      <button type="button" onClick={() => setAbierto(true)} className="min-h-12 rounded-xl bg-marca px-5 text-lg font-semibold text-marca-texto">
-        ✓ Lo compré
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className={secundario ? "min-h-11 rounded-xl border-2 border-borde bg-superficie px-4 font-semibold hover:border-marca/60" : "min-h-12 rounded-xl bg-marca px-5 text-lg font-semibold text-marca-texto"}
+      >
+        {secundario ? "🧾 Anotar puesto y precio" : "✓ Lo compré"}
       </button>
     );
   }

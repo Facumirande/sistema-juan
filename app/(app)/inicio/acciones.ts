@@ -2,7 +2,9 @@
 
 import { accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
-import { generarListaCompra, sacarPedidoDeLista } from "@/modulos/compras/lista-compra";
+import { desmarcarPedidoComprado, generarListaCompra, marcarNoConseguido, marcarPedidoComprado, sacarPedidoDeLista, tildarLinea } from "@/modulos/compras/lista-compra";
+import { iniciarPreparacion } from "@/modulos/entregas/preparacion";
+import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido } from "@/modulos/pedidos/pedidos";
 import { estadosDePedidos } from "@/modulos/pedidos/tablero";
 import { ejecutarAccion } from "@/ui/accion-servidor";
@@ -96,15 +98,60 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
   return ejecutarAccion(async ({ db, authUserId }) => {
     const id = campo(datos, "pedido");
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
-    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: comprado, preparación, reparto y entrega avanzan solos cuando se hacen esos pasos." };
+    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: desde que empieza la preparación, los pedidos avanzan solos cuando se hace cada paso." };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
     if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
-    if (accion === "SACAR_DE_LISTA") {
-      await sacarPedidoDeLista(db, authUserId, id);
-      return { ok: true, mensaje: "El pedido volvió a Pedidos: salió de la lista de compras." };
+    const aLaLista = async () => {
+      if (p.estado === "BORRADOR") await confirmarPedido(db, authUserId, id);
+      if (p.estado !== "EN_COMPRA") await generarListaCompra(db, authUserId, p.fecha, { pedidoIds: [id] });
+    };
+    switch (accion) {
+      case "SACAR_DE_LISTA":
+        await sacarPedidoDeLista(db, authUserId, id);
+        return { ok: true, mensaje: "El pedido volvió a Pedidos: salió de la lista de compras." };
+      case "AGREGAR_A_LISTA":
+        await aLaLista();
+        return { ok: true, mensaje: "El pedido entró en la lista de compras." };
+      case "AGREGAR_Y_COMPRAR":
+      case "MARCAR_COMPRADO": {
+        await aLaLista();
+        const n = await marcarPedidoComprado(db, authUserId, id);
+        return { ok: true, mensaje: n ? `Listo: ${p.cliente} quedó en Comprado (${cuantos(n, "producto tildado", "productos tildados")}).` : `${p.cliente} ya tenía todo comprado.` };
+      }
+      case "DESMARCAR_COMPRADO":
+        await desmarcarPedidoComprado(db, authUserId, id);
+        return { ok: true, mensaje: `${p.cliente} volvió a la lista de compras: lo suyo quedó sin tildar.` };
+      case "PREPARAR": {
+        const { problemas } = await completarPedidosDelDia(db, authUserId, p.fecha);
+        const r = await iniciarPreparacion(db, authUserId, p.fecha);
+        const partes = [r.entregasNuevas ? `Empezó la preparación: ${cuantos(r.entregasNuevas, "cliente", "clientes")} para preparar.` : "La preparación del día ya estaba empezada: quedó al día."];
+        if (problemas.length) partes.push(`Quedaron afuera: ${problemas.join(" ")}`);
+        return { ok: true, mensaje: partes.join(" "), enlace: { href: `/preparacion/${p.fecha}`, texto: "📦 Ir a preparar" } };
+      }
     }
-    if (p.estado === "BORRADOR") await confirmarPedido(db, authUserId, id);
-    await generarListaCompra(db, authUserId, p.fecha, { pedidoIds: [id] });
-    return { ok: true, mensaje: "El pedido entró en la lista de compras." };
+  });
+}
+
+/**
+ * Los tildes de la tarjeta en "Lista de compras": ✓ comprado (sin anotar puesto ni precio), ✕ no se
+ * consiguió, o volver a dejarlo por comprar. `desde` es cómo estaba, para saber qué deshacer.
+ */
+export async function tildarProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const itemId = campo(datos, "itemId");
+    const valor = campo(datos, "valor");
+    if (valor === "NO") await marcarNoConseguido(db, authUserId, { itemId, motivo: "No se consiguió en el mercado" });
+    else if (valor === "SI") await tildarLinea(db, authUserId, { itemId, tildado: true });
+    else if (campo(datos, "desde") === "NO_CONSEGUIDO") await marcarNoConseguido(db, authUserId, { itemId, motivo: null });
+    else await tildarLinea(db, authUserId, { itemId, tildado: false });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** "✓ Pasar a Comprado" desde la tarjeta abierta: tilda todo lo que le faltaba. */
+export async function pasarACompradoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const n = await marcarPedidoComprado(db, authUserId, campo(datos, "pedido"));
+    return { ok: true, mensaje: n ? `Listo: quedó en Comprado (${cuantos(n, "producto tildado", "productos tildados")}).` : "Ya estaba todo comprado." };
   });
 }

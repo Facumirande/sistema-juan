@@ -32,6 +32,8 @@ export interface ClienteParaCargar {
 
 export interface ProductoParaCargar {
   id: string;
+  /** Código del producto: también sirve para buscarlo. */
+  codigo: string;
   nombre: string;
   grupo: string | null;
   categoria: string | null;
@@ -96,6 +98,7 @@ export async function datosParaCargarPedido(db: BaseDatos, authUserId: string, o
       tx
         .select({
           id: producto.id,
+          codigo: producto.codigo,
           nombre: producto.nombre,
           unidadBase: producto.unidadBase,
           admiteFraccion: producto.admiteFraccion,
@@ -200,6 +203,7 @@ export async function datosParaCargarPedido(db: BaseDatos, authUserId: string, o
       }),
       productos: productos.map((pr) => ({
         id: pr.id,
+        codigo: pr.codigo,
         nombre: pr.nombre,
         grupo: pr.grupo,
         categoria: pr.categoria,

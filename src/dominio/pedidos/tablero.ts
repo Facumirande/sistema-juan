@@ -18,7 +18,7 @@ export interface Columna {
 export const COLUMNAS: readonly Columna[] = [
   // No hay confirmación: un pedido cargado ya está listo para mandarse a la lista de compras.
   { clave: "pedidos", titulo: "Pedidos", ayuda: "Cargados: mandalos a la lista de compras cuando quieras.", estados: ["BORRADOR", "CONFIRMADO"], seleccionable: true },
-  { clave: "en_lista", titulo: "Lista de compras", ayuda: "Se están comprando: falta algo de lo suyo.", estados: ["EN_COMPRA"], seleccionable: true },
+  { clave: "en_lista", titulo: "Lista de compras", ayuda: "Se están comprando: tildá lo que ya está.", estados: ["EN_COMPRA"], seleccionable: true },
   // Pedidos en la lista con todo lo suyo ya comprado (la columna se decide con columnaDeTarjeta).
   { clave: "comprados", titulo: "Comprado", ayuda: "Ya está todo lo suyo: listo para preparar.", estados: [], seleccionable: false },
   { clave: "preparando", titulo: "Preparando", ayuda: "Armándose con lo que se compró.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: false },
@@ -85,13 +85,36 @@ export function textoPlazo(desde: string | null, hasta: string | null): string |
   return null;
 }
 
-export type AccionAlMover = "AGREGAR_A_LISTA" | "SACAR_DE_LISTA";
+export type AccionAlMover = "AGREGAR_A_LISTA" | "AGREGAR_Y_COMPRAR" | "SACAR_DE_LISTA" | "MARCAR_COMPRADO" | "DESMARCAR_COMPRADO" | "PREPARAR";
 
-/** Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). */
+/** Columnas cuyas tarjetas se pueden arrastrar: desde que empieza la preparación, avanzan solas. */
+export const COLUMNAS_ARRASTRABLES: readonly ClaveColumna[] = ["pedidos", "en_lista", "comprados"];
+
+/**
+ * Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). Entre Pedidos,
+ * Lista de compras y Comprado se va y se vuelve; soltarla en Preparando empieza a preparar el día.
+ */
 export function accionAlMover(desde: ClaveColumna, hacia: ClaveColumna): AccionAlMover | null {
-  if (desde === "pedidos" && hacia === "en_lista") return "AGREGAR_A_LISTA";
-  if (desde === "en_lista" && hacia === "pedidos") return "SACAR_DE_LISTA";
+  if (desde === hacia || !COLUMNAS_ARRASTRABLES.includes(desde)) return null;
+  if (hacia === "preparando") return "PREPARAR";
+  if (hacia === "pedidos") return "SACAR_DE_LISTA";
+  if (hacia === "en_lista") return desde === "pedidos" ? "AGREGAR_A_LISTA" : "DESMARCAR_COMPRADO";
+  if (hacia === "comprados") return desde === "pedidos" ? "AGREGAR_Y_COMPRAR" : "MARCAR_COMPRADO";
   return null;
+}
+
+/** A qué pantalla ir para hacer el paso que el tablero no hace arrastrando. */
+export type DondeSeHace = "preparacion" | "viaje";
+
+/** Por qué una tarjeta no se puede soltar ahí y dónde se hace ese paso (para decirlo con su botón). */
+export function porQueNoSeMueve(desde: ClaveColumna, hacia: ClaveColumna): { mensaje: string; ir: DondeSeHace } {
+  if (!COLUMNAS_ARRASTRABLES.includes(desde)) {
+    if (hacia === "entregados" && desde === "en_camino") return { mensaje: "Pasa a Entregados cuando tocás “✅ Entregar” en Logística.", ir: "viaje" };
+    if (hacia === "en_camino" && desde === "preparando") return { mensaje: "Pasa a En camino cuando terminás de prepararlo y sale el reparto: se arma en Logística.", ir: "viaje" };
+    return { mensaje: "Este pedido ya se está preparando o ya salió: no vuelve atrás desde el tablero. Si hay que corregir algo, se hace en la preparación.", ir: "preparacion" };
+  }
+  if (hacia === "entregados") return { mensaje: "Para que quede Entregado primero hay que prepararlo y llevarlo: pasa solo al tocar “✅ Entregar” en el viaje.", ir: "preparacion" };
+  return { mensaje: "Para que salga En camino primero hay que prepararlo: después se arma el viaje en Logística y pasa solo.", ir: "preparacion" };
 }
 
 /** Qué se puede hacer con las tarjetas elegidas. */

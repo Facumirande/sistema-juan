@@ -9,7 +9,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 
 import { CargadorDePedido } from "../../cargador";
 
-export const metadata: Metadata = { title: "Cambiar pedido · Sistema Juan" };
+export const metadata: Metadata = { title: "Cambiar pedido · Sistema Repartos" };
 
 const ETAPA: Readonly<Record<string, string>> = {
   EN_PREPARACION: "preparándose",

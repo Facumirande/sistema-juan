@@ -8,7 +8,7 @@ import { esErrorDeNegocio } from "@/dominio/errores";
 import { listarActividad } from "@/modulos/colaboracion/actividad";
 import { bandejaDeNotas, notasDe } from "@/modulos/colaboracion/notas";
 import { listarCuentasProveedores } from "@/modulos/compras/cuenta-corriente";
-import { diaDeTrabajo, type DiaDeTrabajo } from "@/modulos/jornadas/dia";
+import { diaDeTrabajo } from "@/modulos/jornadas/dia";
 import { obtenerPedido } from "@/modulos/pedidos/pedidos";
 import { avanceDeTarjeta, tableroDePedidos } from "@/modulos/pedidos/tablero";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
@@ -16,54 +16,16 @@ import { contarPedidosPendientes } from "@/modulos/usuarios/acceso";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { enlaceDeEntidad } from "@/ui/enlaces";
 import { parametro } from "@/ui/parametros";
+import { SelectorDeDia } from "@/ui/selector-de-dia";
 
 import { Modal } from "./modal";
-import { DiaPasoAPaso, TITULOS, nombreDelDia, plural, tituloDelDia } from "./paso-a-paso";
+import { DiaPasoAPaso, TITULOS, plural, tituloDelDia } from "./paso-a-paso";
 import { TableroTrello } from "./tablero";
 import { TarjetaAbierta } from "./tarjeta-abierta";
 
-export const metadata: Metadata = { title: "Tablero de pedidos · Sistema Juan" };
+export const metadata: Metadata = { title: "Tablero de pedidos · Sistema Repartos" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Los días para cambiar de tablero (como el selector de tableros de Trello). */
-function SelectorDeDia({ dia, vista, sobreTablero }: { dia: DiaDeTrabajo; vista: "tablero" | "pasos"; sobreTablero: boolean }) {
-  return (
-    <nav aria-label="Elegir el día" className="sin-barra -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-      {dia.dias.map((x) => {
-        const elegido = x.fecha === dia.fecha;
-        const clases = sobreTablero
-          ? elegido
-            ? "bg-white text-[#172b4d]"
-            : "bg-white/20 text-white hover:bg-white/30"
-          : elegido
-            ? "border border-marca bg-marca text-marca-texto"
-            : "border border-borde bg-superficie";
-        return (
-          <Link
-            key={x.fecha}
-            href={`/inicio?fecha=${x.fecha}${vista === "pasos" ? "&vista=pasos" : ""}`}
-            aria-current={elegido ? "date" : undefined}
-            className={`flex min-h-14 min-w-24 shrink-0 flex-col items-center justify-center rounded-xl px-3 py-1 text-center ${clases}`}
-          >
-            <span className="font-semibold capitalize">
-              {nombreDelDia(x.fecha, dia.hoy)} {x.fecha.slice(8, 10)}/{x.fecha.slice(5, 7)}
-            </span>
-            <span className={`text-sm ${elegido || sobreTablero ? "opacity-90" : "text-texto-suave"}`}>
-              {x.estado === "CERRADA" ? "Cerrado" : x.pedidos > 0 ? plural(x.pedidos, "pedido", "pedidos") : "Sin pedidos"}
-            </span>
-          </Link>
-        );
-      })}
-      <Link
-        href="/jornadas"
-        className={`flex min-h-14 shrink-0 items-center justify-center rounded-xl px-3 text-sm font-semibold ${sobreTablero ? "bg-white/20 text-white hover:bg-white/30" : "border border-borde bg-superficie"}`}
-      >
-        📅 Otros días
-      </Link>
-    </nav>
-  );
-}
 
 /** P-02: el tablero de pedidos del día (estilo Trello) o el día paso a paso. */
 export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
@@ -135,6 +97,15 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
               </Link>
             </div>
           )}
+          {dia && puede("reportes.ver") && (
+            <Link
+              href={`/balance?dia=${dia.fecha}`}
+              title="Lo que se vendió, se compró y quedó ese día"
+              className={`flex min-h-12 items-center gap-2 rounded-xl px-4 font-semibold ${sobre ? "bg-white/20 text-white hover:bg-white/30" : "border border-borde bg-superficie"}`}
+            >
+              💰 Balance del día
+            </Link>
+          )}
           {puedeCargar && (
             <Link
               href={`/pedidos/nuevo?fecha=${dia.fecha}`}
@@ -149,14 +120,20 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
         </div>
       </header>
 
-      {dia && <SelectorDeDia dia={dia} vista={vista} sobreTablero={sobre} />}
+      {dia && <SelectorDeDia dias={dia.dias} fecha={dia.fecha} hoy={dia.hoy} enlace={(f) => `/inicio?fecha=${f}${vista === "pasos" ? "&vista=pasos" : ""}`} sobreFondo={sobre} />}
 
       {(pedidosDeAcceso > 0 || vencidas.length > 0 || porVencer.length > 0 || bandeja.sinLeer.length > 0) && (
         <div className="flex flex-wrap gap-2" aria-label="Avisos">
           {unaNota ? (
-            <Link href={enlaceDeEntidad(unaNota.entidad.tipo, unaNota.entidad.id, unaNota.entidad.fecha)} scroll={false} className={aviso}>
-              💬 {unaNota.autor.nombre.split(" ")[0]} te dejó una nota en {unaNota.entidad.etiqueta}
-            </Link>
+            unaNota.entidad.tipo === "USUARIO" ? (
+              <Link href="/actividad?ver=notas" className={aviso}>
+                💬 {unaNota.autor.nombre.split(" ")[0]} te dejó un aviso: “{unaNota.texto.length > 60 ? `${unaNota.texto.slice(0, 60)}…` : unaNota.texto}”
+              </Link>
+            ) : (
+              <Link href={enlaceDeEntidad(unaNota.entidad.tipo, unaNota.entidad.id, unaNota.entidad.fecha)} scroll={false} className={aviso}>
+                💬 {unaNota.autor.nombre.split(" ")[0]} te dejó una nota en {unaNota.entidad.etiqueta}
+              </Link>
+            )
           ) : (
             bandeja.sinLeer.length > 1 && (
               <Link href="/actividad?ver=notas" className={aviso}>
@@ -190,7 +167,7 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           personas={tablero.personas}
           yo={tablero.yo}
           base={base}
-          puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar") }}
+          puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar"), tildar: puede("lista_compra.editar") }}
           enlaces={{
 
             en_lista: { href: `/lista-compra?fecha=${dia.fecha}`, texto: "🛒 Ir a la lista de compras" },

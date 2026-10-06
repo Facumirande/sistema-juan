@@ -14,7 +14,7 @@ import { parametro } from "@/ui/parametros";
 
 import { marcarTodasLeidasAccion } from "./acciones";
 
-export const metadata: Metadata = { title: "Actividad y notas · Sistema Juan" };
+export const metadata: Metadata = { title: "Actividad y notas · Sistema Repartos" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -113,7 +113,7 @@ export default async function PaginaActividad({ searchParams }: PageProps<"/acti
                       ) : (
                         e.resumen
                       )}
-                      {e.clase === "NOTA" && e.entidad && (
+                      {e.clase === "NOTA" && e.entidad && e.entidad.tipo !== "USUARIO" && (
                         <>
                           {" "}
                           en{" "}

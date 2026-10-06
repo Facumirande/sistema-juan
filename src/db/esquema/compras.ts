@@ -80,6 +80,8 @@ export const listaCompraItem = pgTable(
     costoEstimado: monto("costo_estimado"),
     estado: estadoListaCompraItem("estado").notNull().default("PENDIENTE"),
     motivoNoConseguido: text("motivo_no_conseguido"),
+    /** Tildado a mano como comprado (en la tarjeta del tablero o en la lista), sin anotar la compra. */
+    tildado: boolean("tildado").notNull().default(false),
     sinPedido: boolean("sin_pedido").notNull().default(false),
     alertas: text("alertas").array().notNull().default(sql`'{}'::text[]`),
     compradorAsignadoId: uuid("comprador_asignado_id").references((): AnyPgColumn => usuario.id),
@@ -106,6 +108,7 @@ export const listaCompraItem = pgTable(
       foreignColumns: [proveedorProducto.empresaId, proveedorProducto.id],
     }),
     check("lista_compra_item_ajuste", sql`not ${t.ajusteManual} or char_length(trim(coalesce(${t.motivoAjuste}, ''))) >= 3`),
+    check("lista_compra_item_tildado", sql`not ${t.tildado} or ${t.estado} = 'COMPRADO'`),
     check("lista_compra_item_no_conseguido", sql`${t.estado} <> 'NO_CONSEGUIDO' or char_length(trim(coalesce(${t.motivoNoConseguido}, ''))) >= 3`),
   ],
 );

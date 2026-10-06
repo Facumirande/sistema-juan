@@ -4,8 +4,8 @@ import type { MetadataRoute } from "next";
 // del navegador. Arranca en el tablero de pedidos.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Sistema Juan",
-    short_name: "Sistema Juan",
+    name: "Sistema Repartos",
+    short_name: "Repartos",
     description: "Pedidos, compras en el mercado, preparación y entregas del día.",
     lang: "es-AR",
     start_url: "/inicio",

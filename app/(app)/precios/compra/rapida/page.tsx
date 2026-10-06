@@ -12,7 +12,7 @@ import { parametro } from "@/ui/parametros";
 
 import { actualizacionRapidaAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Actualizar precios · Sistema Juan" };
+export const metadata: Metadata = { title: "Actualizar precios · Sistema Repartos" };
 
 /** P-26 Actualización rápida en el puesto, pensada para el celular (08 §5.5). */
 export default async function ActualizacionRapida({ searchParams }: PageProps<"/precios/compra/rapida">) {

@@ -12,7 +12,7 @@ import { Campo, CampoNumero, Encabezado, Selector, Tarjeta } from "@/ui/formular
 import { saldoInicialAccion } from "../../../compras/acciones";
 import { ajusteAccion } from "../../acciones";
 
-export const metadata: Metadata = { title: "Ajuste de cuenta · Sistema Juan" };
+export const metadata: Metadata = { title: "Ajuste de cuenta · Sistema Repartos" };
 
 /** P-63 Ajuste y deuda anterior al sistema (06 §5). */
 export default async function AjusteDeCuenta({ params }: PageProps<"/cuentas-proveedores/[id]/ajuste">) {

@@ -11,7 +11,7 @@ import { parametro } from "@/ui/parametros";
 
 import { ListaContable, ListaEntrega } from "../documentos-impresos";
 
-export const metadata: Metadata = { title: "Remitos del día · Sistema Juan" };
+export const metadata: Metadata = { title: "Remitos del día · Sistema Repartos" };
 
 /**
  * Todos los remitos del día juntos, en el orden del reparto: las listas de entrega (DOC-02, sin

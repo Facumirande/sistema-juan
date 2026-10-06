@@ -2,11 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { contarNotasSinLeer } from "@/modulos/colaboracion/notas";
+import { avisosPara, type BandejaDeAvisos } from "@/modulos/colaboracion/avisos";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { Avatar } from "@/ui/avatar";
 import { EnlaceDeMenu } from "@/ui/enlace-menu";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
+
+import { Campanita } from "./actividad/campanita";
 
 function Items({ grupo }: { grupo: GrupoMenu }) {
   return grupo.items.map((item) =>
@@ -69,10 +71,10 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
   if (sesion.debeCambiarClave) redirect("/crear-clave");
 
   const grupos = menuDisponible(sesion.permisos);
-  // Si el contador de notas falla, la pantalla se muestra igual (sin el número en la campanita).
-  const notasNuevas = await contarNotasSinLeer(obtenerBaseDatos(), authUserId).catch((error: unknown) => {
-    console.error("No se pudieron contar las notas sin leer:", error);
-    return 0;
+  // Si los avisos fallan, la pantalla se muestra igual (con la campanita vacía).
+  const avisos = await avisosPara(obtenerBaseDatos(), authUserId).catch((error: unknown): BandejaDeAvisos => {
+    console.error("No se pudieron leer los avisos:", error);
+    return { nuevos: 0, notasSinLeer: 0, avisos: [], personas: [] };
   });
 
   return (
@@ -91,19 +93,10 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-14 items-center justify-between gap-3 border-b border-borde bg-superficie px-4 print:hidden">
           <Link href="/inicio" className="flex min-h-11 items-center font-semibold">
-            Sistema Juan
+            Sistema Repartos
           </Link>
           <div className="flex items-center gap-3">
-            <Link
-              href="/actividad?ver=notas"
-              aria-label={notasNuevas ? `${notasNuevas} ${notasNuevas === 1 ? "nota nueva" : "notas nuevas"}` : "Notas y actividad"}
-              className="relative flex size-11 items-center justify-center rounded-full text-xl hover:bg-fondo"
-            >
-              <span aria-hidden>🔔</span>
-              {notasNuevas > 0 && (
-                <span className="absolute top-1 right-0.5 min-w-5 rounded-full bg-error px-1 text-center text-xs leading-5 font-bold text-white">{notasNuevas > 9 ? "9+" : notasNuevas}</span>
-              )}
-            </Link>
+            <Campanita inicial={avisos} zonaHoraria={sesion.zonaHoraria} />
             <Link href="/mi-cuenta" className="flex min-h-11 items-center gap-2 font-medium underline-offset-4 hover:underline">
               <Avatar persona={{ nombre: sesion.nombre, color: sesion.color }} />
               <span className="hidden sm:inline">{sesion.nombre}</span>

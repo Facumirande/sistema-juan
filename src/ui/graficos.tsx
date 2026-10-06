@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-// Gráficos del balance, dibujados en SVG sin librerías. Reglas: un solo eje; líneas de 2 px;
-// columnas de hasta 24 px con el extremo del dato redondeado; grilla fina y recesiva; leyenda
-// cuando hay dos series o más; al pasar el dedo o el mouse, un recuadro con los valores (y cruz
-// de guía en las líneas). Los textos usan los colores de texto, nunca el de la serie. Cada
+// Gráficos del balance, dibujados en SVG sin librerías. Son todos de barras (más fáciles de leer
+// que las líneas para quien no mira gráficos seguido). Reglas: un solo eje, en pesos; el gráfico
+// ocupa todo el ancho que tiene y las barras se reparten ese ancho (pedido del usuario: gráficos
+// grandes y precisos), con el extremo del dato redondeado y 2 px de separación entre las de un
+// mismo período; cuando las barras son anchas, cada una lleva su valor escrito; grilla fina y recesiva; leyenda cuando hay dos series; al pasar el dedo o el mouse, un
+// recuadro con los valores. Los textos usan los colores de texto, nunca el de la serie. Cada
 // gráfico va acompañado de su tabla en la página.
 
 export interface Punto {
@@ -24,7 +26,7 @@ export interface SerieGrafico {
 const enteros = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
 const plataCorta = (n: number) => (n < 0 ? `−$${enteros.format(-n)}` : `$${enteros.format(n)}`);
 
-const MARGEN = { izq: 84, der: 16, arr: 12, aba: 28 };
+const MARGEN = { izq: 84, der: 16, aba: 28 };
 
 /** Escala "linda" que incluye el cero: 4 o 5 marcas redondas. */
 function escala(min: number, max: number) {
@@ -64,22 +66,6 @@ function etiquetasVisibles(n: number, anchoUtil: number): Set<number> {
   return res;
 }
 
-function Ejes({ ancho, alto, y, marcas }: { ancho: number; alto: number; y: (v: number) => number; marcas: number[] }) {
-  return (
-    <g>
-      {marcas.map((t) => (
-        <g key={t}>
-          <line x1={MARGEN.izq} x2={ancho - MARGEN.der} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--base-grafico)" : "var(--grilla)"} strokeWidth={1} />
-          <text x={MARGEN.izq - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={12} fill="var(--texto-suave)">
-            {plataCorta(t)}
-          </text>
-        </g>
-      ))}
-      <line x1={MARGEN.izq} x2={MARGEN.izq} y1={MARGEN.arr} y2={alto - MARGEN.aba} stroke="transparent" />
-    </g>
-  );
-}
-
 function EtiquetasX({ etiquetas, x, alto, ancho }: { etiquetas: string[]; x: (i: number) => number; alto: number; ancho: number }) {
   const visibles = etiquetasVisibles(etiquetas.length, ancho - MARGEN.izq - MARGEN.der);
   return (
@@ -117,12 +103,12 @@ function Recuadro({ x, ancho, titulo, filas }: { x: number; ancho: number; titul
   );
 }
 
-export function Leyenda({ series }: { series: { nombre: string; color: string; forma?: "linea" | "cuadro" }[] }) {
+export function Leyenda({ series }: { series: { nombre: string; color: string }[] }) {
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-texto-suave">
       {series.map((s) => (
         <li key={s.nombre} className="flex items-center gap-1.5">
-          <span className={s.forma === "cuadro" ? "inline-block size-3 rounded-sm" : "inline-block h-0.5 w-4 rounded-full"} style={{ background: `var(--${s.color})` }} />
+          <span className="inline-block size-3 rounded-sm" style={{ background: `var(--${s.color})` }} />
           {s.nombre}
         </li>
       ))}
@@ -141,74 +127,7 @@ function conTeclado(n: number, i: number | null, setI: (i: number | null) => voi
   };
 }
 
-/** Líneas en el tiempo (una o dos series del mismo tipo, en pesos). Con `area`, un velo suave debajo. */
-export function GraficoLineas({ descripcion, etiquetas, series, area = false, alto = 240 }: { descripcion: string; etiquetas: string[]; series: SerieGrafico[]; area?: boolean; alto?: number }) {
-  const [ref, ancho] = useAncho();
-  const [i, setI] = useState<number | null>(null);
-  const n = etiquetas.length;
-  const valores = series.flatMap((s) => s.puntos.map((p) => p.valor));
-  const { lo, hi, marcas } = escala(Math.min(...valores), Math.max(...valores));
-  const w = ancho - MARGEN.izq - MARGEN.der;
-  const h = alto - MARGEN.arr - MARGEN.aba;
-  const x = (k: number) => MARGEN.izq + (n <= 1 ? w / 2 : (k * w) / (n - 1));
-  const y = (v: number) => MARGEN.arr + h - ((v - lo) / (hi - lo)) * h;
-  const elegir = (e: PointerEvent<SVGRectElement>) => {
-    const caja = e.currentTarget.getBoundingClientRect();
-    const k = n <= 1 ? 0 : Math.round(((e.clientX - caja.left) / caja.width) * (n - 1));
-    setI(Math.max(0, Math.min(n - 1, k)));
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      {series.length > 1 && <Leyenda series={series} />}
-      <div ref={ref} className="relative w-full">
-        <svg width={ancho} height={alto} role="img" aria-label={descripcion} className="block touch-pan-y">
-          <Ejes ancho={ancho} alto={alto} y={y} marcas={marcas} />
-          <EtiquetasX etiquetas={etiquetas} x={x} alto={alto} ancho={ancho} />
-          {series.map((s) => {
-            const linea = s.puntos.map((p, k) => `${k === 0 ? "M" : "L"}${x(k).toFixed(1)},${y(p.valor).toFixed(1)}`).join(" ");
-            return (
-              <g key={s.nombre}>
-                {area && n > 1 && <path d={`${linea} L${x(n - 1)},${y(Math.max(lo, 0))} L${x(0)},${y(Math.max(lo, 0))} Z`} fill={`var(--${s.color})`} opacity={0.12} />}
-                {n > 1 ? (
-                  <path d={linea} fill="none" stroke={`var(--${s.color})`} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                ) : (
-                  <circle cx={x(0)} cy={y(s.puntos[0]?.valor ?? 0)} r={4} fill={`var(--${s.color})`} />
-                )}
-              </g>
-            );
-          })}
-          {i !== null && (
-            <g>
-              <line x1={x(i)} x2={x(i)} y1={MARGEN.arr} y2={alto - MARGEN.aba} stroke="var(--texto-suave)" strokeWidth={1} strokeDasharray="3 3" />
-              {series.map((s) => (
-                <circle key={s.nombre} cx={x(i)} cy={y(s.puntos[i]?.valor ?? 0)} r={4} fill={`var(--${s.color})`} stroke="var(--superficie)" strokeWidth={2} />
-              ))}
-            </g>
-          )}
-          <rect
-            x={MARGEN.izq - 8}
-            y={MARGEN.arr}
-            width={w + 16}
-            height={h}
-            fill="transparent"
-            tabIndex={0}
-            aria-label={`${descripcion}: usá las flechas para recorrer los valores`}
-            onPointerMove={elegir}
-            onPointerDown={elegir}
-            onPointerLeave={() => setI(null)}
-            onKeyDown={conTeclado(n, i, setI)}
-            onBlur={() => setI(null)}
-            className="outline-none focus-visible:stroke-marca"
-          />
-        </svg>
-        {i !== null && <Recuadro x={x(i)} ancho={ancho} titulo={etiquetas[i] ?? ""} filas={series.map((s) => ({ nombre: s.nombre, texto: s.puntos[i]?.texto ?? "", color: s.color }))} />}
-      </div>
-    </div>
-  );
-}
-
-/** Columna con el extremo del dato redondeado (4 px) y apoyada en la línea del cero. */
+/** Columna con el extremo del dato redondeado (4 px) y apoyada, recta, en la línea del cero. */
 function columna(x0: number, ancho: number, base: number, tope: number): string {
   const alto = Math.abs(base - tope);
   const r = Math.min(4, alto, ancho / 2);
@@ -217,52 +136,125 @@ function columna(x0: number, ancho: number, base: number, tope: number): string 
   return `M${x0},${base} L${x0},${tope - r} Q${x0},${tope} ${x0 + r},${tope} L${x1 - r},${tope} Q${x1},${tope} ${x1},${tope - r} L${x1},${base} Z`;
 }
 
-/** Columnas por período que pueden ser negativas (ganancia o pérdida): azul arriba del cero, rojo abajo. */
-export function GraficoColumnas({ descripcion, nombre, etiquetas, puntos, alto = 220 }: { descripcion: string; nombre: string; etiquetas: string[]; puntos: Punto[]; alto?: number }) {
+/** Lugar que se deja arriba para escribir el valor sobre una barra. */
+const ARRIBA = 26;
+/** Separación entre las barras de un mismo período (del color del fondo, no un borde). */
+const ENTRE_BARRAS = 2;
+
+/**
+ * Barras por período: una serie (lo ganado, la deuda) o dos lado a lado (vendido y comprado), en
+ * pesos y sobre un solo eje, a todo el ancho disponible. Con `perdidaEnRojo`, lo que queda debajo
+ * del cero va en rojo. Si las barras son anchas, cada una lleva su valor; si no, con una sola
+ * serie se escribe sobre la más alta y sobre la última, y el resto se lee al
+ * pasar el dedo o el mouse (o con las flechas), y en la tabla que acompaña al gráfico.
+ */
+export function GraficoBarras({
+  descripcion,
+  etiquetas,
+  series,
+  perdidaEnRojo = false,
+  alto = 340,
+}: {
+  descripcion: string;
+  etiquetas: string[];
+  series: SerieGrafico[];
+  perdidaEnRojo?: boolean;
+  alto?: number;
+}) {
   const [ref, ancho] = useAncho();
   const [i, setI] = useState<number | null>(null);
   const n = etiquetas.length;
-  const { lo, hi, marcas } = escala(Math.min(...puntos.map((p) => p.valor)), Math.max(...puntos.map((p) => p.valor)));
+  const valores = series.flatMap((s) => s.puntos.map((p) => p.valor));
+  const { lo, hi, marcas } = escala(Math.min(...valores, 0), Math.max(...valores, 0));
   const w = ancho - MARGEN.izq - MARGEN.der;
-  const h = alto - MARGEN.arr - MARGEN.aba;
+  const h = alto - ARRIBA - MARGEN.aba;
   const banda = w / Math.max(n, 1);
-  const anchoColumna = Math.max(2, Math.min(24, banda - 2));
-  const x = (k: number) => MARGEN.izq + banda * k + banda / 2;
-  const y = (v: number) => MARGEN.arr + h - ((v - lo) / (hi - lo)) * h;
-  const hayNegativos = puntos.some((p) => p.valor < 0);
+  const k = series.length;
+  // Las barras se reparten casi todo el ancho de su período (con un tope, para que pocos períodos no den bloques enormes).
+  const anchoBarra = Math.max(2, Math.min(160, (banda * 0.78 - ENTRE_BARRAS * (k - 1)) / k));
+  // Con barras anchas entra el valor escrito sobre cada una.
+  const rotularTodas = anchoBarra >= 76;
+  const anchoGrupo = anchoBarra * k + ENTRE_BARRAS * (k - 1);
+  const centro = (p: number) => MARGEN.izq + banda * p + banda / 2;
+  const y = (v: number) => ARRIBA + h - ((v - lo) / (hi - lo)) * h;
+  const hayNegativos = perdidaEnRojo && valores.some((v) => v < 0);
+  const color = (s: SerieGrafico, v: number) => (perdidaEnRojo && v < 0 ? "var(--serie-negativa)" : `var(--${s.color})`);
+
+  // Sin nada que mostrar, un cartel en palabras en vez de un eje vacío.
+  if (valores.every((v) => v === 0)) {
+    return <p className="flex min-h-24 items-center justify-center rounded-xl bg-fondo px-4 text-center text-texto-suave">Todavía no hay nada para mostrar en estas fechas.</p>;
+  }
+
+  // Con una sola serie, el valor escrito sobre la barra más alta y sobre la última (si no se pisan).
+  const unica = k === 1 ? series[0]!.puntos : [];
+  const mayor = unica.reduce((mejor, p, p_i) => (p.valor > (unica[mejor]?.valor ?? 0) ? p_i : mejor), 0);
+  const rotuladas = new Set<number>();
+  if (unica.length > 0) {
+    if ((unica[n - 1]?.valor ?? 0) !== 0) rotuladas.add(n - 1);
+    if ((unica[mayor]?.valor ?? 0) > 0 && (rotuladas.size === 0 || Math.abs(centro(mayor) - centro(n - 1)) > 84)) rotuladas.add(mayor);
+  }
 
   return (
     <div className="flex flex-col gap-2">
+      {k > 1 && <Leyenda series={series} />}
       {hayNegativos && (
         <Leyenda
           series={[
-            { nombre: "Ganó", color: "serie-1", forma: "cuadro" },
-            { nombre: "Perdió", color: "serie-negativa", forma: "cuadro" },
+            { nombre: "Se ganó", color: series[0]!.color },
+            { nombre: "Se perdió", color: "serie-negativa" },
           ]}
         />
       )}
       <div ref={ref} className="relative w-full">
         <svg width={ancho} height={alto} role="img" aria-label={descripcion} className="block touch-pan-y" onPointerLeave={() => setI(null)}>
-          <Ejes ancho={ancho} alto={alto} y={y} marcas={marcas} />
-          <EtiquetasX etiquetas={etiquetas} x={x} alto={alto} ancho={ancho} />
-          {puntos.map((p, k) => (
-            <g key={k}>
-              {i === k && <rect x={x(k) - banda / 2} y={MARGEN.arr} width={banda} height={h} fill="var(--grilla)" opacity={0.6} />}
-              {p.valor !== 0 && <path d={columna(x(k) - anchoColumna / 2, anchoColumna, y(0), y(p.valor))} fill={p.valor < 0 ? "var(--serie-negativa)" : "var(--serie-1)"} />}
-              <rect
-                x={x(k) - banda / 2}
-                y={MARGEN.arr}
-                width={banda}
-                height={h}
-                fill="transparent"
-                onPointerEnter={() => setI(k)}
-                onPointerDown={() => setI(k)}
-              />
+          <g>
+            {marcas.map((t) => (
+              <g key={t}>
+                <line x1={MARGEN.izq} x2={ancho - MARGEN.der} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--base-grafico)" : "var(--grilla)"} strokeWidth={1} />
+                <text x={MARGEN.izq - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={12} fill="var(--texto-suave)">
+                  {plataCorta(t)}
+                </text>
+              </g>
+            ))}
+          </g>
+          <EtiquetasX etiquetas={etiquetas} x={centro} alto={alto} ancho={ancho} />
+          {etiquetas.map((_, p) => (
+            <g key={p}>
+              {i === p && <rect x={centro(p) - banda / 2} y={ARRIBA} width={banda} height={h} fill="var(--grilla)" opacity={0.6} />}
+              {series.map((s, j) => {
+                const v = s.puntos[p]?.valor ?? 0;
+                if (v === 0) return null;
+                const x0 = centro(p) - anchoGrupo / 2 + j * (anchoBarra + ENTRE_BARRAS);
+                return (
+                  <g key={s.nombre}>
+                    <path d={columna(x0, anchoBarra, y(0), y(v))} fill={color(s, v)} />
+                    {rotularTodas && (
+                      <text x={x0 + anchoBarra / 2} y={(v >= 0 ? y(v) : y(0)) - 7} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--texto)">
+                        {s.puntos[p]!.texto}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+              {!rotularTodas && rotuladas.has(p) && (
+                <text
+                  x={centro(p)}
+                  y={(unica[p]!.valor >= 0 ? y(unica[p]!.valor) : y(0)) - 7}
+                  textAnchor={p === n - 1 && n > 1 ? "end" : p === 0 && n > 1 ? "start" : "middle"}
+                  dx={p === n - 1 && n > 1 ? anchoBarra / 2 : p === 0 && n > 1 ? -anchoBarra / 2 : 0}
+                  fontSize={12}
+                  fontWeight={600}
+                  fill="var(--texto)"
+                >
+                  {unica[p]!.texto}
+                </text>
+              )}
+              <rect x={centro(p) - banda / 2} y={ARRIBA} width={banda} height={h} fill="transparent" onPointerEnter={() => setI(p)} onPointerDown={() => setI(p)} />
             </g>
           ))}
           <rect x={MARGEN.izq} y={alto - MARGEN.aba} width={w} height={1} fill="transparent" tabIndex={0} aria-label={`${descripcion}: usá las flechas para recorrer los valores`} onKeyDown={conTeclado(n, i, setI)} onBlur={() => setI(null)} />
         </svg>
-        {i !== null && <Recuadro x={x(i)} ancho={ancho} titulo={etiquetas[i] ?? ""} filas={[{ nombre, texto: puntos[i]?.texto ?? "" }]} />}
+        {i !== null && <Recuadro x={centro(i)} ancho={ancho} titulo={etiquetas[i] ?? ""} filas={series.map((s) => ({ nombre: s.nombre, texto: s.puntos[i]?.texto ?? "", color: perdidaEnRojo && (s.puntos[i]?.valor ?? 0) < 0 ? "serie-negativa" : s.color }))} />}
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ import { parametro } from "@/ui/parametros";
 
 import { ListaContable, ListaEntrega } from "../../../documentos-impresos";
 
-export const metadata: Metadata = { title: "Documento de entrega · Sistema Juan" };
+export const metadata: Metadata = { title: "Documento de entrega · Sistema Repartos" };
 
 const TIPOS = { "lista-entrega": "DOC_02", "lista-contable": "DOC_03" } as const;
 

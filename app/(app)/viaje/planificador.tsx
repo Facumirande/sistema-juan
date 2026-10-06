@@ -1,12 +1,13 @@
 "use client";
 
-import { startTransition, useActionState, useMemo, useState } from "react";
+import { startTransition, useActionState, useMemo, useState, useTransition } from "react";
 
 import { enlaceWaze, enlacesGoogleMaps, type DestinoGps } from "@/dominio/entregas/navegacion";
 import { estimarTramo, planearRecorrido, type Coordenada } from "@/dominio/entregas/recorrido";
+import { leerCoordenadas } from "@/dominio/entregas/ubicacion";
 import { ESTADO_INICIAL } from "@/ui/estado-accion";
 
-import { armarRepartoAccion, guardarOrdenAccion } from "./acciones";
+import { armarRepartoAccion, buscarEnMapaAccion, guardarOrdenAccion, leerEnlaceAccion } from "./acciones";
 
 // Planificador del viaje de entrega: el mejor orden de las paradas (con la primera elegida a mano
 // si se quiere), los kilómetros y minutos aproximados de cada tramo, y el GPS para ir.
@@ -28,6 +29,7 @@ type Guardar = { tipo: "reparto"; repartoId: string } | { tipo: "armar"; fecha: 
 
 const duracion = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ""}`);
 const km = (n: number) => `${n.toFixed(1).replace(".", ",")} km`;
+const nombres = (ps: ParadaPlan[]) => ps.map((p) => (p.punto && p.punto !== p.cliente ? `${p.cliente} (${p.punto})` : p.cliente)).join(", ");
 const destino = (p: ParadaPlan): DestinoGps => ({ coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad });
 
 export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: ParadaPlan[]; salida: { coordenada: Coordenada | null; direccion: string | null }; guardar: Guardar }) {
@@ -40,8 +42,14 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
     );
     return [...paradas.filter((p) => p.hecha).map((p) => p.id), ...r.orden];
   });
-  const [origen, setOrigen] = useState<"salida" | "aca">(salida.coordenada ? "salida" : "aca");
+  // De dónde se sale: del depósito, de donde está el celular ahora o de otra dirección que se busca.
+  const [modo, setModo] = useState<"salida" | "gps" | "otra">(salida.coordenada ? "salida" : "gps");
+  const origen = modo === "salida" ? "salida" : "aca";
   const [aca, setAca] = useState<Coordenada | null>(null);
+  const [acaTexto, setAcaTexto] = useState("donde estás ahora");
+  const [otra, setOtra] = useState("");
+  const [lugares, setLugares] = useState<{ etiqueta: string; coordenada: Coordenada }[]>([]);
+  const [buscando, empezar] = useTransition();
   const [primera, setPrimera] = useState("");
   const [volver, setVolver] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -70,7 +78,7 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
 
   const calcular = () => {
     if (origen === "aca" && !aca) {
-      setAviso("Primero tocá \"Usar dónde estoy\" (o elegí salir del depósito).");
+      setAviso(modo === "otra" ? "Primero escribí la dirección de donde salís y tocá Buscar." : "Todavía no sé dónde estás: tocá de nuevo “De donde estoy ahora” y permití la ubicación, o elegí otra forma de salir.");
       return;
     }
     const r = planearRecorrido(
@@ -79,24 +87,36 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
     );
     setOrden([...hechas.map((p) => p.id), ...r.orden]);
     setCambiado(true);
-    setAviso(r.sinUbicacion.length ? `${r.sinUbicacion.length === 1 ? "Una parada no tiene" : `${r.sinUbicacion.length} paradas no tienen`} la ubicación marcada: van al final.` : null);
+    setAviso(sinUbicacion.length ? `${sinUbicacion.length === 1 ? "No tiene" : "No tienen"} la ubicación marcada: ${nombres(sinUbicacion)}. ${sinUbicacion.length === 1 ? "Va" : "Van"} al final del recorrido.` : null);
+  };
+  const salirDe = (c: Coordenada, texto: string) => {
+    setAca(c);
+    setAcaTexto(texto);
+    setLugares([]);
+    setAviso(null);
   };
   const dondeEstoy = () => {
+    setModo("gps");
+    setAca(null);
     if (!navigator.geolocation) {
-      setAviso("Este aparato no tiene GPS disponible en el navegador.");
+      setAviso("Este aparato no tiene GPS disponible en el navegador. Elegí “De otra dirección” y escribila.");
       return;
     }
     setAviso("Buscando dónde estás…");
     navigator.geolocation.getCurrentPosition(
-      (p) => {
-        setAca({ lat: p.coords.latitude, lng: p.coords.longitude });
-        setOrigen("aca");
-        setAviso(null);
-      },
-      () => setAviso("No se pudo saber dónde estás: permití la ubicación en el navegador."),
+      (p) => salirDe({ lat: p.coords.latitude, lng: p.coords.longitude }, "donde estás ahora"),
+      () => setAviso("No se pudo saber dónde estás: permití la ubicación en el navegador y tocá de nuevo, o elegí “De otra dirección”."),
       { enableHighAccuracy: true, timeout: 15000 },
     );
   };
+  const buscarOtra = () =>
+    empezar(async () => {
+      const pegada = leerCoordenadas(otra) ?? (/^https?:/i.test(otra.trim()) ? await leerEnlaceAccion(otra) : null);
+      if (pegada) return salirDe(pegada, "la ubicación que pegaste");
+      const r = await buscarEnMapaAccion(otra);
+      setLugares(r.lugares);
+      setAviso(r.mensaje);
+    });
   const mover = (id: string, paso: -1 | 1) => {
     const i = orden.indexOf(id);
     const j = i + paso;
@@ -116,22 +136,56 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
   const enlaces = enlacesGoogleMaps(pendientes.map(destino));
   const boton = "min-h-10 rounded-lg border border-borde bg-superficie px-3 text-sm font-semibold hover:border-marca disabled:opacity-60";
 
+  const opcion = (activa: boolean) => `flex min-h-16 flex-col items-start justify-center rounded-xl border-2 px-4 py-2 text-left disabled:opacity-50 ${activa ? "border-marca bg-marca/10" : "border-borde bg-superficie hover:border-marca/60"}`;
+
   if (paradas.length === 0) return <p className="text-texto-suave">No hay entregas para llevar.</p>;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 rounded-xl border border-borde bg-superficie p-4">
         <p className="font-semibold">🧮 Calcular el viaje</p>
+        <div className="flex flex-col gap-2">
+          <p className="font-medium">¿De dónde salís?</p>
+          <div className="grid gap-2 sm:grid-cols-3" role="group" aria-label="De dónde salís">
+            <button type="button" onClick={() => setModo("salida")} disabled={!salida.coordenada} aria-pressed={modo === "salida"} className={opcion(modo === "salida")}>
+              <span className="font-semibold">🏬 Del depósito</span>
+              <span className="text-sm text-texto-suave">{salida.coordenada ? salida.direccion ?? "El lugar de salida guardado" : "Sin marcar: marcalo arriba, en “De dónde salen los repartos”"}</span>
+            </button>
+            <button type="button" onClick={dondeEstoy} aria-pressed={modo === "gps"} className={opcion(modo === "gps")}>
+              <span className="font-semibold">📱 De donde estoy ahora</span>
+              <span className="text-sm text-texto-suave">{modo === "gps" && aca ? "✓ Ya sé dónde estás" : "Usa el GPS del celular"}</span>
+            </button>
+            <button type="button" onClick={() => { setModo("otra"); setAca(null); setAviso(null); }} aria-pressed={modo === "otra"} className={opcion(modo === "otra")}>
+              <span className="font-semibold">✍️ De otra dirección</span>
+              <span className="text-sm text-texto-suave">{modo === "otra" && aca ? `✓ ${acaTexto}` : "Escribila o pegá un enlace de Google Maps"}</span>
+            </button>
+          </div>
+          {modo === "otra" && (
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={otra}
+                  onChange={(e) => setOtra(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && otra.trim()) buscarOtra();
+                  }}
+                  aria-label="Dirección de donde salís"
+                  placeholder="Calle, número y localidad (o un enlace de Google Maps)"
+                  className="h-12 min-w-0 flex-1 rounded-xl border-2 border-borde bg-superficie px-3"
+                />
+                <button type="button" onClick={buscarOtra} disabled={buscando || !otra.trim()} className={boton}>
+                  {buscando ? "Buscando…" : "🔎 Buscar"}
+                </button>
+              </div>
+              {lugares.map((l) => (
+                <button key={`${l.coordenada.lat},${l.coordenada.lng}`} type="button" onClick={() => salirDe(l.coordenada, l.etiqueta)} className="min-h-12 rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-left hover:border-marca">
+                  <b>Salgo de acá:</b> {l.etiqueta}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Salimos de</span>
-            <select value={origen} onChange={(e) => setOrigen(e.target.value as "salida" | "aca")} className="h-10 rounded-lg border border-borde bg-superficie px-2">
-              <option value="salida" disabled={!salida.coordenada}>
-                {salida.coordenada ? salida.direccion ?? "El depósito" : "El depósito (sin marcar)"}
-              </option>
-              <option value="aca">{aca ? "Donde estoy ahora" : "Donde estoy (tocá abajo)"}</option>
-            </select>
-          </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium">Empezar por</span>
             <select value={primera} onChange={(e) => setPrimera(e.target.value)} className="h-10 max-w-60 rounded-lg border border-borde bg-superficie px-2">
@@ -154,11 +208,12 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
           <button type="button" onClick={calcular} className="min-h-10 rounded-lg bg-marca px-4 font-semibold text-marca-texto">
             Calcular el mejor recorrido
           </button>
-          <button type="button" onClick={dondeEstoy} className={boton}>
-            📱 Usar dónde estoy
-          </button>
         </div>
-        {aviso && <p className="text-sm text-texto-suave">{aviso}</p>}
+        {aviso && (
+          <p role="status" className="font-medium">
+            {aviso}
+          </p>
+        )}
       </div>
 
       <ol className="flex flex-col">
@@ -166,7 +221,7 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
           <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-fondo text-lg">
             🏁
           </span>
-          <span className="font-medium">{origen === "salida" ? `Salida: ${salida.direccion ?? "el depósito"}` : aca ? "Salida: donde estás ahora" : "Salida: donde estés"}</span>
+          <span className="font-medium">{origen === "salida" ? `Salida: ${salida.direccion ?? "el depósito"}` : aca ? `Salida: ${acaTexto}` : "Salida: todavía sin indicar"}</span>
         </li>
         {hechas.map((p) => (
           <li key={p.id} className="flex items-center gap-3 pb-2 opacity-60">
@@ -189,8 +244,8 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
                     {p.direccion}
                     {p.localidad && `, ${p.localidad}`}
                     {p.horario && ` · recibe ${p.horario}`}
-                    {!p.coordenada && " · sin ubicación marcada"}
-                  </p>
+                    </p>
+                  {!p.coordenada && <p className="text-sm font-semibold text-error">📍 Sin ubicación marcada: el GPS va a buscar la dirección escrita.</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
                   <button type="button" onClick={() => mover(p.id, -1)} disabled={i === 0} aria-label={`Subir ${p.cliente}`} className="size-10 rounded-lg border border-borde disabled:opacity-40">
@@ -233,7 +288,11 @@ export function PlanificadorDeViaje({ paradas, salida, guardar }: { paradas: Par
       <div className="flex flex-col gap-3 rounded-xl bg-fondo p-4">
         <p className="text-lg">
           Total aprox.: <b>{km(total.km)}</b> · <b>{duracion(total.min)}</b> de manejo
-          {sinUbicacion.length > 0 && <span className="block text-sm text-texto-suave">Sin contar {sinUbicacion.length === 1 ? "1 parada sin ubicación" : `${sinUbicacion.length} paradas sin ubicación`} (marcala en la ficha del cliente).</span>}
+          {sinUbicacion.length > 0 && (
+            <span className="block text-sm text-texto-suave">
+              Sin contar {sinUbicacion.length === 1 ? "la parada que no tiene" : "las paradas que no tienen"} la ubicación marcada: <b>{nombres(sinUbicacion)}</b>.
+            </span>
+          )}
         </p>
         <div className="flex flex-wrap gap-2">
           {enlaces.map((e, i) => (

@@ -10,7 +10,7 @@ import { ErrorDeNegocio } from "@/dominio/errores";
 import { prioridadParaFaltantes } from "@/dominio/pedidos/tablero";
 import { formatearCantidad, formatearPorcentaje, type UnidadMedida } from "@/dominio/dinero/formato";
 import type { FechaISO } from "@/dominio/fechas/fechas";
-import { compradoPorProducto } from "@/modulos/compras/lista-compra";
+import { compradoPorProducto, productosTildados } from "@/modulos/compras/lista-compra";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { id, numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
@@ -129,12 +129,13 @@ async function sincronizarEntregas(tx: Transaccion, c: ContextoUsuario, jornadaI
 /**
  * Cantidad propuesta de cada línea (04 §5.e paso 2): lo pedido si alcanza lo comprado; si no, el
  * reparto de faltantes (RN-115). Si en la jornada no se registró ninguna compra no hay con qué
- * comparar y se propone lo pedido.
+ * comparar y se propone lo pedido; lo mismo con los productos tildados a mano como comprados.
  */
 async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise<void> {
   const empresa = await configuracionEmpresa(tx);
   const { compras } = unico(await tx.select({ compras: count() }).from(compra).where(and(eq(compra.jornadaId, jornadaId), eq(compra.estado, "REGISTRADA"))));
   const comprado = await compradoPorProducto(tx, jornadaId);
+  const tildados = await productosTildados(tx, jornadaId);
   const lineas = await tx
     .select({
       id: entregaItem.id,
@@ -157,7 +158,7 @@ async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise
   for (const l of lineas) porProducto.set(l.productoId, [...(porProducto.get(l.productoId) ?? []), l]);
   for (const [productoId, grupo] of porProducto) {
     const propuesta =
-      Number(compras) === 0
+      Number(compras) === 0 || tildados.has(productoId)
         ? new Map(grupo.map((l) => [l.id, dec(l.pedida)]))
         : distribuirFaltante(
             comprado.get(productoId) ?? "0",
@@ -471,7 +472,7 @@ export async function registrarPreparado(db: BaseDatos, authUserId: string, dato
       throw new ErrorDeNegocio("VALIDACION", `${i.productoNombre}: se preparó ${formatearPorcentaje(ev.diferenciaPct!, 1)} más de lo pedido. Si está bien, tocá "Confirmar".`, { requiereConfirmacion: true });
     }
     const comprado = dec((await compradoPorProducto(tx, j.id)).get(i.productoId) ?? "0");
-    if (comprado.gt(0) && !d.confirmar) {
+    if (comprado.gt(0) && !d.confirmar && !(await productosTildados(tx, j.id)).has(i.productoId)) {
       const { total } = unico(await tx
         .select({ total: sql<string>`coalesce(sum(${entregaItem.cantidadPreparada}), 0)` })
         .from(entregaItem)

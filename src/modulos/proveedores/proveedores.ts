@@ -231,6 +231,7 @@ export async function guardarProveedor(db: BaseDatos, authUserId: string, datos:
         datosAntes: cambiosDatos.datosAntes,
         datosDespues: cambiosDatos.datosDespues,
       });
+      await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "PROVEEDOR", entidadId: id, resumen: `cambió los datos del proveedor ${d.nombre}` });
     }
     if (cambiosCredito.hayCambios) {
       await auditar(tx, {
@@ -243,6 +244,7 @@ export async function guardarProveedor(db: BaseDatos, authUserId: string, datos:
         datosAntes: cambiosCredito.datosAntes,
         datosDespues: cambiosCredito.datosDespues,
       });
+      await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "PROVEEDOR", entidadId: id, resumen: `cambió el límite o el plazo de pago de ${d.nombre}` });
     }
     return id;
   });
@@ -265,5 +267,6 @@ export async function cambiarEstadoProveedor(db: BaseDatos, authUserId: string, 
       datosAntes: { activo: actual.activo },
       datosDespues: { activo: datos.activo },
     });
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "PROVEEDOR", entidadId: datos.id, resumen: `${datos.activo ? "reactivó" : "dio de baja"} al proveedor ${actual.nombre}` });
   });
 }

@@ -30,7 +30,8 @@ export function BotonAccion({
         type="button"
         title={titulo}
         disabled={enviando}
-        className={`disabled:opacity-60 ${className}`}
+        aria-busy={enviando}
+        className={`disabled:animate-pulse disabled:opacity-60 ${className}`}
         onClick={() => {
           if (confirmar && !window.confirm(confirmar)) return;
           const fd = new FormData();

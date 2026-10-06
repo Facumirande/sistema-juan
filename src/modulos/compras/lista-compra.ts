@@ -5,6 +5,7 @@ import { z } from "zod";
 import { auditar } from "@/db/auditoria";
 import {
   categoria,
+  cliente,
   compra,
   compraItem,
   empresa,
@@ -20,7 +21,7 @@ import {
 } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
-import { calcularLineaLista, estadoLineaLista, sugerirProveedor, type AlertaLista, type Candidato, type EstadoLineaLista } from "@/dominio/compras/lista";
+import { calcularLineaLista, estadoLineaLista, sugerirProveedor, tildeSigueValiendo, type AlertaLista, type Candidato, type EstadoLineaLista } from "@/dominio/compras/lista";
 import { indicadoresCredito, type Semaforo } from "@/dominio/compras/credito";
 import { aNumeric, dec, redondearPesos, sumar } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
@@ -38,6 +39,9 @@ export interface LineaDeLista {
   id: string;
   productoId: string;
   producto: string;
+  codigo: string;
+  /** Para qué clientes es (los pedidos que están en la lista), con cuánto lleva cada uno en la unidad del producto. */
+  paraQuien: { cliente: string; cantidadBase: string }[];
   unidadBase: string;
   necesidadBase: string;
   compradoBase: string;
@@ -59,6 +63,8 @@ export interface LineaDeLista {
   costoEstimado: string | null;
   estado: EstadoLineaLista;
   motivoNoConseguido: string | null;
+  /** Tildado a mano como comprado, sin anotar la compra (puesto y precio). */
+  tildado: boolean;
   sinPedido: boolean;
   alertas: AlertaLista[];
   necesidadModificada: boolean;
@@ -86,6 +92,8 @@ export interface ListaDeCompra {
   desactualizada: boolean;
   generadaEn: Date;
   costoEstimadoTotal: string | null;
+  /** Cuántos pedidos tiene adentro. */
+  pedidos: number;
   plan: PlanProveedor[];
 }
 
@@ -130,12 +138,15 @@ export async function actualizarComprado(tx: Transaccion, empresaId: string, jor
       factor,
       cantidadManual: l.ajusteManual ? l.cantidadPresentaciones : null,
       marcadaNoConseguido: l.estado === "NO_CONSEGUIDO",
+      tildada: l.tildado,
     });
     await tx
       .update(listaCompraItem)
       .set({
         compradoBase: aNumeric(c, 3),
         estado: calculo.estado,
+        // Con la compra ya anotada por todo lo que hacía falta, el tilde a mano no hace falta.
+        tildado: l.tildado && dec(c).lt(l.necesidadNetaBase),
         motivoNoConseguido: calculo.estado === "NO_CONSEGUIDO" ? l.motivoNoConseguido : null,
       })
       .where(eq(listaCompraItem.id, l.id));
@@ -340,12 +351,16 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
     const oferta = sugerencia.candidato;
     const presentacionId = oferta ? ofertas.find((o) => o.ofertaId === oferta.ofertaId)!.presentacionId : prod.compraDefault;
     const factor = oferta?.factor ?? factores.find((f) => f.id === prod.compraDefault)?.factor ?? "1";
+    // El tilde a mano vale mientras no haga falta más que cuando se puso.
+    const tildada = Boolean(anterior) && tildeSigueValiendo(anterior!.tildado, anterior!.necesidadBase, necesidadBase) && dec(compradoBase).lt(necesidadBase);
+    const tildeVencido = Boolean(anterior?.tildado) && !tildada && dec(compradoBase).lt(necesidadBase);
     const calculo = calcularLineaLista({
       necesidadBase,
       compradoBase,
       factor,
       cantidadManual: anterior?.ajusteManual ? anterior.cantidadPresentaciones : null,
       marcadaNoConseguido: anterior?.estado === "NO_CONSEGUIDO",
+      tildada,
     });
     const costo = oferta ? redondearPesos(calculo.cantidadPresentaciones.times(oferta.precio)) : null;
     if (oferta && costo) {
@@ -353,7 +368,7 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
       const d = disponible.get(oferta.proveedorId);
       if (d !== undefined) disponible.set(oferta.proveedorId, d.minus(costo));
     }
-    const necesidadModificada = Boolean(anterior && !dec(anterior.necesidadBase).eq(necesidadBase) && (dec(compradoBase).gt(0) || anterior.ajusteManual));
+    const necesidadModificada = Boolean(anterior && !dec(anterior.necesidadBase).eq(necesidadBase) && (dec(compradoBase).gt(0) || anterior.ajusteManual || tildeVencido));
     if (anterior && !dec(anterior.necesidadBase).eq(necesidadBase)) cambios.push(`${prod.nombre}: ${dec(anterior.necesidadBase)} → ${dec(necesidadBase)}`);
     if (!anterior && existente) cambios.push(`${prod.nombre}: nuevo (${dec(necesidadBase)})`);
 
@@ -370,6 +385,7 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
       precioSugerido: oferta ? aNumeric(oferta.precio, 4) : null,
       costoEstimado: costo ? aNumeric(costo, 2) : null,
       estado: calculo.estado,
+      tildado: tildada,
       sinPedido: dec(necesidadBase).isZero() && dec(compradoBase).gt(0),
       alertas: sugerencia.alertas,
       necesidadModificada: anterior?.necesidadModificada || necesidadModificada,
@@ -436,6 +452,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
       .select({
         item: listaCompraItem,
         producto: producto.nombre,
+        codigo: producto.codigo,
         unidadBase: producto.unidadBase,
         presentacion: presentacion.nombre,
         factor: presentacion.factorABase,
@@ -452,6 +469,21 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
       .where(eq(listaCompraItem.listaCompraId, lista.id))
       .orderBy(asc(categoria.orden), asc(producto.nombre));
 
+    // Para quién es cada producto: los pedidos que ya entraron en la lista (y los que siguieron de largo a preparación).
+    const destinos = await tx
+      .select({ pedidoId: pedido.id, productoId: pedidoItem.productoId, cliente: cliente.nombre, cantidad: sum(pedidoItem.cantidadBase).mapWith(String) })
+      .from(pedidoItem)
+      .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .where(and(eq(pedido.jornadaId, j.id), sql`${pedido.estado} not in ('BORRADOR', 'CONFIRMADO', 'CANCELADO')`, eq(pedidoItem.cancelado, false)))
+      .groupBy(pedido.id, pedidoItem.productoId, cliente.nombre)
+      .orderBy(asc(cliente.nombre));
+    const paraQuien = (productoId: string) => {
+      const porCliente = new Map<string, string>();
+      for (const d of destinos.filter((x) => x.productoId === productoId)) porCliente.set(d.cliente, dec(porCliente.get(d.cliente) ?? "0").plus(d.cantidad).toString());
+      return [...porCliente].map(([nombre, cantidadBase]) => ({ cliente: nombre, cantidadBase }));
+    };
+
     const lineas = filas
       .filter((f) => !(dec(f.item.necesidadBase).isZero() && dec(f.item.compradoBase).isZero()))
       .map(
@@ -459,6 +491,8 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           id: f.item.id,
           productoId: f.item.productoId,
           producto: f.producto,
+          codigo: f.codigo,
+          paraQuien: paraQuien(f.item.productoId),
           unidadBase: f.unidadBase,
           necesidadBase: f.item.necesidadBase,
           compradoBase: f.item.compradoBase,
@@ -481,6 +515,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           costoEstimado: verCostos ? f.item.costoEstimado : null,
           estado: f.item.estado,
           motivoNoConseguido: f.item.motivoNoConseguido,
+          tildado: f.item.tildado,
           sinPedido: f.item.sinPedido,
           alertas: f.item.alertas as AlertaLista[],
           necesidadModificada: f.item.necesidadModificada,
@@ -527,6 +562,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
       desactualizada: lista.desactualizada,
       generadaEn: lista.generadaEn,
       costoEstimadoTotal: verCostos ? lista.costoEstimadoTotal : null,
+      pedidos: new Set(destinos.map((d) => d.pedidoId)).size,
       plan,
     };
   });
@@ -568,6 +604,7 @@ export async function cambiarLineaLista(db: BaseDatos, authUserId: string, datos
       factor,
       cantidadManual: manual ? d.cantidad! : l.ajusteManual && !oferta ? l.cantidadPresentaciones : null,
       marcadaNoConseguido: l.estado === "NO_CONSEGUIDO",
+      tildada: l.tildado,
     });
     await tx
       .update(listaCompraItem)
@@ -599,9 +636,24 @@ export async function marcarNoConseguido(db: BaseDatos, authUserId: string, dato
     if (!l) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la línea.");
     const motivo = datos.motivo?.trim() ?? null;
     if (motivo !== null && motivo.length < 3) throw new ErrorDeNegocio("VALIDACION", "Anotá por qué no se consiguió (ej. no había en el mercado).");
-    const estado = estadoLineaLista(l.necesidadNetaBase, l.compradoBase, motivo !== null);
+    // Marcarlo como no conseguido le saca el tilde de comprado; sacarle la marca lo deja como estaba.
+    const estado = estadoLineaLista(l.necesidadNetaBase, l.compradoBase, motivo !== null, motivo === null && l.tildado);
     if (motivo !== null && estado !== "NO_CONSEGUIDO") throw new ErrorDeNegocio("VALIDACION", "Ese producto ya está comprado.");
-    await tx.update(listaCompraItem).set({ estado, motivoNoConseguido: motivo, actualizadoPor: c.usuarioId }).where(eq(listaCompraItem.id, l.id));
+    await tx
+      .update(listaCompraItem)
+      .set({ estado, motivoNoConseguido: motivo, tildado: motivo === null && l.tildado, actualizadoPor: c.usuarioId })
+      .where(eq(listaCompraItem.id, l.id));
+    if (motivo !== null && l.estado !== "NO_CONSEGUIDO") {
+      const [p] = await tx.select({ nombre: producto.nombre }).from(producto).where(eq(producto.id, l.productoId));
+      const [lc] = await tx.select({ jornadaId: listaCompra.jornadaId }).from(listaCompra).where(eq(listaCompra.id, l.listaCompraId));
+      await registrarActividad(tx, c, {
+        accion: "NO_CONSEGUIDO",
+        entidadTipo: "LISTA_COMPRA",
+        entidadId: l.listaCompraId,
+        jornadaId: lc?.jornadaId ?? null,
+        resumen: `anotó que no se consiguió ${p?.nombre ?? "un producto"}`,
+      });
+    }
   });
 }
 
@@ -629,4 +681,171 @@ export async function ofertasParaLinea(db: BaseDatos, authUserId: string, produc
       .where(and(inArray(proveedorProducto.productoId, productoIds), eq(proveedorProducto.activo, true)))
       .orderBy(asc(proveedorProducto.costoBase)),
   );
+}
+
+// ——— Tildes de "comprado" sin anotar la compra (tablero y lista, 06/10/2026) ———
+
+/** Productos de la jornada tildados a mano como comprados: al preparar cuentan como si alcanzaran. */
+export async function productosTildados(tx: Transaccion, jornadaId: string): Promise<Set<string>> {
+  const filas = await tx
+    .select({ productoId: listaCompraItem.productoId })
+    .from(listaCompraItem)
+    .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
+    .where(and(eq(listaCompra.jornadaId, jornadaId), eq(listaCompraItem.tildado, true)));
+  return new Set(filas.map((f) => f.productoId));
+}
+
+/**
+ * Tilda (o destilda) un producto de la lista como comprado, sin anotar en qué puesto ni a cuánto.
+ * Sirve para ir marcando desde la tarjeta del tablero o con la lista impresa; la compra con su
+ * precio se puede anotar después con "✓ Lo compré".
+ */
+export async function tildarLinea(db: BaseDatos, authUserId: string, datos: { itemId: string; tildado: boolean }): Promise<{ producto: string; estado: EstadoLineaLista }> {
+  const d = validar(z.object({ itemId: z.uuid(), tildado: z.boolean() }), datos);
+  return ejecutarComoUsuario(db, authUserId, "lista_compra.editar", async (tx, c) => {
+    const [l] = await tx.select().from(listaCompraItem).where(eq(listaCompraItem.id, d.itemId)).for("update");
+    if (!l) throw new ErrorDeNegocio("NO_ENCONTRADO", "Ese producto ya no está en la lista de compras: recargá la página.");
+    const [p] = await tx.select({ nombre: producto.nombre }).from(producto).where(eq(producto.id, l.productoId));
+    const nombre = p?.nombre ?? "el producto";
+    const yaComprado = dec(l.compradoBase).gte(l.necesidadNetaBase) && dec(l.necesidadNetaBase).gt(0);
+    if (!d.tildado && !l.tildado && yaComprado) {
+      throw new ErrorDeNegocio("VALIDACION", `La compra de ${nombre} ya está anotada: para deshacerla, anulá esa compra desde “Compras anotadas”.`);
+    }
+    const tildado = d.tildado && !yaComprado;
+    const estado = estadoLineaLista(l.necesidadNetaBase, l.compradoBase, false, tildado);
+    if (l.tildado === tildado && l.estado === estado) return { producto: nombre, estado };
+    // Al tildarlo, la persona ya miró que alcanza: se va el aviso de "cambió un pedido después de comprar".
+    await tx
+      .update(listaCompraItem)
+      .set({ tildado, estado, motivoNoConseguido: null, ...(tildado ? { necesidadModificada: false } : {}), actualizadoPor: c.usuarioId })
+      .where(eq(listaCompraItem.id, l.id));
+    const [lc] = await tx.select({ jornadaId: listaCompra.jornadaId }).from(listaCompra).where(eq(listaCompra.id, l.listaCompraId));
+    await registrarActividad(tx, c, {
+      accion: "TILDAR",
+      entidadTipo: "LISTA_COMPRA",
+      entidadId: l.listaCompraId,
+      jornadaId: lc?.jornadaId ?? null,
+      resumen: d.tildado ? `tildó como comprado: ${nombre}` : `volvió a dejar por comprar: ${nombre}`,
+    });
+    return { producto: nombre, estado };
+  });
+}
+
+async function pedidoEnLaLista(tx: Transaccion, pedidoId: string) {
+  const [p] = await tx
+    .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, jornadaId: pedido.jornadaId, clienteId: pedido.clienteId })
+    .from(pedido)
+    .where(eq(pedido.id, pedidoId))
+    .for("update");
+  if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página.");
+  if (p.estado !== "EN_COMPRA") throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Ese pedido no está en la lista de compras.");
+  const productoIds = (
+    await tx.selectDistinct({ id: pedidoItem.productoId }).from(pedidoItem).where(and(eq(pedidoItem.pedidoId, p.id), eq(pedidoItem.cancelado, false)))
+  ).map((x) => x.id);
+  const [lista] = await tx.select({ id: listaCompra.id }).from(listaCompra).where(eq(listaCompra.jornadaId, p.jornadaId));
+  const lineas =
+    lista && productoIds.length
+      ? await tx
+          .select()
+          .from(listaCompraItem)
+          .where(and(eq(listaCompraItem.listaCompraId, lista.id), inArray(listaCompraItem.productoId, productoIds)))
+          .for("update")
+      : [];
+  return { pedido: p, lineas, faltanEnLista: productoIds.some((id) => !lineas.some((l) => l.productoId === id)) };
+}
+
+/**
+ * Pasar una tarjeta a "Comprado" sin tildar producto por producto: todo lo suyo que faltaba queda
+ * tildado como comprado (lo marcado "no se consiguió" queda así). Devuelve cuántos productos tildó.
+ */
+export async function marcarPedidoComprado(db: BaseDatos, authUserId: string, pedidoId: string): Promise<number> {
+  return ejecutarComoUsuario(db, authUserId, "lista_compra.editar", async (tx, c) => {
+    let { pedido: p, lineas, faltanEnLista } = await pedidoEnLaLista(tx, pedidoId);
+    // Si el pedido cambió después de armar la lista, primero se pone al día para que no quede nada afuera.
+    if (faltanEnLista) {
+      const [j] = await tx.select({ fecha: jornada.fecha }).from(jornada).where(eq(jornada.id, p.jornadaId));
+      await armarLista(tx, c, j!.fecha, []);
+      ({ pedido: p, lineas, faltanEnLista } = await pedidoEnLaLista(tx, pedidoId));
+    }
+    const faltan = lineas.filter((l) => l.estado === "PENDIENTE" || l.estado === "PARCIAL");
+    if (faltan.length === 0) return 0;
+    await tx
+      .update(listaCompraItem)
+      .set({ tildado: true, estado: "COMPRADO", motivoNoConseguido: null, necesidadModificada: false, actualizadoPor: c.usuarioId })
+      .where(inArray(listaCompraItem.id, faltan.map((l) => l.id)));
+    await registrarActividad(tx, c, {
+      accion: "TILDAR",
+      entidadTipo: "PEDIDO",
+      entidadId: p.id,
+      jornadaId: p.jornadaId,
+      resumen: `pasó a Comprado el pedido ${formatearNumeroDocumento("PED-", p.numero)} (${faltan.length === 1 ? "1 producto tildado" : `${faltan.length} productos tildados`})`,
+    });
+    return faltan.length;
+  });
+}
+
+/** Devolver una tarjeta de "Comprado" a la lista de compras: saca los tildes puestos a mano en lo suyo. */
+export async function desmarcarPedidoComprado(db: BaseDatos, authUserId: string, pedidoId: string): Promise<number> {
+  return ejecutarComoUsuario(db, authUserId, "lista_compra.editar", async (tx, c) => {
+    const { pedido: p, lineas } = await pedidoEnLaLista(tx, pedidoId);
+    const tildadas = lineas.filter((l) => l.tildado);
+    if (tildadas.length === 0) {
+      throw new ErrorDeNegocio("VALIDACION", "No hay tildes para sacar: lo de este pedido ya tiene la compra anotada (o se marcó como no conseguido). Para deshacer una compra, anulala desde “Compras anotadas”.", {
+        enlace: { href: "/compras", texto: "Ver las compras anotadas" },
+      });
+    }
+    for (const l of tildadas) {
+      await tx
+        .update(listaCompraItem)
+        .set({ tildado: false, estado: estadoLineaLista(l.necesidadNetaBase, l.compradoBase, false), actualizadoPor: c.usuarioId })
+        .where(eq(listaCompraItem.id, l.id));
+    }
+    await registrarActividad(tx, c, {
+      accion: "TILDAR",
+      entidadTipo: "PEDIDO",
+      entidadId: p.id,
+      jornadaId: p.jornadaId,
+      resumen: `devolvió a la lista de compras el pedido ${formatearNumeroDocumento("PED-", p.numero)}`,
+    });
+    return tildadas.length;
+  });
+}
+
+// ——— La lista de compras en una planilla (06/10/2026) ———
+
+const ESTADO_EN_PALABRAS: Readonly<Record<EstadoLineaLista, string>> = { PENDIENTE: "Falta comprar", PARCIAL: "Falta una parte", COMPRADO: "Comprado", NO_CONSEGUIDO: "No se consiguió" };
+
+/**
+ * La lista de compras de un día para bajarla a Excel (o CSV): una fila por producto, en el orden
+ * de los puestos, con cuánto hay que comprar, dónde conviene, para quién es y cómo va. Los precios
+ * salen solo para quien puede ver costos. Null si ese día no tiene lista.
+ */
+export async function hojaDeListaDeCompras(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<{ nombre: string; columnas: string[]; filas: (string | { numero: string } | null)[][] } | null> {
+  const lista = await obtenerListaCompra(db, authUserId, fecha);
+  if (!lista) return null;
+  const conPrecios = lista.costoEstimadoTotal !== null;
+  const numero = (v: string | null) => (v === null ? null : { numero: dec(v).toString() });
+  return {
+    nombre: `Lista de compras ${fecha.slice(8, 10)}-${fecha.slice(5, 7)}`,
+    columnas: ["Puesto", "Código", "Producto", "Comprar", "Envase", "Se necesita", "Unidad", "Para quién", ...(conPrecios ? ["Precio del envase", "Se calcula gastar"] : []), "Cómo va", "Ya comprado", "Notas"],
+    filas: lista.plan.flatMap((p) =>
+      p.lineas.map((l) => {
+        const unidad = l.unidadBase.toLowerCase();
+        return [
+          p.proveedorId ? p.proveedor : "Sin puesto",
+          l.codigo,
+          l.producto,
+          numero(l.presentacion && l.cantidadPresentaciones ? l.cantidadPresentaciones : l.pendienteBase),
+          l.presentacion ?? unidad,
+          numero(l.necesidadBase),
+          unidad,
+          l.paraQuien.map((q) => `${q.cliente} (${dec(q.cantidadBase).toString().replace(".", ",")})`).join(" · ") || null,
+          ...(conPrecios ? [numero(l.precioSugerido), numero(l.costoEstimado)] : []),
+          l.tildado ? "Tildado como comprado" : ESTADO_EN_PALABRAS[l.estado],
+          numero(l.compradoBase),
+          [l.motivoNoConseguido, l.observaciones].filter(Boolean).join(" / ") || null,
+        ];
+      }),
+    ),
+  };
 }

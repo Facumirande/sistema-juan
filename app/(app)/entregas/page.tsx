@@ -12,7 +12,7 @@ import { ESTADOS_ENTREGA, fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Entregas · Sistema Juan" };
+export const metadata: Metadata = { title: "Entregas · Sistema Repartos" };
 
 /** P-79 Entregas del día. */
 export default async function PaginaEntregas({ searchParams }: PageProps<"/entregas">) {
@@ -31,7 +31,7 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
           📦 Preparación
         </Link>
         <Link href={`/viaje?fecha=${fecha}`} className={clasesBoton("secundario")}>
-          🧭 Viaje de entrega
+          🚚 Logística (viaje de entrega)
         </Link>
       </Encabezado>
       <nav aria-label="Día" className="flex gap-2">

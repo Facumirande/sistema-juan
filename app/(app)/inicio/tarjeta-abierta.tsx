@@ -21,6 +21,7 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { HiloDeNotas } from "../actividad/notas";
 import {
   armarListaConElegidosAccion,
+  pasarACompradoAccion,
   asignarElegidosAccion,
   plazoAccion,
   prioridadElegidosAccion,
@@ -255,6 +256,11 @@ export function TarjetaAbierta({
             {columna?.clave === "pedidos" && !vacio && puede("lista_compra.generar") && (
               <BotonAccion accion={armarListaConElegidosAccion} datos={{ pedido: p.id }} className={botonLateral}>
                 🛒 Mandar a la lista de compras
+              </BotonAccion>
+            )}
+            {columna?.clave === "en_lista" && puede("lista_compra.editar") && (
+              <BotonAccion accion={pasarACompradoAccion} datos={{ pedido: p.id }} className={botonLateral} titulo="Tilda todo lo que le falta, sin anotar puesto ni precio">
+                ✓ Pasar a Comprado
               </BotonAccion>
             )}
             {(columna?.clave === "en_lista" || columna?.clave === "comprados") && puede("lista_compra.generar") && (

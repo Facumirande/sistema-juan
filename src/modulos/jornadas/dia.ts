@@ -121,3 +121,12 @@ export async function diaDeTrabajo(db: BaseDatos, authUserId: string, pedida?: s
     return { fecha, hoy, sugerida, panel, pasos: pasosDelDia(datosDelPanel(panel)), plata, dias: await diasCercanos(tx, hoy, sugerida, fecha) };
   });
 }
+
+/** Los días para elegir en una pantalla del día (lista de compras): hoy, el de pedidos, el elegido y los que están sin cerrar. */
+export async function diasParaElegir(db: BaseDatos, authUserId: string, pedida?: string | null): Promise<{ fecha: FechaISO; hoy: FechaISO; dias: DiaCercano[] }> {
+  return ejecutarComoUsuario(db, authUserId, null, async (tx) => {
+    const { hoy, sugerida } = await hoyYSugerida(tx);
+    const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await diaParaTrabajar(tx, hoy, sugerida);
+    return { fecha, hoy, dias: await diasCercanos(tx, hoy, sugerida, fecha) };
+  });
+}

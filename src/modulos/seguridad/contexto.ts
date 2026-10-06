@@ -31,8 +31,11 @@ const SESION_INVALIDA = "Tu sesión no es válida o tu usuario está desactivado
  * desactivado, o si la empresa está inactiva (caso 11 de 02 §12).
  */
 export async function resolverContexto(tx: Transaccion, authUserId: string): Promise<ContextoUsuario> {
-  await fijarUsuarioAuth(tx, authUserId);
-  const [u] = await tx
+  // Las consultas que no dependen una de otra salen juntas (una sola ida y vuelta a la base):
+  // en la misma conexión se ejecutan en el orden en que se piden.
+  const [, [u]] = await Promise.all([
+    fijarUsuarioAuth(tx, authUserId),
+    tx
     .select({
       id: usuario.id,
       empresaId: usuario.empresaId,
@@ -42,24 +45,27 @@ export async function resolverContexto(tx: Transaccion, authUserId: string): Pro
       debeCambiarClave: usuario.debeCambiarClave,
     })
     .from(usuario)
-    .where(eq(usuario.authUserId, authUserId));
+    .where(eq(usuario.authUserId, authUserId)),
+  ]);
   if (!u || !u.activo) throw new ErrorDeNegocio("NO_AUTENTICADO", SESION_INVALIDA);
 
-  await fijarEmpresa(tx, u.empresaId);
-  const [e] = await tx.select({ activa: empresa.activa, zonaHoraria: empresa.zonaHoraria }).from(empresa);
+  const [, [e], roles, colores] = await Promise.all([
+    fijarEmpresa(tx, u.empresaId),
+    tx.select({ activa: empresa.activa, zonaHoraria: empresa.zonaHoraria }).from(empresa),
+    tx
+      .select({ codigo: rol.codigo, permisos: rol.permisos, activo: rol.activo })
+      .from(usuarioRol)
+      .innerJoin(rol, and(eq(rol.id, usuarioRol.rolId), eq(rol.empresaId, usuarioRol.empresaId)))
+      .where(eq(usuarioRol.usuarioId, u.id)),
+    coloresDelNegocio(tx),
+  ]);
   if (!e?.activa) throw new ErrorDeNegocio("NO_AUTENTICADO", SESION_INVALIDA);
-
-  const roles = await tx
-    .select({ codigo: rol.codigo, permisos: rol.permisos, activo: rol.activo })
-    .from(usuarioRol)
-    .innerJoin(rol, and(eq(rol.id, usuarioRol.rolId), eq(rol.empresaId, usuarioRol.empresaId)))
-    .where(eq(usuarioRol.usuarioId, u.id));
 
   return {
     usuarioId: u.id,
     empresaId: u.empresaId,
     nombre: u.nombre,
-    color: (await coloresDelNegocio(tx)).get(u.id)!,
+    color: colores.get(u.id)!,
     email: u.email,
     zonaHoraria: e.zonaHoraria,
     roles: roles.filter((r) => r.activo).map((r) => r.codigo),
@@ -80,8 +86,7 @@ export async function ejecutarComoUsuario<T>(
   fn: (tx: Transaccion, contexto: ContextoUsuario) => Promise<T>,
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await cambiarRol(tx, "app_negocio");
-    const contexto = await resolverContexto(tx, authUserId);
+    const [, contexto] = await Promise.all([cambiarRol(tx, "app_negocio"), resolverContexto(tx, authUserId)]);
     if (permiso) contexto.permisos.exigir(permiso);
     return fn(tx, contexto);
   });

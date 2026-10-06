@@ -36,7 +36,7 @@ export const MENU: readonly GrupoMenu[] = [
       { pantalla: "P-02", etiqueta: "Tablero de pedidos", icono: "📋", ruta: "/inicio", permisos: [] },
       { pantalla: "P-41", etiqueta: "Nuevo pedido", icono: "＋", ruta: "/pedidos/nuevo", permisos: ["pedidos.crear"], destacado: true },
       { pantalla: "P-50", etiqueta: "Lista de compras", icono: "🛒", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
-      { pantalla: "P-78b", etiqueta: "Viaje de entrega", icono: "🧭", ruta: "/viaje", permisos: ["repartos.ver"] },
+      { pantalla: "P-78b", etiqueta: "Logística", icono: "🚚", ruta: "/viaje", permisos: ["repartos.ver"] },
       { pantalla: "P-77", etiqueta: "Mi reparto", icono: "🚚", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"], ocultarCon: ["repartos.gestionar"] },
       { pantalla: "P-94", etiqueta: "Actividad y notas", icono: "💬", ruta: "/actividad", permisos: [] },
     ],

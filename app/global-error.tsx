@@ -10,7 +10,7 @@ export default function ErrorGeneral({ error, retry }: { error: Error & { digest
   return (
     <html lang="es">
       <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", minHeight: "100dvh", display: "grid", placeItems: "center", padding: 16, background: "Canvas", color: "CanvasText" }}>
-        <title>Algo falló · Sistema Juan</title>
+        <title>Algo falló · Sistema Repartos</title>
         <main style={{ maxWidth: 560, textAlign: "center", display: "flex", flexDirection: "column", gap: 16, alignItems: "center" }}>
           <span aria-hidden style={{ fontSize: 56 }}>
             🛠️

@@ -20,6 +20,7 @@ import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa } from "@/dominio/fechas/fechas";
 import { compararOfertas, evaluarCambioPrecioCompra } from "@/dominio/precios/compra";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, numeroOpcional, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -298,6 +299,8 @@ async function aplicarPrecio(tx: Transaccion, c: ContextoUsuario, oferta: FilaOf
     datosAntes: { precio: oferta.precioVigente, costoBase: oferta.costoBase },
     datosDespues: { precio: aNumeric(cambio.precio, 4), costoBase: aNumeric(cambio.costoBase, 4), origen: opciones.origen },
   });
+  // Si el precio cambió por una compra, el aviso es el de la compra.
+  if (opciones.origen !== "COMPRA") await registrarActividad(tx, c, { accion: "PRECIO", entidadTipo: "PRODUCTO", entidadId: oferta.productoId, resumen: `cambió el precio de compra de ${oferta.producto} en ${oferta.proveedor}` });
   return { cambio: true as const, variacionPct: cambio.variacionPct?.toFixed(2) ?? null };
 }
 
@@ -403,6 +406,7 @@ export async function crearOferta(db: BaseDatos, authUserId: string, datos: z.in
       resumen: `Nueva oferta: ${datosBase.producto} en ${datosBase.proveedor}, ${datosBase.presentacion} a ${formatearMoneda(cambio.precio)}.`,
       datosDespues: { precio: aNumeric(cambio.precio, 4), costoBase: aNumeric(cambio.costoBase, 4) },
     });
+    await registrarActividad(tx, c, { accion: "PRECIO", entidadTipo: "PRODUCTO", entidadId: d.productoId, resumen: `cargó el precio de ${datosBase.producto} en ${datosBase.proveedor}` });
     await recalcularPedidosPendientes(tx, { productoIds: [d.productoId] });
     return nueva!.id;
   });
@@ -502,6 +506,7 @@ export async function cambiarEstadoOferta(db: BaseDatos, authUserId: string, dat
       datosAntes: { activo: oferta.activo },
       datosDespues: { activo: datos.activo },
     });
+    await registrarActividad(tx, c, { accion: "PRECIO", entidadTipo: "PRODUCTO", entidadId: oferta.productoId, resumen: `${datos.activo ? "volvió a poner" : "sacó"} a ${oferta.proveedor} como puesto de ${oferta.producto}` });
     await recalcularPedidosPendientes(tx, { productoIds: [oferta.productoId] });
   });
 }

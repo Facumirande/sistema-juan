@@ -10,7 +10,8 @@ import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
 import { crearProductoGuiadoAccion } from "../acciones";
 
 // Alta de un producto en tres preguntas (qué es, cómo se vende, en qué envase se compra), con la
-// tarjeta de cómo va a quedar. La ganancia, el código y las notas quedan en "Más opciones".
+// tarjeta de cómo va a quedar. El código y el dibujo se arman solos con el nombre; la ganancia y
+// las notas quedan en "Más opciones".
 
 interface Categoria {
   id: string;
@@ -95,6 +96,9 @@ export function FormularioProducto({
               </button>
             ))}
           </div>
+          <p className="text-sm text-texto-suave">
+            Su código y su dibujo se arman solos: <b className="text-texto">{codigoAuto}</b> <span aria-hidden>{dibujo}</span>. El código sirve para buscarlo y para las planillas de Excel.
+          </p>
         </Pregunta>
 
         <Pregunta n={2} titulo="¿Cómo se vende?" ayuda="Así se anotan los pedidos y se calculan los precios. Después no se puede cambiar.">
@@ -236,7 +240,9 @@ export function FormularioProducto({
               </span>
               <div>
                 <p className="font-semibold">{nombre.trim() || "Nombre del producto"}</p>
-                <p className="text-sm text-tarjeta-suave">Se vende {u.nombre.toLowerCase()}</p>
+                <p className="text-sm text-tarjeta-suave">
+                  {codigoPropio?.trim() || codigoAuto} · se vende {u.nombre.toLowerCase()}
+                </p>
               </div>
             </div>
             <p className="text-sm text-tarjeta-suave">📦 {presentacion ? `Se compra en ${presentacion}` : "Se compra suelto"}</p>

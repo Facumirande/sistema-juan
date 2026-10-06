@@ -12,7 +12,7 @@ import { CONDICIONES_COMPRA, ESTADOS_PAGO, fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Compras · Sistema Juan" };
+export const metadata: Metadata = { title: "Compras · Sistema Repartos" };
 
 /** P-56 Compras de un día. */
 export default async function PaginaCompras({ searchParams }: PageProps<"/compras">) {

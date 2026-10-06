@@ -105,8 +105,9 @@ export function Encabezado({ titulo, descripcion, volver, children }: { titulo: 
 
 export function Estado({ activo }: { activo: boolean }) {
   return (
-    <span className={`inline-block rounded-full border px-2 py-0.5 text-sm ${activo ? "border-marca" : "border-error text-error"}`}>
-      {activo ? "Activo" : "Desactivado"}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold whitespace-nowrap ${activo ? "bg-marca/15 text-marca" : "bg-error/15 text-error"}`}>
+      <span aria-hidden className={`size-2 rounded-full ${activo ? "bg-marca" : "bg-error"}`} />
+      {activo ? "Activo" : "Dado de baja"}
     </span>
   );
 }

@@ -46,7 +46,7 @@ const esquemaNota = z.object({
 });
 
 /** Notas que quien mira no escribió, dirigidas a todos o a él, sin marca de leída. */
-const sinLeerPara = (c: ContextoUsuario) =>
+export const sinLeerPara = (c: ContextoUsuario) =>
   and(
     ne(nota.creadoPor, c.usuarioId),
     or(isNull(nota.paraUsuarioId), eq(nota.paraUsuarioId, c.usuarioId)),

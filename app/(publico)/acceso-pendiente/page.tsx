@@ -9,7 +9,7 @@ import { clasesBoton } from "@/ui/formularios";
 
 import { pedirAccesoAccion } from "./acciones";
 
-export const metadata: Metadata = { title: "Esperando acceso · Sistema Juan" };
+export const metadata: Metadata = { title: "Esperando acceso · Sistema Repartos" };
 
 const TEXTOS = {
   PENDIENTE: {

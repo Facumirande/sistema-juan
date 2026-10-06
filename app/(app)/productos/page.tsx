@@ -12,14 +12,14 @@ import { UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { Aviso, Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Productos · Sistema Juan" };
+export const metadata: Metadata = { title: "Productos · Sistema Repartos" };
 
 const FRANJA: Readonly<Record<string, string>> = { VERDURA: "var(--etiqueta-verde)", FRUTA: "var(--etiqueta-naranja)", OTRO: "var(--etiqueta-gris)" };
 
 function TarjetaProducto({ p }: { p: ProductoListado }) {
   const unidad = UNIDADES_CORTAS[p.unidadBase] ?? "";
   return (
-    <TarjetaRegistro href={`/productos/${p.id}`} franja={FRANJA[p.grupo] ?? FRANJA.OTRO!} dibujo={dibujoDeProducto(p.nombre, p.grupo)} titulo={p.nombre} subtitulo={`${p.codigo} · se cuenta por ${unidad}`} inactivo={!p.activo}>
+    <TarjetaRegistro href={`/productos/${p.id}`} franja={FRANJA[p.grupo] ?? FRANJA.OTRO!} dibujo={dibujoDeProducto(p.nombre, p.grupo)} titulo={p.nombre} subtitulo={`Código ${p.codigo} · se cuenta por ${unidad}`} inactivo={!p.activo}>
       <Dato icono="📦">{p.presentacionCompra ? `Se compra en ${p.presentacionCompra}` : "Sin envase de compra"}</Dato>
       {p.ofertas === 0 ? (
         <span className="flex items-center gap-2 font-semibold text-error">
@@ -66,12 +66,15 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
-      <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende. Tocá un producto para ver qué puestos lo venden y a qué precio.">
+      <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende. Cada producto tiene su código y su dibujo (se arman solos). Con “📊 Excel” podés cargar muchos de una vez o bajar la lista. Tocá un producto para ver qué puestos lo venden y a qué precio.">
         {puedeEditar && categorias.some((c) => c.activo) && (
           <Link href="/productos/nuevo" className={clasesBoton("principal")}>
             ＋ Nuevo producto
           </Link>
         )}
+        <Link href="/productos/importar" className={clasesBoton("secundario")} title="Subir productos desde una planilla o bajar la lista">
+          📊 Excel
+        </Link>
         <Link href="/productos/categorias" className={clasesBoton("secundario")}>
           Categorías
         </Link>

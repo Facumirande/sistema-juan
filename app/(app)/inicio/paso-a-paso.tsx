@@ -14,7 +14,7 @@ import { emitirRemitosDelDiaAccion } from "../entregas/acciones";
 import { generarListaAccion } from "../lista-compra/acciones";
 import { iniciarPreparacionAccion } from "../preparacion/acciones";
 
-// Vista "Paso a paso": los seis pasos del día en orden, cada uno en una tarjeta de color pastel
+// Vista "Paso a paso": los seis pasos del día en orden, cada uno en una tarjeta de color vivo
 // (como las de Trello). El que toca está abierto con sus botones; lo que quedó a medias en un paso
 // anterior se avisa ahí mismo, para resolverlo sin frenar el día.
 
@@ -29,14 +29,14 @@ export const TITULOS: Record<ClavePaso, string> = {
 
 const ICONO: Record<ClavePaso, string> = { pedidos: "📝", lista: "🛒", compras: "🧺", preparacion: "📦", entregas: "🚚", cierre: "🔒" };
 
-/** Cada paso con su color pastel (fondo y texto, del tema claro y oscuro). */
+/** Cada paso con su color vivo, el mismo de su columna en el tablero (fondo y texto, del tema claro y oscuro). */
 const COLOR: Record<ClavePaso, string> = {
-  pedidos: "bg-[var(--pastel-azul)] text-[var(--pastel-azul-texto)]",
-  lista: "bg-[var(--pastel-violeta)] text-[var(--pastel-violeta-texto)]",
-  compras: "bg-[var(--pastel-naranja)] text-[var(--pastel-naranja-texto)]",
-  preparacion: "bg-[var(--pastel-amarillo)] text-[var(--pastel-amarillo-texto)]",
-  entregas: "bg-[var(--pastel-verde)] text-[var(--pastel-verde-texto)]",
-  cierre: "bg-[var(--pastel-rosa)] text-[var(--pastel-rosa-texto)]",
+  pedidos: "color-azul bg-[var(--col)] text-[var(--col-texto)]",
+  lista: "color-violeta bg-[var(--col)] text-[var(--col-texto)]",
+  compras: "color-naranja bg-[var(--col)] text-[var(--col-texto)]",
+  preparacion: "color-amarillo bg-[var(--col)] text-[var(--col-texto)]",
+  entregas: "color-verde bg-[var(--col)] text-[var(--col-texto)]",
+  cierre: "color-rosa bg-[var(--col)] text-[var(--col-texto)]",
 };
 
 /** Qué hay que hacer en cada paso, dicho como una indicación. */
@@ -237,13 +237,6 @@ function pendienteDeAtras(clave: ClavePaso, dia: DiaDeTrabajo): { texto: string;
     default:
       return { texto: "Quedó algo a medias en este paso.", href: `/inicio?fecha=${dia.fecha}&vista=pasos`, boton: "Revisar" };
   }
-}
-
-export function nombreDelDia(fecha: string, hoy: string): string {
-  if (fecha === hoy) return "Hoy";
-  if (fecha === sumarDias(hoy, 1)) return "Mañana";
-  if (fecha === sumarDias(hoy, -1)) return "Ayer";
-  return fechaConDia(fecha).split(" ")[0]!.slice(0, 3);
 }
 
 /** "Mañana, martes 29/09" o "Jueves 24/09". */

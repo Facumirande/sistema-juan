@@ -5,7 +5,7 @@ import { Encabezado } from "@/ui/formularios";
 
 import { FormularioCliente } from "./formulario";
 
-export const metadata: Metadata = { title: "Nuevo cliente · Sistema Juan" };
+export const metadata: Metadata = { title: "Nuevo cliente · Sistema Repartos" };
 
 /** Alta guiada de un cliente (P-15): tres preguntas; lo demás, opcional. */
 export default async function NuevoCliente() {

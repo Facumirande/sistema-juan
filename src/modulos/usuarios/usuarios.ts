@@ -7,6 +7,7 @@ import { auditar } from "@/db/auditoria";
 import { rol, usuario, usuarioRol } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import type { ServicioCuentas } from "@/modulos/seguridad/cuentas";
 import { validar } from "@/modulos/validacion";
@@ -314,6 +315,7 @@ export async function cambiarEstadoDeUsuario(
       datosAntes: { activo: objetivo.activo },
       datosDespues: { activo: datos.activo },
     });
+    await registrarActividad(tx, c, { accion: "HABILITAR", entidadTipo: "USUARIO", entidadId: objetivo.id, resumen: `${datos.activo ? "le devolvió el acceso a" : "le quitó el acceso a"} ${objetivo.nombre}` });
     // Último paso: si Supabase falla, la transacción se revierte y nada queda a medias.
     await cuentas.bloquear(objetivo.authUserId, !datos.activo);
   });
@@ -340,6 +342,7 @@ export async function restablecerClaveDeUsuario(
       entidadId: objetivo.id,
       resumen: `Clave provisoria para ${objetivo.nombre}.`,
     });
+    await registrarActividad(tx, c, { accion: "HABILITAR", entidadTipo: "USUARIO", entidadId: objetivo.id, resumen: `le dio una clave provisoria a ${objetivo.nombre}` });
     await tx.update(usuario).set({ debeCambiarClave: true, actualizadoPor: c.usuarioId }).where(eq(usuario.id, objetivo.id));
     await cuentas.cambiarClave(objetivo.authUserId, clave);
     return { clave };

@@ -8,7 +8,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { ESTADOS_JORNADA, fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 
-export const metadata: Metadata = { title: "Otros días · Sistema Juan" };
+export const metadata: Metadata = { title: "Otros días · Sistema Repartos" };
 
 /** P-45 Otros días: cada día de entrega con sus pedidos. Se crean solos al cargar el primer pedido (RN-035). */
 export default async function PaginaJornadas() {

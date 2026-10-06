@@ -8,12 +8,12 @@ import { formatearFechaHora, sumarDias } from "@/dominio/fechas/fechas";
 import { obtenerListaCompra } from "@/modulos/compras/lista-compra";
 import { fechasDeTrabajo } from "@/modulos/pedidos/jornadas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { BotonImprimir } from "@/ui/boton-imprimir";
+import { BotonImprimir, ImprimirAlAbrir } from "@/ui/boton-imprimir";
 import { fechaConDia } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
-export const metadata: Metadata = { title: "Lista de compras para imprimir · Sistema Juan" };
+export const metadata: Metadata = { title: "Lista de compras para imprimir · Sistema Repartos" };
 
 const ALERTAS: Readonly<Record<string, string>> = {
   SIN_PROVEEDOR: "sin precio de ningún proveedor",
@@ -24,9 +24,9 @@ const ALERTAS: Readonly<Record<string, string>> = {
 const cant = (v: string, unidad: string) => formatearCantidad(v, unidad as UnidadMedida);
 
 /**
- * DOC-01 Lista de compra (09): por puesto, con casillas y columnas vacías para anotar lo que se
- * pagó y lo que se compró. `?precios=no` la imprime sin precios (RN-053); `?todas=1` incluye lo
- * ya comprado.
+ * DOC-01 Lista de compras (09): la lista completa del día, por puesto, con para quién es cada
+ * producto, casillas y columnas vacías para anotar lo que se pagó y lo que se compró.
+ * `?precios=no` la imprime sin precios (RN-053); `?falta=1` deja solo lo que falta comprar.
  */
 export default async function ImprimirListaCompra({ searchParams }: PageProps<"/lista-compra/imprimir">) {
   const sesion = await sesionParaPantalla("documentos.imprimir_compra");
@@ -35,18 +35,20 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
   const pedida = parametro(f.fecha);
   const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : (await fechasDeTrabajo(db, sesion.authUserId)).sugerida;
   const conPrecios = parametro(f.precios) !== "no" && sesion.permisos.includes("precios.ver_costos");
-  const todas = parametro(f.todas) === "1";
+  const soloFalta = parametro(f.falta) === "1";
   const lista = await obtenerListaCompra(db, sesion.authUserId, fecha);
 
   const grupos = (lista?.plan ?? [])
-    .map((p) => ({ ...p, lineas: p.lineas.filter((l) => todas || l.estado === "PENDIENTE" || l.estado === "PARCIAL") }))
+    .map((p) => ({ ...p, lineas: p.lineas.filter((l) => !soloFalta || l.estado === "PENDIENTE" || l.estado === "PARCIAL") }))
     .filter((p) => p.lineas.length > 0);
   const subtotal = (lineas: typeof grupos[number]["lineas"]) => sumar(lineas.map((l) => l.costoEstimado ?? "0"));
   const total = sumar(grupos.map((g) => subtotal(g.lineas)));
+  const todasLasLineas = (lista?.plan ?? []).flatMap((p) => p.lineas);
+  const faltan = todasLasLineas.filter((l) => l.estado === "PENDIENTE" || l.estado === "PARCIAL").length;
   const opcion = (cambio: Record<string, string | null>) => {
     const q = new URLSearchParams({ fecha });
     if (!conPrecios) q.set("precios", "no");
-    if (todas) q.set("todas", "1");
+    if (soloFalta) q.set("falta", "1");
     for (const [k, v] of Object.entries(cambio)) {
       if (v === null) q.delete(k);
       else q.set(k, v);
@@ -66,12 +68,16 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
               {conPrecios ? "Sin precios" : "Con precios"}
             </Link>
           )}
-          <Link href={opcion({ todas: todas ? null : "1" })} className="underline-offset-4 hover:underline">
-            {todas ? "Solo lo que falta" : "Incluir lo comprado"}
+          <Link href={opcion({ falta: soloFalta ? null : "1" })} className="underline-offset-4 hover:underline">
+            {soloFalta ? "Toda la lista" : "Solo lo que falta comprar"}
           </Link>
+          <a href={`/lista-compra/planilla?fecha=${fecha}`} className="underline-offset-4 hover:underline">
+            Bajar a Excel
+          </a>
           <BotonImprimir />
         </div>
       </div>
+      {lista && parametro(f.ya) === "1" && <ImprimirAlAbrir />}
 
       {!lista ? (
         <p>
@@ -87,10 +93,14 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
             <p>
               Entrega del {fechaConDia(lista.fecha)}
             </p>
+            <p className="w-full font-semibold">
+              {lista.pedidos === 1 ? "1 pedido" : `${lista.pedidos} pedidos`} · {todasLasLineas.length === 1 ? "1 producto" : `${todasLasLineas.length} productos`} · {faltan === 0 ? "ya está todo comprado" : faltan === 1 ? "falta comprar 1" : `faltan comprar ${faltan}`}
+              {soloFalta && " · en esta hoja, solo lo que falta"}
+            </p>
             <p className="w-full text-sm">Armada {formatearFechaHora(lista.generadaEn, sesion.zonaHoraria)} · impresa {formatearFechaHora(new Date(), sesion.zonaHoraria)}</p>
           </header>
           {lista.desactualizada && <p className="border-2 border-texto p-2 font-bold">DESACTUALIZADA: los pedidos cambiaron después de armarla. Volvé a calcularla antes de comprar.</p>}
-          {grupos.length === 0 && <p>No falta comprar nada.</p>}
+          {grupos.length === 0 && <p>{todasLasLineas.length === 0 ? "La lista de este día no tiene productos." : "No falta comprar nada: tocá “Toda la lista” para verla completa."}</p>}
 
           {grupos.map((p) => (
             <section key={p.proveedorId ?? "sin"} className="break-inside-avoid">
@@ -122,9 +132,12 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
                 <tbody>
                   {p.lineas.map((l) => (
                     <tr key={l.id}>
-                      <td>{l.estado === "COMPRADO" ? "☑" : "☐"}</td>
+                      <td>{l.estado === "COMPRADO" ? "☑" : l.estado === "NO_CONSEGUIDO" ? "✕" : "☐"}</td>
                       <td>
-                        {l.producto}
+                        <span className="font-semibold">{l.producto}</span>
+                        {l.paraQuien.length > 0 && <span className="block text-xs">Para: {l.paraQuien.map((q) => `${q.cliente} (${cant(q.cantidadBase, l.unidadBase)})`).join(" · ")}</span>}
+                        {l.estado === "COMPRADO" && <span className="block text-xs font-semibold">{l.tildado ? "YA COMPRADO (tildado)" : "YA COMPRADO"}</span>}
+                        {l.estado === "PARCIAL" && <span className="block text-xs font-semibold">FALTA UNA PARTE</span>}
                         {l.observaciones && <span className="block text-xs">“{l.observaciones}”</span>}
                         {l.alertas.map((a) => (
                           <span key={a} className="block text-xs font-semibold">

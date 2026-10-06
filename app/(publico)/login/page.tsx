@@ -11,7 +11,7 @@ import { configuracionInicialPendiente } from "@/modulos/configuracion/configura
 import { entrarConGoogle } from "./acciones";
 import { FormularioIngreso } from "./formulario-ingreso";
 
-export const metadata: Metadata = { title: "Entrar · Sistema Juan" };
+export const metadata: Metadata = { title: "Entrar · Sistema Repartos" };
 
 export default async function PaginaIngreso({ searchParams }: PageProps<"/login">) {
   await connection();
@@ -27,7 +27,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/login"
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-10">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Sistema Juan</h1>
+        <h1 className="text-2xl font-semibold">Sistema Repartos</h1>
         <p className="text-texto-suave">Entrá con tu usuario y tu contraseña{conGoogle ? " o con Google" : ""}.</p>
       </header>
       {!conectado && (

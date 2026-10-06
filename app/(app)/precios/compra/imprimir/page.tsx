@@ -10,7 +10,7 @@ import { BotonImprimir } from "@/ui/boton-imprimir";
 import { UNIDADES_CORTAS, haceDias } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "DOC-06 Lista de precios de compra · Sistema Juan" };
+export const metadata: Metadata = { title: "DOC-06 Lista de precios de compra · Sistema Repartos" };
 
 /**
  * DOC-06 Lista general de precios de compra (09): por proveedor, en el orden del recorrido del

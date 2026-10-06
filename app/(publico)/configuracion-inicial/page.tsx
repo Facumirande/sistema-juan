@@ -14,7 +14,7 @@ import { Aviso, Campo } from "@/ui/formularios";
 
 import { configurarSistema } from "./acciones";
 
-export const metadata: Metadata = { title: "Primer uso · Sistema Juan" };
+export const metadata: Metadata = { title: "Primer uso · Sistema Repartos" };
 
 /**
  * Primer uso: se ofrece solo mientras el sistema no tiene usuarios. Crea la cuenta de quien lo

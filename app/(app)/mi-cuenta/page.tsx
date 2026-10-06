@@ -13,7 +13,7 @@ import { clasesBoton } from "@/ui/formularios";
 import { cambiarMiClave } from "./acciones";
 import { FormularioPerfil } from "./perfil";
 
-export const metadata: Metadata = { title: "Mi cuenta · Sistema Juan" };
+export const metadata: Metadata = { title: "Mi cuenta · Sistema Repartos" };
 
 /** P-03 Mi cuenta: perfil (nombre y color con los que te ven los demás) y cambio de contraseña. */
 export default async function PaginaMiCuenta() {

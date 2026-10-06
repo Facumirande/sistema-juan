@@ -11,6 +11,7 @@ import { sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
 import type { PrecioVenta } from "@/dominio/precios/venta";
 import { hoyYSugerida } from "@/modulos/pedidos/jornadas";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, numeroOpcional, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -278,6 +279,7 @@ export async function cambiarRecargo(db: BaseDatos, authUserId: string, datos: z
       datosAntes: { recargo: antes },
       datosDespues: { recargo: valor },
     });
+    await registrarActividad(tx, c, d.ambito === "CLIENTE" && d.id ? { accion: "PRECIO", entidadTipo: "CLIENTE", entidadId: d.id, resumen: `cambió la ganancia ${descripcion}` } : d.ambito === "PRODUCTO" && d.id ? { accion: "PRECIO", entidadTipo: "PRODUCTO", entidadId: d.id, resumen: `cambió la ganancia ${descripcion}` } : { accion: "PRECIO", entidadTipo: "PRODUCTO", resumen: `cambió la ganancia ${descripcion}` });
     if (d.ambito === "GLOBAL" || filtro.clienteId || filtro.productoIds?.length) await recalcularPedidosPendientes(tx, filtro);
   });
 }

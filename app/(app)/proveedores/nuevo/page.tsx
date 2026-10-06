@@ -5,7 +5,7 @@ import { Encabezado } from "@/ui/formularios";
 
 import { FormularioProveedor } from "./formulario";
 
-export const metadata: Metadata = { title: "Nuevo proveedor · Sistema Juan" };
+export const metadata: Metadata = { title: "Nuevo proveedor · Sistema Repartos" };
 
 /** Alta guiada de un proveedor (P-20): tres preguntas; lo demás, opcional. */
 export default async function NuevoProveedor() {

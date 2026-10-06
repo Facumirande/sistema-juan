@@ -29,7 +29,8 @@ export async function ubicarPuntoAccion(_estado: EstadoAccion, datos: FormData):
 export async function ubicarSalidaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const coordenada = coordenadaDe(datos);
-    await ubicarSalida(db, authUserId, { coordenada });
+    const direccion = campo(datos, "direccion");
+    await ubicarSalida(db, authUserId, direccion ? { coordenada, direccion } : { coordenada });
     return { ok: true, mensaje: coordenada ? "Punto de salida guardado." : "Punto de salida borrado." };
   });
 }

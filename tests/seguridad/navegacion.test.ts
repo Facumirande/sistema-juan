@@ -17,9 +17,9 @@ describe("menú por permisos (08 §2.2)", () => {
     expect(menu[0]?.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Mi reparto", "Actividad y notas"]);
   });
 
-  it("quien maneja todos los repartos no ve \"Mi reparto\": usa el viaje de entrega", () => {
+  it("quien maneja todos los repartos no ve \"Mi reparto\": usa Logística", () => {
     const dia = menuPara(PERMISOS).find((g) => g.grupo === "Día de trabajo")!;
-    expect(dia.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Nuevo pedido", "Lista de compras", "Viaje de entrega", "Actividad y notas"]);
+    expect(dia.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Nuevo pedido", "Lista de compras", "Logística", "Actividad y notas"]);
   });
 
   it("el VENDEDOR no ve proveedores, precios de compra ni configuración", () => {

@@ -9,7 +9,7 @@ import { Aviso, Encabezado } from "@/ui/formularios";
 
 import { FormularioProducto } from "./formulario";
 
-export const metadata: Metadata = { title: "Nuevo producto · Sistema Juan" };
+export const metadata: Metadata = { title: "Nuevo producto · Sistema Repartos" };
 
 /** Alta guiada de un producto (P-10): paso a paso, con la tarjeta de cómo va a quedar. */
 export default async function NuevoProducto() {

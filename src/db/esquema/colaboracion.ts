@@ -69,12 +69,15 @@ export const actividad = pgTable(
     /** Día de trabajo al que corresponde, si corresponde a uno. */
     jornadaId: uuid("jornada_id"),
     resumen: text("resumen").notNull(),
+    /** A quién le toca enterarse en particular (le pasaron un pedido, lo habilitaron…); nulo = a todos. */
+    paraUsuarioId: uuid("para_usuario_id"),
   },
   (t) => [
     index("actividad_empresa_fecha").on(t.empresaId, t.ocurridaEn.desc()),
     index("actividad_entidad").on(t.empresaId, t.entidadTipo, t.entidadId, t.ocurridaEn.desc()),
     index("actividad_usuario").on(t.empresaId, t.usuarioId, t.ocurridaEn.desc()),
     foreignKey({ name: "actividad_usuario_fk", columns: [t.empresaId, t.usuarioId], foreignColumns: [usuario.empresaId, usuario.id] }),
+    foreignKey({ name: "actividad_para_fk", columns: [t.empresaId, t.paraUsuarioId], foreignColumns: [usuario.empresaId, usuario.id] }),
     foreignKey({ name: "actividad_jornada_fk", columns: [t.empresaId, t.jornadaId], foreignColumns: [jornada.empresaId, jornada.id] }),
     check("actividad_resumen", sql`char_length(trim(${t.resumen})) > 0`),
   ],

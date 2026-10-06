@@ -86,10 +86,12 @@ describe("el tablero", () => {
     expect(columna("en_lista").sort()).toEqual(["Hospital San Martín", "Verdulería Don Pepe"]);
     const hospital = t.columnas.find((c) => c.clave === "en_lista")!.tarjetas.find((x) => x.cliente === "Hospital San Martín")!;
     expect(hospital.avance).toEqual({ que: "comprado", hechos: 0, total: 2 });
-    expect(hospital.productos).toEqual([
-      { nombre: "Tomate redondo", cantidad: "30 kg", grupo: "VERDURA", hecha: false, aviso: null },
-      { nombre: "Papa", cantidad: "50 kg", grupo: "VERDURA", hecha: false, aviso: null },
+    expect(hospital.productos).toMatchObject([
+      { nombre: "Tomate redondo", cantidad: "30 kg", grupo: "VERDURA", hecha: false, aviso: null, compra: "PENDIENTE", tildado: false },
+      { nombre: "Papa", cantidad: "50 kg", grupo: "VERDURA", hecha: false, aviso: null, compra: "PENDIENTE", tildado: false },
     ]);
+    // Cada producto trae su renglón de la lista de compras, para tildarlo desde la tarjeta.
+    expect(hospital.productos.every((p) => typeof p.listaItemId === "string")).toBe(true);
   });
 
   it("prioridad, plazo y quién se encarga; la prioridad alta va primero", async () => {

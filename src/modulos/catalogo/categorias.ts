@@ -5,6 +5,7 @@ import { auditar, diferencias } from "@/db/auditoria";
 import { categoria, grupoProducto, producto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { enteroOpcional, textoObligatorio, validar } from "@/modulos/validacion";
 
@@ -76,6 +77,7 @@ export async function guardarCategoria(db: BaseDatos, authUserId: string, datos:
         resumen: `Alta de la categoría ${d.nombre}.`,
         datosDespues: valores,
       });
+      await registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "PRODUCTO", resumen: `agregó la categoría ${d.nombre}` });
       return nueva!.id;
     }
 
@@ -94,6 +96,7 @@ export async function guardarCategoria(db: BaseDatos, authUserId: string, datos:
       datosAntes: cambios.datosAntes,
       datosDespues: cambios.datosDespues,
     });
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "PRODUCTO", resumen: `cambió la categoría ${d.nombre}` });
     return d.id;
   });
 }

@@ -24,7 +24,7 @@ import { TablaOfertas, permisosOfertas } from "../../precios/compra/tabla-oferta
 import { cambiarEstadoProveedorAccion, editarProveedorAccion } from "../acciones";
 import { CamposProveedor } from "../campos-proveedor";
 
-export const metadata: Metadata = { title: "Proveedor · Sistema Juan" };
+export const metadata: Metadata = { title: "Proveedor · Sistema Repartos" };
 
 /** P-21 Ficha de proveedor: datos, productos y precios, crédito (08 §5.4). */
 export default async function FichaDeProveedor({ params, searchParams }: PageProps<"/proveedores/[id]">) {

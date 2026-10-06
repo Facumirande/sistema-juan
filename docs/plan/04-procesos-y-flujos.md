@@ -216,7 +216,7 @@ Ejemplo con la jornada del jueves 24/09 (la hora de corte es configurable).
 | Mié 23/09, 08:00–19:30 | Llegan pedidos por WhatsApp y teléfono; se cargan en **Nuevo pedido** ("Lo que suele pedir", "Repetir su último pedido"). Quedan en la columna **Pedidos** del tablero. | `ABIERTA` |
 | Mié 23/09, 20:00 | Hora de corte. Desde el tablero se mandan los pedidos a la **Lista de compras** (se puede imprimir, `DOC-01`). | `COMPRANDO` |
 | Mié 23/09, 21:30 | Pedido tardío: el restaurante agrega 10 kg de cebolla. La lista avisa que quedó desactualizada y se vuelve a calcular mostrando la diferencia. | `COMPRANDO` |
-| Jue 24/09, 04:30–06:00 | Compra en el mercado con la lista en el celular: **✓ Lo compré** en cada producto. La lista se va tachando, el semáforo de cada proveedor se actualiza y los pedidos con todo comprado pasan a **Comprado**. Lo que no hubo se marca "No lo conseguí". | `COMPRANDO` |
+| Jue 24/09, 04:30–06:00 | Compra en el mercado con la lista en el celular: **✓ Lo compré** en cada producto (o, sin anotar precios, se tilda en la tarjeta o se arrastra la tarjeta a Comprado, 5.d.5b). La lista se va tachando, el semáforo de cada proveedor se actualiza y los pedidos con todo comprado pasan a **Comprado**. Lo que no hubo se marca "No lo conseguí". | `COMPRANDO` |
 | Jue 24/09, 06:00–07:30 | **Empezar a preparar**: cada cliente con su lista. "✓ Está todo" o "Falta algo" con el motivo; al **marcar como preparado** se hacen `DOC-02` y `DOC-03`. | `PREPARANDO` |
 | Jue 24/09, 07:00 | **Viaje de entrega**: el mejor orden de las paradas, se arma el reparto, se imprimen los remitos y la hoja de ruta `DOC-04` y sale. | `REPARTIENDO` |
 | Jue 24/09, 07:15–11:00 | Entregas: confirmación en el celular con quién recibió y las diferencias. Si hay diferencias se rehacen los remitos. | `REPARTIENDO` |
@@ -361,6 +361,17 @@ Toda cancelación desde `CONFIRMADO` o `EN_COMPRA` y toda modificación en `EN_C
 | Las dos personas cambian el mismo pedido a la vez | No hay bloqueo: vale el último que guarda; el historial del pedido muestra quién cambió qué. |
 | Pedido cargado en el día equivocado | Si todavía no está en la lista de compras, se pasa a otro día desde el detalle del pedido. Si ya está, primero se lo saca de la lista desde el tablero. |
 | Pedido sin precio calculable (producto sin costo ni precio fijo) | Se guarda igual con alerta "sin precio"; debe resolverse antes de emitir `DOC-03` (RN-087). |
+
+#### 5.b.6 Pedidos desde una planilla de Excel
+
+Para quien arma los pedidos en una planilla (o los recibe así). Desde el tablero, **📊 Excel** (08 P-43):
+
+1. Se baja la **planilla modelo** (trae los títulos y, en otras hojas, los clientes y los productos con su código y sus envases).
+2. Se escribe una fila por producto: cliente, código (o nombre) del producto y cantidad; opcionalmente la fecha de entrega, el envase y una nota. Las filas del mismo cliente y día forman un pedido; el cliente y la fecha vacíos valen los de la fila de arriba.
+3. Se sube el archivo. El sistema **primero muestra lo que entendió**: los pedidos que saldrían, y si un cliente ya tiene un pedido para ese día. Si alguna fila no se entiende (un cliente o un código que no existe, una cantidad con coma en un producto que va por unidad, una fecha que ya pasó, un día cerrado), lo dice fila por fila y no carga nada: se corrige la planilla y se vuelve a subir.
+4. **Cargar** los guarda todos juntos, o ninguno. Quedan en la columna Pedidos, cada uno con su número y su registro en la actividad, como los cargados a mano.
+
+Al revés, **Bajar los pedidos a Excel** da los pedidos de un día con las mismas columnas (más el número de pedido y la etapa), para revisarlos, compartirlos o volver a subirlos otro día cambiando la fecha.
 
 ---
 
@@ -634,6 +645,16 @@ En la misma lista de compras, cada producto tiene **No lo conseguí / cambiar la
 - **Cambiar la cantidad** con motivo, si se decide comprar otra cantidad (RN-050).
 
 Lo que queda sin tachar se puede comprar más tarde (otro puesto o entrega del proveedor en el depósito). Las líneas con excedente mayor a un bulto se destacan (RN-061).
+
+#### 5.d.5b Tildar sin anotar la compra
+
+No siempre se quiere anotar cada compra en el momento (por ejemplo, si se compró con la lista impresa). Para eso están los tildes (RN-051b):
+
+- **En la tarjeta del tablero** (columna Lista de compras), cada producto tiene ✓ "ya se compró" y ✕ "no se consiguió". En la lista de compras, **☑ Solo tildar** hace lo mismo que el ✓.
+- **Arrastrar la tarjeta a Comprado** tilda de una vez todo lo que le faltaba, sin tildar producto por producto. Devolverla a Lista de compras saca esos tildes.
+- El tilde es del producto en la lista del día: si el tomate se tildó en la tarjeta del hospital, también queda tildado en la del restaurante.
+- Un producto tildado **cuenta como comprado** para el tablero y para preparar (se propone separar lo pedido, RN-115b), pero **no genera compra**: no suma deuda con ningún proveedor, no actualiza precios y el costo del día sigue siendo el de referencia. Para que quede la compra con su puesto y su precio, sigue estando **✓ Lo compré** (antes o después de tildar).
+- Si después de tildar entra otro pedido que lleva ese producto, al rearmar la lista el tilde se pierde y el producto vuelve a quedar por comprar, con el aviso "cambió un pedido después de comprar".
 
 #### 5.d.6 Anulación y corrección
 

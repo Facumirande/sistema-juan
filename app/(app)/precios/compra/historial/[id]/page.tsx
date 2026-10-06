@@ -9,7 +9,7 @@ import { idDeRuta } from "@/ui/accion-servidor";
 import { ORIGENES_PRECIO, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { Encabezado, Tabla } from "@/ui/formularios";
 
-export const metadata: Metadata = { title: "Historial de precios · Sistema Juan" };
+export const metadata: Metadata = { title: "Historial de precios · Sistema Repartos" };
 
 /** P-29 Historial de precios de compra de una oferta (05 §2.3). */
 export default async function HistorialDePrecios({ params }: PageProps<"/precios/compra/historial/[id]">) {

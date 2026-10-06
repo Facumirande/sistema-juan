@@ -12,7 +12,7 @@ import { Aviso, Campo, Encabezado, Tabla, Tarjeta, clasesBoton } from "@/ui/form
 
 import { anularComprobanteAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Comprobante · Sistema Juan" };
+export const metadata: Metadata = { title: "Comprobante · Sistema Repartos" };
 
 /** P-87 Detalle de comprobante. */
 export default async function DetalleComprobante({ params }: PageProps<"/facturacion/[id]">) {

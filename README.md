@@ -1,4 +1,4 @@
-# Sistema Juan
+# Sistema Repartos
 
 Sistema de gestión para distribuidores de frutas y verduras: pedidos (tablero tipo Trello), lista de compras para el mercado, compras y deudas con proveedores, preparación por cliente, viaje de entrega, facturación interna y balance. El plan completo está en [`docs/plan/`](docs/plan/README.md) y las decisiones fijas en [`PARAMETROS-DEL-PROYECTO.md`](PARAMETROS-DEL-PROYECTO.md).
 
@@ -40,5 +40,7 @@ tests/               dominio/, seguridad/, integracion/
 ```
 
 ## Publicar
+
+En Vercel: importar el repositorio, cargar las variables de `.env.example` (menos `DATABASE_MIGRACIONES_URL`, que solo se usa para aplicar migraciones desde la computadora) y desplegar. `vercel.json` fija la región São Paulo (`gru1`), la misma de la base. `DATABASE_URL` debe ser la del pooler de Supabase en modo transacción (puerto 6543). En Supabase → Authentication → URL Configuration, agregar la dirección de Vercel.
 
 Los pasos para ponerlo en producción (proyecto de Supabase aparte, migraciones con `pnpm db:aplicar`, variables en Vercel, primer uso y carga de los datos reales) están en [`docs/plan/10-plan-de-implementacion.md`](docs/plan/10-plan-de-implementacion.md) §3 y §5. Nunca publicar entre las 02:00 y las 13:00.

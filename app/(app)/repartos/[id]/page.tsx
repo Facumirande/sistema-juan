@@ -26,7 +26,7 @@ import {
 import { paradasDeReparto } from "../../viaje/paradas";
 import { PlanificadorDeViaje } from "../../viaje/planificador";
 
-export const metadata: Metadata = { title: "Reparto · Sistema Juan" };
+export const metadata: Metadata = { title: "Reparto · Sistema Repartos" };
 
 /** P-76 Armar reparto: quién, en qué, qué paradas y en qué orden. */
 export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]">) {
@@ -47,7 +47,7 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
     <section className="flex max-w-4xl flex-col gap-6">
       <Encabezado
         titulo={r.numero}
-        volver={{ ruta: `/viaje?fecha=${r.fecha}`, texto: "Viaje de entrega" }}
+        volver={{ ruta: `/viaje?fecha=${r.fecha}`, texto: "Logística" }}
         descripcion={[fechaConDia(r.fecha), r.repartidor, r.vehiculo, r.salida ? `salió ${hora(r.salida)}` : r.salidaPrevista && `sale ${hora(r.salidaPrevista)}`, r.regreso && `volvió ${hora(r.regreso)}`]
           .filter(Boolean)
           .join(" · ")}

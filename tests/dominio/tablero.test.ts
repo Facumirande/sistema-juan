@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   COLUMNAS,
   accionAlMover,
+  porQueNoSeMueve,
   columnaDePedido,
   columnaDeTarjeta,
   estadoDelPlazo,
@@ -63,8 +64,25 @@ describe("tablero de pedidos", () => {
   it("arrastrar una tarjeta: confirmar, agregar a la lista o sacarla", () => {
     expect(accionAlMover("pedidos", "en_lista")).toBe("AGREGAR_A_LISTA");
     expect(accionAlMover("en_lista", "pedidos")).toBe("SACAR_DE_LISTA");
-    expect(accionAlMover("pedidos", "comprados")).toBeNull();
+    // A Comprado se pasa sin tildar producto por producto, y se puede volver.
+    expect(accionAlMover("en_lista", "comprados")).toBe("MARCAR_COMPRADO");
+    expect(accionAlMover("comprados", "en_lista")).toBe("DESMARCAR_COMPRADO");
+    expect(accionAlMover("pedidos", "comprados")).toBe("AGREGAR_Y_COMPRAR");
+    expect(accionAlMover("comprados", "pedidos")).toBe("SACAR_DE_LISTA");
+    // Soltar en Preparando empieza a preparar el día; de ahí en más avanzan solas.
+    expect(["pedidos", "en_lista", "comprados"].map((c) => accionAlMover(c as "pedidos", "preparando"))).toEqual(["PREPARAR", "PREPARAR", "PREPARAR"]);
     expect(accionAlMover("preparando", "en_lista")).toBeNull();
+    expect(accionAlMover("en_lista", "en_camino")).toBeNull();
+    expect(accionAlMover("en_camino", "entregados")).toBeNull();
+    expect(accionAlMover("pedidos", "pedidos")).toBeNull();
+  });
+
+  it("lo que no se mueve arrastrando dice dónde se hace", () => {
+    expect(porQueNoSeMueve("en_camino", "entregados")).toMatchObject({ ir: "viaje" });
+    expect(porQueNoSeMueve("preparando", "en_camino")).toMatchObject({ ir: "viaje" });
+    expect(porQueNoSeMueve("preparando", "pedidos")).toMatchObject({ ir: "preparacion" });
+    expect(porQueNoSeMueve("en_lista", "en_camino").mensaje).toContain("primero hay que prepararlo");
+    expect(porQueNoSeMueve("pedidos", "entregados")).toMatchObject({ ir: "preparacion" });
   });
 
   it("qué se puede hacer con lo elegido", () => {

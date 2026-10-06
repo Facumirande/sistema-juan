@@ -290,6 +290,7 @@ export async function anularReparto(db: BaseDatos, authUserId: string, datos: { 
       .where(eq(entrega.repartoId, r.id));
     await tx.update(reparto).set({ estado: "ANULADO", anuladoEn: sql`now()`, anuladoPor: c.usuarioId, motivoAnulacion: motivo, actualizadoPor: c.usuarioId }).where(eq(reparto.id, r.id));
     await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "reparto", entidadId: r.id, resumen: `Anulación de ${numeroReparto(r.numero)}.`, motivo });
+    await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "REPARTO", entidadId: r.id, jornadaId: r.jornadaId, resumen: `anuló el reparto ${numeroReparto(r.numero)} (${motivo})` });
   });
 }
 

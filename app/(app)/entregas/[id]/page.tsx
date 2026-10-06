@@ -15,7 +15,7 @@ import { Aviso, Campo, CampoNumero, Encabezado, Selector, Tabla, Tarjeta, clases
 import { anularEntregaAccion, corregirEntregaAccion, emitirDocumentosAccion } from "../acciones";
 import { FormulariosConfirmacion } from "../confirmacion";
 
-export const metadata: Metadata = { title: "Entrega · Sistema Juan" };
+export const metadata: Metadata = { title: "Entrega · Sistema Repartos" };
 
 const cant = (v: string | null, u: string) => (v === null ? "—" : formatearCantidad(v, u as UnidadMedida));
 const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: true });

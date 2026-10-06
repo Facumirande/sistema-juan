@@ -35,7 +35,7 @@ export interface ResumenPersona {
 }
 
 /** Lo que se muestra: los tipos que la persona puede ver (el repartidor, sin entregas ni repartos ajenos). */
-function tiposVisibles(c: ContextoUsuario): TipoEntidad[] {
+export function tiposVisibles(c: ContextoUsuario): TipoEntidad[] {
   return (Object.keys(PERMISO_PARA_VER) as TipoEntidad[]).filter(
     (t) => c.permisos.tiene(PERMISO_PARA_VER[t]) && !((t === "ENTREGA" || t === "REPARTO") && !c.permisos.tiene("repartos.ver")),
   );

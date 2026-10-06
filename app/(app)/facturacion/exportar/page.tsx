@@ -9,7 +9,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Exportar para el contador · Sistema Juan" };
+export const metadata: Metadata = { title: "Exportar para el contador · Sistema Repartos" };
 
 const PATRON = /^\d{4}-\d{2}-\d{2}$/;
 

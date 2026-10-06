@@ -9,7 +9,7 @@ import { Campo, CampoNumero, Encabezado, Selector } from "@/ui/formularios";
 
 import { guardarConfiguracionAccion } from "./acciones";
 
-export const metadata: Metadata = { title: "Configuración · Sistema Juan" };
+export const metadata: Metadata = { title: "Configuración · Sistema Repartos" };
 
 function Grupo({ titulo, ayuda, children }: { titulo: string; ayuda: string; children: React.ReactNode }) {
   return (

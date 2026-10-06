@@ -10,7 +10,7 @@ import { BotonImprimir } from "@/ui/boton-imprimir";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Movimientos · Sistema Juan" };
+export const metadata: Metadata = { title: "Movimientos · Sistema Repartos" };
 
 const PATRON = /^\d{4}-\d{2}-\d{2}$/;
 const TIPOS: Record<TipoRegistro, { nombre: string; plural: string; ayuda: string }> = {

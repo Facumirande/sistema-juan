@@ -16,7 +16,8 @@ import { AreaTexto, Campo, CampoNumero, Casilla, Encabezado, Estado, Selector, T
 
 import { HiloDeNotas } from "../../actividad/notas";
 import { crearOfertaAccion } from "../../precios/compra/acciones";
-import { TablaOfertas, permisosOfertas } from "../../precios/compra/tabla-ofertas";
+import { permisosOfertas } from "../../precios/compra/tabla-ofertas";
+import { TarjetasDeOfertas } from "../../precios/compra/tarjetas-ofertas";
 import {
   agregarPresentacionAccion,
   cambiarEstadoPresentacionAccion,
@@ -25,7 +26,7 @@ import {
   editarProductoAccion,
 } from "../acciones";
 
-export const metadata: Metadata = { title: "Producto · Sistema Juan" };
+export const metadata: Metadata = { title: "Producto · Sistema Repartos" };
 
 /** P-11 Ficha de producto: datos, presentaciones y proveedores con sus precios (08 §5.2). */
 export default async function FichaDeProducto({ params }: PageProps<"/productos/[id]">) {
@@ -51,30 +52,32 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo={`${dibujoDeProducto(p.nombre)} ${p.nombre}`} volver={{ ruta: "/productos", texto: "Productos" }} descripcion={`${p.codigo} · ${p.categoria} · se cuenta en ${UNIDADES[p.unidadBase]?.toLowerCase()}`}>
+      <Encabezado titulo={`${dibujoDeProducto(p.nombre, p.grupo)} ${p.nombre}`} volver={{ ruta: "/productos", texto: "Productos" }} descripcion={`Código ${p.codigo} · ${p.categoria} · se cuenta en ${UNIDADES[p.unidadBase]?.toLowerCase()}`}>
         <Estado activo={p.activo} />
       </Encabezado>
 
       {verCostos && (
-        <Tarjeta titulo="Proveedores y precios de compra">
+        <Tarjeta titulo="🏪 ¿Dónde se compra y a cuánto?">
+          <p className="text-texto-suave">
+            Los puestos del mercado que venden {p.nombre.toLowerCase()} y el precio de cada uno. Con esto la lista de compras te dice dónde conviene y se calcula el precio de venta. El precio también se actualiza solo cada vez que anotás una compra.
+          </p>
           {ofertas.length === 0 ? (
-            <p className="text-texto-suave">Ningún proveedor tiene precio para este producto todavía.</p>
+            <p className="rounded-xl bg-fondo p-3">Todavía no cargaste ningún puesto para este producto. Agregá uno acá abajo, o se carga solo con la primera compra que anotes.</p>
           ) : (
-            <TablaOfertas ofertas={ofertas} mostrar="proveedor" permisos={permisosOfertas(sesion.permisos)} />
+            <TarjetasDeOfertas ofertas={ofertas} permisos={permisosOfertas(sesion.permisos)} />
           )}
-          {p.proveedorPreferido && <p className="text-texto-suave">★ Proveedor preferido: {p.proveedorPreferido}</p>}
           {puedeCrearOferta && p.activo && (
             <details>
-              <summary className="min-h-11 cursor-pointer py-2 font-medium">+ Agregar un proveedor</summary>
+              <summary className="min-h-11 cursor-pointer py-2 font-semibold">＋ Agregar otro puesto que lo vende</summary>
               {deCompra.length === 0 ? (
-                <p className="text-texto-suave">Primero agregá una presentación de compra (ej. Cajón 18 kg).</p>
+                <p className="text-texto-suave">Primero agregá, más abajo, el envase en que se compra (por ejemplo Cajón 18 kg).</p>
               ) : (
-                <FormularioAccion accion={crearOfertaAccion} boton="Agregar oferta">
+                <FormularioAccion accion={crearOfertaAccion} boton="Agregar el puesto">
                   <input type="hidden" name="productoId" value={p.id} />
                   <div className="grid gap-4 sm:grid-cols-3">
-                    <Selector etiqueta="Proveedor" name="proveedorId" opciones={proveedores.map((pv) => ({ valor: pv.id, etiqueta: pv.nombre }))} />
-                    <Selector etiqueta="Presentación" name="presentacionId" opciones={deCompra} defaultValue={p.presentacionCompraDefaultId ?? undefined} />
-                    <CampoNumero etiqueta="Precio de la presentación" name="precio" placeholder="Ej. 21.600" />
+                    <Selector etiqueta="¿Qué puesto?" name="proveedorId" opciones={proveedores.map((pv) => ({ valor: pv.id, etiqueta: pv.nombre }))} />
+                    <Selector etiqueta="¿En qué envase lo vende?" name="presentacionId" opciones={deCompra} defaultValue={p.presentacionCompraDefaultId ?? undefined} />
+                    <CampoNumero etiqueta="¿A cuánto cada envase?" name="precio" placeholder="Ej. 21.600" />
                   </div>
                 </FormularioAccion>
               )}
@@ -83,9 +86,9 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
         </Tarjeta>
       )}
 
-      <Tarjeta titulo="Cómo se compra y se vende">
+      <Tarjeta titulo="📦 ¿En qué envases viene?">
         <p className="text-texto-suave">
-          Cada envase dice cuántos {unidad} trae: así se calcula el precio por {unidad}.
+          Se cuenta por {unidad}. Cada envase (cajón, bolsa…) dice cuántos {unidad} trae: con eso el sistema pasa el precio del envase a precio por {unidad} y sabe cuántos envases comprar.
         </p>
         <ul className="grid gap-3 sm:grid-cols-2">
           {p.presentaciones.map((pr) => {

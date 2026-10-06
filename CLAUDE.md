@@ -1,4 +1,4 @@
-# Sistema Juan
+# Sistema Repartos
 
 Sistema de gestión para distribuidores de frutas y verduras. Idioma del proyecto: español.
 

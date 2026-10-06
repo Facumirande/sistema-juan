@@ -12,7 +12,7 @@ import { BotonImprimir } from "@/ui/boton-imprimir";
 import { fechaConDia } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "DOC-07 Hoja de preparación · Sistema Juan" };
+export const metadata: Metadata = { title: "DOC-07 Hoja de preparación · Sistema Repartos" };
 
 const cant = (v: string, u: string) => formatearCantidad(v, u as UnidadMedida);
 const tabla = "w-full border-collapse text-left text-sm [&_td]:border-b [&_td]:border-borde [&_td]:px-1 [&_td]:py-1.5 [&_td]:align-top [&_th]:border-b [&_th]:border-texto [&_th]:px-1";

@@ -1,7 +1,10 @@
+import { strFromU8, unzipSync } from "fflate";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { dec } from "@/dominio/dinero/decimal";
+import { esErrorDeNegocio } from "@/dominio/errores";
 import { sumarDias } from "@/dominio/fechas/fechas";
+import { planillaXlsx } from "@/lib/planilla";
 import { confirmarEntrega, listarEntregas } from "@/modulos/entregas/entregas";
 import { iniciarPreparacion, marcarPreparada, obtenerPreparacion, prepararTodoComoPropuesto } from "@/modulos/entregas/preparacion";
 import { emitirDocumentosDelDia } from "@/modulos/entregas/repartos";
@@ -9,11 +12,23 @@ import { cerrarJornada } from "@/modulos/jornadas/cierre";
 import { diaDeTrabajo } from "@/modulos/jornadas/dia";
 import { crearRegla } from "@/modulos/precios-venta/reglas";
 import { balance, registroDeMovimientos } from "@/modulos/reportes/balance";
+import { balancesPorMes, libroDelMes } from "@/modulos/reportes/balance-mensual";
 
 import { prepararJornada2409, type Jornada2409 } from "./escenario-24-09";
 
 // La pantalla "Hoy" recorre la jornada del 24/09 paso a paso, y el balance y el registro de
 // movimientos la muestran después.
+
+/** Revisa que un XML abra y cierre bien todas sus etiquetas (Excel no abre un archivo mal armado). */
+function bienFormado(texto: string): boolean {
+  const pila: string[] = [];
+  for (const [, cierre, nombre, , solo] of texto.replace(/<\?xml[^>]*\?>/, "").matchAll(/<(\/?)([\w:]+)((?:\s+[\w:]+="[^"<]*")*)\s*(\/?)>/g)) {
+    if (solo) continue;
+    if (!cierre) pila.push(nombre!);
+    else if (pila.pop() !== nombre) return false;
+  }
+  return pila.length === 0 && !/<(?![\w/?])/.test(texto);
+}
 
 let j: Jornada2409;
 const estados = async (fecha?: string) => {
@@ -109,5 +124,46 @@ describe("balance y registro de movimientos", () => {
     expect(b).toBeInstanceOf(Error);
     const d = await diaDeTrabajo(j.base.db, j.comprador, j.manana);
     expect([d.plata.pedido, d.plata.entregado, d.plata.comprado]).toEqual([null, null, "653050.00"]);
+  });
+
+  it("el balance de cada mes se lista y se baja en Excel, con sus gráficos", async () => {
+    const mes = j.manana.slice(0, 7);
+    const meses = await balancesPorMes(j.base.db, j.admin, j.manana);
+    expect(meses[0]).toMatchObject({ mes, desde: `${mes}-01`, hasta: j.manana, enCurso: true, comprado: "653050.00" });
+    expect(meses.length).toBeLessThanOrEqual(24);
+
+    const libro = await libroDelMes(j.base.db, j.admin, mes, j.manana);
+    expect(libro.hojas.map((h) => h.nombre)).toEqual(["Resumen", "Gráficos", "Por día", "Clientes", "Productos"]);
+    const [resumen, graficos, porDia, clientes] = libro.hojas;
+    expect(resumen!.filas.find((x) => x[0] === "Se compró (mercadería)")![1]).toEqual({ numero: "653050" });
+    expect(resumen!.filas.find((x) => x[0] === "Se vendió")![1]).toEqual({ numero: dec(meses[0]!.vendido!).toString() });
+    // Un renglón por día del mes, hasta hoy, y de esas columnas salen los tres gráficos.
+    expect(porDia!.columnas).toEqual(["Día", "Vendido", "Comprado", "Ganancia", "Deuda con proveedores"]);
+    expect(porDia!.filas).toHaveLength(Number(j.manana.slice(8, 10)));
+    expect(porDia!.filas.at(-1)![2]).toEqual({ numero: "653050" });
+    expect(graficos!.graficos!.map((g) => g.series.map((x) => x.columna))).toEqual([[1, 2], [3], [4]]);
+    expect(clientes!.filas).toHaveLength(3);
+
+    const archivos = unzipSync(planillaXlsx(libro.hojas));
+    expect(Object.keys(archivos).filter((n) => n.startsWith("xl/charts/")).sort()).toEqual(["xl/charts/chart1.xml", "xl/charts/chart2.xml", "xl/charts/chart3.xml", "xl/charts/chart4.xml", "xl/charts/chart5.xml"]);
+    const grafico = strFromU8(archivos["xl/charts/chart1.xml"]!);
+    expect(grafico).toContain(`'Por día'!$B$2:$B$${porDia!.filas.length + 1}`);
+    expect(grafico).toContain("<c:v>Vendido</c:v>");
+    expect(strFromU8(archivos["xl/worksheets/sheet2.xml"]!)).toContain('<drawing r:id="rId1"/>');
+    expect(strFromU8(archivos["xl/worksheets/sheet1.xml"]!)).not.toContain("<drawing");
+    expect(bienFormado("<a><b x=\"1\"/></a>") && !bienFormado("<a><b></a>")).toBe(true);
+    for (const [nombre, bytes] of Object.entries(archivos)) expect([nombre, bienFormado(strFromU8(bytes))]).toEqual([nombre, true]);
+    // Cada parte del archivo está declarada y enlazada: el gráfico, su dibujo y la hoja que lo muestra.
+    expect(strFromU8(archivos["[Content_Types].xml"]!).match(/drawingml\.chart\+xml/g)).toHaveLength(5);
+    expect(strFromU8(archivos["xl/worksheets/_rels/sheet2.xml.rels"]!)).toContain("../drawings/drawing2.xml");
+    expect(strFromU8(archivos["xl/drawings/_rels/drawing2.xml.rels"]!).match(/charts\/chart\d\.xml/g)).toEqual(["charts/chart1.xml", "charts/chart2.xml", "charts/chart3.xml"]);
+    // El mismo mes da siempre el mismo archivo.
+    expect(planillaXlsx((await libroDelMes(j.base.db, j.admin, mes, j.manana)).hojas)).toEqual(planillaXlsx(libro.hojas));
+
+    // Un mes que todavía no llegó o más viejo que los que se guardan: se explica, no se arma nada.
+    for (const otro of [sumarDias(j.manana, 40).slice(0, 7), "2019-01", "cualquiera"]) {
+      const error = await libroDelMes(j.base.db, j.admin, otro, j.manana).catch((e: unknown) => e);
+      expect(esErrorDeNegocio(error, "VALIDACION")).toBe(true);
+    }
   });
 });

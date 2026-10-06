@@ -207,7 +207,7 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 | Cuándo | Después de generar o regenerar la lista (04 §5.c, paso 9); se reimprime a demanda. |
 | Fuente | `lista_compra`, `lista_compra_item`, `proveedor` (nombre y `ubicacion_mercado`), `producto`, `presentacion`; la deuda de cada puesto solo con `proveedores.ver_credito`. |
 | Agrupación | Por proveedor sugerido (plan de compra), en el orden de `ubicacion_mercado`; dentro, por orden de categoría y nombre. Al final, "Sin proveedor" (alerta `SIN_PROVEEDOR`). Variantes: **por producto** y **solo líneas de un comprador** (`comprador_asignado_id`). |
-| Filtro por defecto | Líneas `PENDIENTE` y `PARCIAL`; opción "incluir compradas". |
+| Filtro por defecto | La lista completa del día: lo que falta y lo ya comprado o no conseguido (marcado ☑ "YA COMPRADO" o ✕), con para qué cliente es cada producto. Opción "Solo lo que falta comprar" (`?falta=1`). Desde el botón 🖨️ Imprimir de la lista se abre directamente el diálogo de impresión. |
 
 **Contenido**
 

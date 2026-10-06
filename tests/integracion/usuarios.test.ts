@@ -124,7 +124,7 @@ describe("primer uso (sin pasos a mano en Supabase)", () => {
     expect(r.administradorIds).toHaveLength(1);
     expect(otrasCuentas.cuentas.size).toBe(1);
     const [e] = await enEmpresa(otraBase.db, EMPRESA_PRINCIPAL_ID, (tx) => tx.select().from(empresa));
-    expect(e?.nombre).toBe("Sistema Juan");
+    expect(e?.nombre).toBe("Sistema Repartos");
   });
 });
 

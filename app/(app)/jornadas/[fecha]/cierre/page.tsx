@@ -15,7 +15,7 @@ import { Aviso, Campo, Encabezado, Tabla, Tarjeta } from "@/ui/formularios";
 
 import { cerrarJornadaAccion, justificarPendientesAccion, reabrirJornadaAccion } from "../../acciones";
 
-export const metadata: Metadata = { title: "Cierre del día · Sistema Juan" };
+export const metadata: Metadata = { title: "Cierre del día · Sistema Repartos" };
 
 const pct = (v: string | null) => (v ? ` (${formatearNumero(v, { decimales: 2 })} %)` : "");
 

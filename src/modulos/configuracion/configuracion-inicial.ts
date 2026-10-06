@@ -17,7 +17,7 @@ import { darDeAltaEmpresa, type ResultadoAltaEmpresa } from "./alta-empresa";
  */
 export const EMPRESA_PRINCIPAL_ID = "00000000-0000-4000-8000-000000000001";
 
-const NOMBRE_POR_DEFECTO = "Sistema Juan";
+const NOMBRE_POR_DEFECTO = "Sistema Repartos";
 
 const YA_CONFIGURADO = "El sistema ya está listo. Entrá con tu usuario y contraseña.";
 

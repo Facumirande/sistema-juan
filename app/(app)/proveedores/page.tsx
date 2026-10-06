@@ -13,7 +13,7 @@ import { Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
-export const metadata: Metadata = { title: "Proveedores · Sistema Juan" };
+export const metadata: Metadata = { title: "Proveedores · Sistema Repartos" };
 
 const FRANJA: Readonly<Record<Semaforo, string>> = {
   VERDE: "var(--etiqueta-verde)",

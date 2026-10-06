@@ -8,7 +8,7 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 
 import { elegirClave } from "./acciones";
 
-export const metadata: Metadata = { title: "Elegí tu contraseña · Sistema Juan" };
+export const metadata: Metadata = { title: "Elegí tu contraseña · Sistema Repartos" };
 
 /** Primer ingreso con clave provisoria (02 §10.2): antes de usar el sistema, cada uno elige la suya. */
 export default async function PaginaElegirClave() {

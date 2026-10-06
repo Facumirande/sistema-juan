@@ -11,7 +11,7 @@ import { BotonImprimir } from "@/ui/boton-imprimir";
 import { Encabezado, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Reportes · Sistema Juan" };
+export const metadata: Metadata = { title: "Reportes · Sistema Repartos" };
 
 const PATRON = /^\d{4}-\d{2}-\d{2}$/;
 const REPORTES = { ventas: "Ventas y margen", compras: "Compras", jornadas: "Días cerrados", deuda: "Deuda con proveedores", diferencias: "Faltantes y diferencias" } as const;

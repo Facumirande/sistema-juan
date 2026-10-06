@@ -7,6 +7,7 @@ import type { BaseDatos } from "@/db/tipos";
 import { dec } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
+import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
@@ -128,6 +129,7 @@ export async function guardarConfiguracion(db: BaseDatos, authUserId: string, da
       datosAntes: Object.fromEntries(Object.keys(nuevos).map((k) => [k, antes[k as keyof typeof antes]])),
       datosDespues: nuevos,
     });
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "USUARIO", resumen: "cambió la configuración del negocio" });
     const cambianPrecios =
       antes.redondeoModo !== r.modo || !dec(antes.redondeoMultiplo).eq(r.multiplo) || !dec(antes.margenMinimoPct).eq(d.margenMinimoPct);
     return { pedidosRecalculados: cambianPrecios ? await recalcularPedidosPendientes(tx) : 0 };

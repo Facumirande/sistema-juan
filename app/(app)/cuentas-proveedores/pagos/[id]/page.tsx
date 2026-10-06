@@ -17,7 +17,7 @@ import { parametro } from "@/ui/parametros";
 import { anularPagoAccion, reimputarPagoAccion } from "../../acciones";
 import { ImputacionPago } from "../../imputacion-pago";
 
-export const metadata: Metadata = { title: "Pago · Sistema Juan" };
+export const metadata: Metadata = { title: "Pago · Sistema Repartos" };
 
 /** P-64 Detalle de pago: a qué compras se imputó, reimputar y anular (06 §4.5, §6.2). */
 export default async function DetalleDePago({ params, searchParams }: PageProps<"/cuentas-proveedores/pagos/[id]">) {

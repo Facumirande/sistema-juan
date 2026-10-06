@@ -6,20 +6,23 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { diasEntre, formatearFecha, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
+import { MESES_QUE_SE_GUARDAN } from "@/dominio/reportes/meses";
 import { agrupacionSugerida, type Agrupacion } from "@/dominio/reportes/periodos";
 import { balance } from "@/modulos/reportes/balance";
+import { balancesPorMes } from "@/modulos/reportes/balance-mensual";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
-import { BarrasHorizontales, GraficoColumnas, GraficoLineas } from "@/ui/graficos";
+import { BarrasHorizontales, GraficoBarras } from "@/ui/graficos";
 import { parametro } from "@/ui/parametros";
 
-export const metadata: Metadata = { title: "Balance · Sistema Juan" };
+export const metadata: Metadata = { title: "Balance · Sistema Repartos" };
 
 const PATRON = /^\d{4}-\d{2}-\d{2}$/;
-const AGRUPACIONES: Record<Agrupacion, { nombre: string; porPeriodo: string }> = {
-  DIA: { nombre: "Por día", porPeriodo: "por día" },
-  SEMANA: { nombre: "Por semana", porPeriodo: "por semana" },
-  MES: { nombre: "Por mes", porPeriodo: "por mes" },
+const AGRUPACIONES: Record<Agrupacion, { nombre: string }> = {
+  DIA: { nombre: "Por día" },
+  SEMANA: { nombre: "Por semana" },
+  MES: { nombre: "Por mes" },
 };
 const plata = (v: string | null) => (v === null ? "—" : formatearMoneda(v));
 const MEDALLAS = ["🥇", "🥈", "🥉"];
@@ -27,20 +30,20 @@ const punto = (v: string) => ({ valor: Number(v), texto: formatearMoneda(v) });
 
 type Pastel = "azul" | "violeta" | "naranja" | "amarillo" | "verde" | "rosa";
 
-/** Cuánto cambió contra el período anterior, con flecha y en palabras (nunca solo color). */
-function Cambio({ actual, anterior, subirEsBueno }: { actual: string | null; anterior: string | null; subirEsBueno: boolean }) {
+/** Cuánto cambió contra los días anteriores, con flecha y en palabras (nunca solo color). */
+function Cambio({ actual, anterior, subirEsBueno, contra }: { actual: string | null; anterior: string | null; subirEsBueno: boolean; contra: string }) {
   if (actual === null || anterior === null) return null;
   const a = Number(actual);
   const b = Number(anterior);
   // Sin nada en el período anterior no hay con qué comparar: no se dice nada.
   if (b === 0) return null;
   const pct = Math.round(((a - b) / Math.abs(b)) * 100);
-  if (pct === 0) return <span className="text-sm text-texto-suave">= Igual que el período anterior</span>;
+  if (pct === 0) return <span className="text-sm text-texto-suave">= Igual que {contra}</span>;
   const sube = pct > 0;
   const bueno = sube === subirEsBueno;
   return (
     <span className={`text-sm font-semibold ${bueno ? "text-marca" : "text-error"}`}>
-      {sube ? "▲" : "▼"} {Math.abs(pct)} % {sube ? "más" : "menos"} que el período anterior
+      {sube ? "▲" : "▼"} {Math.abs(pct)} % {sube ? "más" : "menos"} que {contra}
     </span>
   );
 }
@@ -119,53 +122,81 @@ function Grafico({ titulo, icono, descripcion, children, tabla }: { titulo: stri
         <h2 className="text-lg font-semibold">
           <span aria-hidden>{icono}</span> {titulo}
         </h2>
-        {descripcion && <p className="text-sm text-texto-suave">{descripcion}</p>}
+        {descripcion && <p className="text-texto-suave">{descripcion}</p>}
       </header>
       {children}
       <details className="print:hidden">
-        <summary className="cursor-pointer text-sm text-texto-suave">Ver tabla</summary>
+        <summary className="cursor-pointer text-sm text-texto-suave">Ver los números en una tabla</summary>
         <div className="mt-2">{tabla}</div>
       </details>
     </section>
   );
 }
 
-/** Balance: lo vendido, lo comprado, la ganancia y la deuda con proveedores a lo largo del tiempo. */
+/** "de hoy, martes 06/10", "de ayer, lunes 05/10" o "del domingo 04/10". */
+function nombreDelDia(fecha: string, hoy: string): string {
+  if (fecha === hoy) return `de hoy, ${fechaConDia(fecha)}`;
+  if (fecha === sumarDias(hoy, -1)) return `de ayer, ${fechaConDia(fecha)}`;
+  return `del ${fechaConDia(fecha)}`;
+}
+
+const conMayuscula = (texto: string) => texto.charAt(0).toUpperCase() + texto.slice(1);
+
+/**
+ * Balance: lo vendido, lo comprado, lo ganado y lo que se les debe a los proveedores, de un día o
+ * de un período, con gráficos de barras. Con un solo día elegido es el "balance del día": los
+ * números de ese día y, para comparar, las barras de ese día junto a los seis anteriores.
+ */
 export default async function PaginaBalance({ searchParams }: PageProps<"/balance">) {
   const sesion = await sesionParaPantalla("reportes.ver");
   const f = await searchParams;
   const hoy = hoyEnEmpresa(new Date(), sesion.zonaHoraria);
-  const h = parametro(f.hasta);
-  const d = parametro(f.desde);
+  const dia = parametro(f.dia);
+  const unSoloDia = dia && PATRON.test(dia) ? dia : null;
+  const h = unSoloDia ?? parametro(f.hasta);
+  const d = unSoloDia ?? parametro(f.desde);
   const hasta = h && PATRON.test(h) ? h : hoy;
   const desde = d && PATRON.test(d) && d <= hasta ? d : sumarDias(hasta, -29);
+  const unDia = desde === hasta;
   const a = parametro(f.por);
-  const agrupacion: Agrupacion = a && a in AGRUPACIONES ? (a as Agrupacion) : agrupacionSugerida(desde, hasta);
+  const agrupacion: Agrupacion = a && a in AGRUPACIONES && !unDia ? (a as Agrupacion) : agrupacionSugerida(desde, hasta);
   const largo = diasEntre(desde, hasta) + 1;
   const anteriorHasta = sumarDias(desde, -1);
   const anteriorDesde = sumarDias(anteriorHasta, -(largo - 1));
   const db = obtenerBaseDatos();
-  const [b, anterior] = await Promise.all([
+  const [b, anterior, semana, meses] = await Promise.all([
     balance(db, sesion.authUserId, { desde, hasta, agrupacion }),
     balance(db, sesion.authUserId, { desde: anteriorDesde, hasta: anteriorHasta, agrupacion: "MES" }),
+    // Con un solo día, las barras muestran ese día junto a los seis anteriores.
+    unDia ? balance(db, sesion.authUserId, { desde: sumarDias(hasta, -6), hasta, agrupacion: "DIA" }) : Promise.resolve(null),
+    balancesPorMes(db, sesion.authUserId, hoy),
   ]);
+  const g = semana ?? b;
   const t = b.totales;
   const ta = anterior.totales;
-  const etiquetas = b.series.map((s) => s.etiqueta);
+  const etiquetas = g.series.map((s) => s.etiqueta);
+  const cadaCuanto = unDia || agrupacion === "DIA" ? "día" : agrupacion === "SEMANA" ? "semana" : "mes";
+  const contra = unDia ? "el día anterior" : `los ${largo} días anteriores`;
   const rangos = [
-    { nombre: "Últimos 30 días", desde: sumarDias(hoy, -29), hasta: hoy },
+    { nombre: "Hoy", desde: hoy, hasta: hoy },
+    { nombre: "Ayer", desde: sumarDias(hoy, -1), hasta: sumarDias(hoy, -1) },
+    { nombre: "Últimos 7 días", desde: sumarDias(hoy, -6), hasta: hoy },
     { nombre: "Este mes", desde: `${hoy.slice(0, 7)}-01`, hasta: hoy },
-    { nombre: "Últimos 3 meses", desde: sumarDias(hoy, -90), hasta: hoy },
+    { nombre: "Últimos 30 días", desde: sumarDias(hoy, -29), hasta: hoy },
     { nombre: "Este año", desde: `${hoy.slice(0, 4)}-01-01`, hasta: hoy },
   ];
-  const enlace = (x: { desde: string; hasta: string; por?: Agrupacion }) => `/balance?desde=${x.desde}&hasta=${x.hasta}${x.por ? `&por=${x.por}` : ""}`;
+  const elegido = rangos.find((r) => r.desde === desde && r.hasta === hasta);
   const sinMovimientos = t.entregas === 0 && (t.comprado === null || t.comprado === "0.00");
+  const fechas = unDia ? `El ${fechaConDia(desde)}` : `Del ${formatearFecha(desde)} al ${formatearFecha(hasta)}`;
 
   return (
-    <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo="Balance" descripcion={`Del ${formatearFecha(desde)} al ${formatearFecha(hasta)}: cuánto se vendió, se compró y se ganó. Lo vendido son las entregas confirmadas, contadas en su día de entrega. Pasá el dedo o el mouse por los gráficos para ver cada valor.`}>
+    <section className="flex w-full flex-col gap-6">
+      <Encabezado
+        titulo={unDia ? `Balance ${nombreDelDia(desde, hoy)}` : "Balance"}
+        descripcion={`${unDia ? "Lo que se vendió, lo que se compró y lo que quedó ese día." : `${fechas}: lo que se vendió, lo que se compró y lo que quedó.`} Cuenta como vendido lo que ya se entregó.`}
+      >
         <Link href={`/balance/movimientos?desde=${desde}&hasta=${hasta}`} className={clasesBoton("secundario")}>
-          Movimientos
+          {unDia ? "Movimientos del día" : "Movimientos"}
         </Link>
         <Link href="/reportes" className={clasesBoton("secundario")}>
           Reportes
@@ -173,80 +204,137 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
       </Encabezado>
 
       <div className="flex flex-col gap-3 print:hidden">
-        <nav aria-label="Período" className="flex flex-wrap gap-2">
+        <nav aria-label="Qué fechas ver" className="flex flex-wrap gap-2">
           {rangos.map((r) => (
-            <Link key={r.nombre} href={enlace(r)} className={clasesBoton(r.desde === desde && r.hasta === hasta ? "principal" : "secundario")}>
+            <Link key={r.nombre} href={`/balance?desde=${r.desde}&hasta=${r.hasta}`} aria-current={r === elegido ? "true" : undefined} className={clasesBoton(r === elegido ? "principal" : "secundario")}>
               {r.nombre}
             </Link>
           ))}
         </nav>
-        <form method="get" className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Desde</span>
-            <input type="date" name="desde" defaultValue={desde} className="h-11 rounded-lg border border-borde bg-superficie px-3" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Hasta</span>
-            <input type="date" name="hasta" defaultValue={hasta} className="h-11 rounded-lg border border-borde bg-superficie px-3" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Agrupar</span>
-            <select name="por" defaultValue={agrupacion} className="h-11 rounded-lg border border-borde bg-superficie px-3">
-              {Object.entries(AGRUPACIONES).map(([clave, x]) => (
-                <option key={clave} value={clave}>
-                  {x.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" className={clasesBoton("secundario")}>
-            Ver
-          </button>
-        </form>
+        {unDia && (
+          <nav aria-label="Otro día" className="flex flex-wrap items-center gap-2">
+            <Link href={`/balance?dia=${sumarDias(desde, -1)}`} className={clasesBoton("secundario")}>
+              ← Día anterior
+            </Link>
+            {desde < hoy && (
+              <Link href={`/balance?dia=${sumarDias(desde, 1)}`} className={clasesBoton("secundario")}>
+                Día siguiente →
+              </Link>
+            )}
+            <form method="get" className="flex items-center gap-2">
+              <label className="flex items-center gap-2 font-medium">
+                Ver otro día
+                <input type="date" name="dia" defaultValue={desde} max={hoy} required className="h-11 rounded-lg border border-borde bg-superficie px-3" />
+              </label>
+              <button type="submit" className={clasesBoton("secundario")}>
+                Ver
+              </button>
+            </form>
+          </nav>
+        )}
+        <details open={!unDia && !elegido}>
+          <summary className="min-h-10 cursor-pointer py-2 font-medium text-texto-suave">📅 Elegir otras fechas</summary>
+          <form method="get" className="flex flex-wrap items-end gap-2 pt-1">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">Desde</span>
+              <input type="date" name="desde" defaultValue={desde} className="h-11 rounded-lg border border-borde bg-superficie px-3" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">Hasta</span>
+              <input type="date" name="hasta" defaultValue={hasta} className="h-11 rounded-lg border border-borde bg-superficie px-3" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">Una barra</span>
+              <select name="por" defaultValue={agrupacion} className="h-11 rounded-lg border border-borde bg-superficie px-3">
+                {Object.entries(AGRUPACIONES).map(([clave, x]) => (
+                  <option key={clave} value={clave}>
+                    {x.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className={clasesBoton("secundario")}>
+              Ver
+            </button>
+          </form>
+        </details>
       </div>
 
-      {!sinMovimientos && t.vendido !== null && (
-        <p className="rounded-2xl bg-[var(--pastel-verde)] p-4 text-lg text-[var(--pastel-verde-texto)]">
-          Del {formatearFecha(desde)} al {formatearFecha(hasta)} se vendieron <b>{plata(t.vendido)}</b> en {t.entregas} {t.entregas === 1 ? "entrega" : "entregas"}
-          {t.ganancia !== null && (
-            <>
-              {" "}
-              y se ganaron <b>{plata(t.ganancia)}</b>
-              {t.gananciaPct !== null && ` (${formatearNumero(t.gananciaPct, { decimales: 1 })} % de lo vendido)`}
-            </>
-          )}
-          .{t.deuda !== null && Number(t.deuda) > 0 && <> Hoy se les debe <b>{plata(t.deuda)}</b> a los proveedores.</>}
+      {sinMovimientos ? (
+        <p className="rounded-2xl border border-borde bg-superficie p-4 text-lg">
+          {unDia
+            ? desde === hoy
+              ? "Todavía no se entregó ni se compró nada hoy. Cuando se confirmen las entregas, acá van a aparecer las ventas del día."
+              : "Ese día no hubo ventas ni compras."
+            : "No hubo ventas ni compras en estas fechas. Probá con más días."}
         </p>
+      ) : (
+        t.vendido !== null && (
+          <p className="rounded-2xl bg-[var(--pastel-verde)] p-4 text-lg text-[var(--pastel-verde-texto)]">
+            {t.entregas === 0 ? (
+              <>{fechas} todavía no hay ventas entregadas</>
+            ) : (
+              <>
+                {fechas} se vendieron <b>{plata(t.vendido)}</b> en {t.entregas} {t.entregas === 1 ? "entrega" : "entregas"}
+              </>
+            )}
+            {t.comprado !== null && (
+              <>
+                {t.entregas === 0 ? ";" : ","} se compraron <b>{plata(t.comprado)}</b> de mercadería
+              </>
+            )}
+            {t.entregas > 0 && t.ganancia !== null && (
+              <>
+                {" "}
+                y {Number(t.ganancia) < 0 ? "se perdieron" : "quedaron de ganancia"} <b>{plata(String(Math.abs(Number(t.ganancia))))}</b>
+              </>
+            )}
+            .
+          </p>
+        )
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {b.ver.venta && (
           <Dato
-            titulo="Vendido"
+            titulo="Se vendió"
             icono="💰"
             color="azul"
             valor={plata(t.vendido)}
-            cambio={<Cambio actual={t.vendido} anterior={ta.vendido} subirEsBueno />}
-            detalle={`${t.entregas} ${t.entregas === 1 ? "entrega" : "entregas"}`}
-          />
-        )}
-        {b.ver.costo && (
-          <Dato
-            titulo="Ganancia"
-            icono="📈"
-            color="verde"
-            valor={plata(t.ganancia)}
-            cambio={<Cambio actual={t.ganancia} anterior={ta.ganancia} subirEsBueno />}
-            detalle={t.gananciaPct !== null ? `${formatearNumero(t.gananciaPct, { decimales: 1 })} % de lo vendido` : "Sin ventas"}
+            cambio={<Cambio actual={t.vendido} anterior={ta.vendido} subirEsBueno contra={contra} />}
+            detalle={`${t.entregas} ${t.entregas === 1 ? "entrega" : "entregas"} a clientes`}
           />
         )}
         {t.comprado !== null && (
-          <Dato titulo="Comprado" icono="🧺" color="naranja" valor={plata(t.comprado)} cambio={<Cambio actual={t.comprado} anterior={ta.comprado} subirEsBueno={false} />} detalle="Mercadería comprada para esos días" />
+          <Dato titulo="Se compró" icono="🧺" color="naranja" valor={plata(t.comprado)} cambio={<Cambio actual={t.comprado} anterior={ta.comprado} subirEsBueno={false} contra={contra} />} detalle="Mercadería del mercado" />
         )}
-        {t.pagado !== null && <Dato titulo="Pagado a proveedores" icono="💵" color="violeta" valor={plata(t.pagado)} detalle="Pagos en el período" />}
-        {t.deuda !== null && <Dato titulo="Deuda con proveedores hoy" icono="🏪" color="rosa" valor={plata(t.deuda)} enlace="/cuentas-proveedores" detalle="Ver las cuentas →" />}
-        {t.sinFacturar !== null && <Dato titulo="Entregado sin facturar" icono="🧾" color="amarillo" valor={plata(t.sinFacturar)} enlace="/facturacion" detalle="Ver facturación →" />}
+        {b.ver.costo && (
+          <Dato
+            titulo="Quedó de ganancia"
+            icono="📈"
+            color="verde"
+            valor={plata(t.ganancia)}
+            cambio={<Cambio actual={t.ganancia} anterior={ta.ganancia} subirEsBueno contra={contra} />}
+            detalle={t.gananciaPct !== null ? `${formatearNumero(t.gananciaPct, { decimales: 0 })} de cada 100 pesos vendidos` : "Lo vendido menos lo que costó"}
+          />
+        )}
+        {t.deuda !== null && <Dato titulo="Se les debe a los proveedores" icono="🏪" color="rosa" valor={plata(t.deuda)} enlace="/cuentas-proveedores" detalle="Hoy, en total · ver las cuentas →" />}
       </div>
+
+      {(t.pagado !== null || t.sinFacturar !== null) && (
+        <p className="flex flex-wrap gap-x-6 gap-y-1 text-texto-suave">
+          {t.pagado !== null && (
+            <span>
+              💵 Pagado a proveedores {unDia ? "ese día" : "en estas fechas"}: <b className="text-texto">{plata(t.pagado)}</b>
+            </span>
+          )}
+          {t.sinFacturar !== null && (
+            <Link href="/facturacion" className="underline-offset-4 hover:underline">
+              🧾 Entregado que todavía no se facturó: <b className="text-texto">{plata(t.sinFacturar)}</b> →
+            </Link>
+          )}
+        </p>
+      )}
 
       {b.ver.costo && t.vendido !== null && t.costoVendido !== null && t.ganancia !== null && Number(t.vendido) > 0 && (
         <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-superficie p-4 shadow-sm">
@@ -257,63 +345,63 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
         </section>
       )}
 
-      {sinMovimientos && <p className="text-texto-suave">No hubo ventas ni compras en estas fechas. Probá con un período más largo.</p>}
+      {unDia && <h2 className="text-xl font-semibold">Ese día comparado con los 6 anteriores</h2>}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {(b.ver.venta || t.comprado !== null) && (
+      {/* Un gráfico por renglón: cada uno ocupa todo el ancho de la pantalla. */}
+      <div className="flex flex-col gap-4">
+        {(g.ver.venta || g.totales.comprado !== null) && (
           <Grafico
-            titulo={`Ventas y compras ${AGRUPACIONES[agrupacion].porPeriodo}`}
+            titulo="Lo que se vendió y lo que se compró"
             icono="📊"
-            descripcion="Lo que se vendió (entregado) y lo que se compró en el mercado."
+            descripcion={`Cada ${cadaCuanto}, una barra por lo vendido y otra por lo comprado.`}
             tabla={
               <Tabla>
                 <thead>
                   <tr>
-                    <th>Período</th>
-                    {b.ver.venta && <th className="text-right">Vendido</th>}
-                    {t.comprado !== null && <th className="text-right">Comprado</th>}
+                    <th>{conMayuscula(cadaCuanto)}</th>
+                    {g.ver.venta && <th className="text-right">Vendido</th>}
+                    {g.totales.comprado !== null && <th className="text-right">Comprado</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {b.series.map((s) => (
+                  {g.series.map((s) => (
                     <tr key={s.periodo}>
                       <td>{s.etiqueta}</td>
-                      {b.ver.venta && <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.vendido)}</td>}
-                      {t.comprado !== null && <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.comprado)}</td>}
+                      {g.ver.venta && <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.vendido)}</td>}
+                      {g.totales.comprado !== null && <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.comprado)}</td>}
                     </tr>
                   ))}
                 </tbody>
               </Tabla>
             }
           >
-            <GraficoLineas
-              descripcion="Ventas y compras en el tiempo"
+            <GraficoBarras
+              descripcion={`Lo vendido y lo comprado por ${cadaCuanto}`}
               etiquetas={etiquetas}
               series={[
-                // Lo vendido se dibuja último, para que quede encima.
-                ...(t.comprado !== null ? [{ nombre: "Comprado", color: "serie-2" as const, puntos: b.series.map((s) => punto(s.valores.comprado)) }] : []),
-                ...(b.ver.venta ? [{ nombre: "Vendido", color: "serie-1" as const, puntos: b.series.map((s) => punto(s.valores.vendido)) }] : []),
+                ...(g.ver.venta ? [{ nombre: "Vendido", color: "serie-1" as const, puntos: g.series.map((s) => punto(s.valores.vendido)) }] : []),
+                ...(g.totales.comprado !== null ? [{ nombre: "Comprado", color: "serie-2" as const, puntos: g.series.map((s) => punto(s.valores.comprado)) }] : []),
               ]}
             />
           </Grafico>
         )}
 
-        {b.ver.costo && (
+        {g.ver.costo && (
           <Grafico
-            titulo={`Ganancia ${AGRUPACIONES[agrupacion].porPeriodo}`}
+            titulo="Lo que quedó de ganancia"
             icono="📈"
-            descripcion="Lo vendido menos lo que costó esa mercadería. En rojo, los períodos en que se perdió."
+            descripcion={`Lo vendido menos lo que costó esa mercadería, por ${cadaCuanto}. Si la barra va para abajo, se perdió.`}
             tabla={
               <Tabla>
                 <thead>
                   <tr>
-                    <th>Período</th>
+                    <th>{conMayuscula(cadaCuanto)}</th>
                     <th className="text-right">Vendido</th>
                     <th className="text-right">Ganancia</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {b.series.map((s) => (
+                  {g.series.map((s) => (
                     <tr key={s.periodo}>
                       <td>{s.etiqueta}</td>
                       <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.vendido)}</td>
@@ -324,25 +412,25 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               </Tabla>
             }
           >
-            <GraficoColumnas descripcion="Ganancia en el tiempo" nombre="Ganancia" etiquetas={etiquetas} puntos={b.series.map((s) => punto(s.valores.ganancia))} />
+            <GraficoBarras descripcion={`Ganancia por ${cadaCuanto}`} etiquetas={etiquetas} series={[{ nombre: "Ganancia", color: "serie-1", puntos: g.series.map((s) => punto(s.valores.ganancia)) }]} perdidaEnRojo />
           </Grafico>
         )}
 
-        {b.ver.deuda && (
+        {g.ver.deuda && (
           <Grafico
-            titulo="Deuda con proveedores"
+            titulo="Lo que se les debe a los proveedores"
             icono="🏪"
-            descripcion={`Lo que se les debía al final de cada ${agrupacion === "DIA" ? "día" : agrupacion === "SEMANA" ? "semana" : "mes"}.`}
+            descripcion={`Cuánto se debía al terminar cada ${cadaCuanto}. Si las barras suben, la deuda crece.`}
             tabla={
               <Tabla>
                 <thead>
                   <tr>
-                    <th>Período</th>
+                    <th>{conMayuscula(cadaCuanto)}</th>
                     <th className="text-right">Deuda</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {b.deuda.map((s) => (
+                  {g.deuda.map((s) => (
                     <tr key={s.periodo}>
                       <td>{s.etiqueta}</td>
                       <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.saldo)}</td>
@@ -352,14 +440,19 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               </Tabla>
             }
           >
-            <GraficoLineas descripcion="Deuda con proveedores en el tiempo" etiquetas={b.deuda.map((s) => s.etiqueta)} series={[{ nombre: "Deuda", color: "serie-2", puntos: b.deuda.map((s) => punto(s.valores.saldo)) }]} area />
+            <GraficoBarras descripcion={`Deuda con proveedores al terminar cada ${cadaCuanto}`} etiquetas={g.deuda.map((s) => s.etiqueta)} series={[{ nombre: "Deuda", color: "serie-2", puntos: g.deuda.map((s) => punto(s.valores.saldo)) }]} />
           </Grafico>
         )}
+      </div>
 
+      {b.ver.venta && (b.clientes.length > 0 || b.productos.length > 0) && <h2 className="text-xl font-semibold">{unDia ? "Las ventas del día" : "Lo más vendido en estas fechas"}</h2>}
+
+      <div className="flex flex-col gap-4">
         {b.ver.venta && b.clientes.length > 0 && (
           <Grafico
-            titulo="Clientes que más compraron"
+            titulo={unDia ? "A quién se le vendió" : "A quién se le vendió más"}
             icono="🏆"
+            descripcion="Cuánto compró cada cliente, del que más al que menos."
             tabla={
               <Tabla>
                 <thead>
@@ -381,14 +474,15 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               </Tabla>
             }
           >
-            <BarrasHorizontales filas={b.clientes.slice(0, 8).map((c, i) => ({ etiqueta: `${MEDALLAS[i] ?? `${i + 1}.`} ${c.cliente}`, valor: Number(c.vendido), texto: formatearMoneda(c.vendido), detalle: c.ganancia !== null ? `ganó ${formatearMoneda(c.ganancia)}` : null }))} />
+            <BarrasHorizontales filas={b.clientes.slice(0, 8).map((c, i) => ({ etiqueta: `${MEDALLAS[i] ?? `${i + 1}.`} ${c.cliente}`, valor: Number(c.vendido), texto: formatearMoneda(c.vendido), detalle: c.ganancia !== null ? `ganancia ${formatearMoneda(c.ganancia)}` : null }))} />
           </Grafico>
         )}
 
         {b.ver.venta && b.productos.length > 0 && (
           <Grafico
-            titulo="Productos más vendidos"
+            titulo={unDia ? "Qué se vendió" : "Qué se vendió más"}
             icono="🥬"
+            descripcion="Cuánta plata entró por cada producto."
             tabla={
               <Tabla>
                 <thead>
@@ -410,10 +504,69 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               </Tabla>
             }
           >
-            <BarrasHorizontales filas={b.productos.slice(0, 8).map((p) => ({ etiqueta: `${dibujoDeProducto(p.producto)} ${p.producto}`, valor: Number(p.vendido), texto: formatearMoneda(p.vendido), detalle: p.ganancia !== null ? `ganó ${formatearMoneda(p.ganancia)}` : null }))} />
+            <BarrasHorizontales filas={b.productos.slice(0, 8).map((p) => ({ etiqueta: `${dibujoDeProducto(p.producto)} ${p.producto}`, valor: Number(p.vendido), texto: formatearMoneda(p.vendido), detalle: p.ganancia !== null ? `ganancia ${formatearMoneda(p.ganancia)}` : null }))} />
           </Grafico>
         )}
       </div>
+
+      <section id="meses" className="flex flex-col gap-3 rounded-2xl border border-borde bg-superficie p-4 shadow-sm print:hidden">
+        <header>
+          <h2 className="text-lg font-semibold">
+            <span aria-hidden>📁</span> El balance de cada mes, en Excel
+          </h2>
+          <p className="text-texto-suave">
+            Un archivo por mes para guardar, imprimir o mandarle al contador: el resumen, los gráficos, el detalle día por día y lo vendido por cliente y por producto. Cada mes nuevo se agrega solo. Quedan en la lista los últimos {MESES_QUE_SE_GUARDAN} meses: los más viejos salen solos.
+          </p>
+        </header>
+        {meses.length === 0 ? (
+          <p className="rounded-xl bg-fondo p-3">Todavía no hay ningún mes con ventas o compras. Cuando se entregue o se compre algo, acá aparece el mes con su archivo.</p>
+        ) : (
+          <ul className="divide-y divide-borde">
+            {meses.map((m) => (
+              <li key={m.mes} className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">
+                <div className="min-w-48 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+                    <span className="first-letter:uppercase">{m.nombre}</span>
+                    {m.enCurso && <span className="rounded-full bg-marca/15 px-2.5 py-0.5 text-sm text-marca">Mes en curso</span>}
+                  </p>
+                  <p className="text-sm text-texto-suave">
+                    Del {formatearFecha(m.desde)} al {formatearFecha(m.hasta)}
+                    {m.enCurso && " (hasta hoy: el archivo se completa a medida que pasan los días)"}
+                  </p>
+                </div>
+                <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  {m.vendido !== null && (
+                    <div>
+                      <dt className="text-texto-suave">Se vendió</dt>
+                      <dd className="font-semibold tabular-nums">{formatearMoneda(m.vendido)}</dd>
+                    </div>
+                  )}
+                  {m.comprado !== null && (
+                    <div>
+                      <dt className="text-texto-suave">Se compró</dt>
+                      <dd className="font-semibold tabular-nums">{formatearMoneda(m.comprado)}</dd>
+                    </div>
+                  )}
+                  {m.ganancia !== null && (
+                    <div>
+                      <dt className="text-texto-suave">Ganancia</dt>
+                      <dd className={`font-semibold tabular-nums ${Number(m.ganancia) < 0 ? "text-error" : ""}`}>{formatearMoneda(m.ganancia)}</dd>
+                    </div>
+                  )}
+                </dl>
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/balance?desde=${m.desde}&hasta=${m.hasta}`} className={clasesBoton("secundario")}>
+                    Ver en pantalla
+                  </Link>
+                  <a href={`/balance/planilla?mes=${m.mes}`} className={clasesBoton("principal")}>
+                    ⬇ Bajar el Excel
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </section>
   );
 }

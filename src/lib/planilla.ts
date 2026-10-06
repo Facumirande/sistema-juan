@@ -1,19 +1,37 @@
 import { strToU8, zipSync, type Zippable } from "fflate";
 
-// Planillas para el contador (04 §5.g.3): un .xlsx con una hoja por tema, o los mismos datos en
-// CSV dentro de un .zip. El archivo depende solo de los datos (fecha fija en el zip, sin fechas
-// de creación): exportar dos veces lo mismo da archivos iguales.
+// Planillas de Excel: un .xlsx con una hoja por tema (y, si se piden, gráficos de barras), o los
+// mismos datos en CSV dentro de un .zip. El archivo depende solo de los datos (fecha fija en el
+// zip, sin fechas de creación): exportar dos veces lo mismo da archivos iguales.
 
 /** Texto, número (se guarda como número en la planilla) o vacío. */
 export type Celda = string | { numero: string } | null;
+
+/**
+ * Gráfico de barras dentro de una hoja. Toma los datos de las columnas de una hoja del mismo
+ * archivo (la fila 1 son los títulos: de ahí sale el nombre de cada serie) y ocupa todo el ancho
+ * de una pantalla, uno debajo del otro.
+ */
+export interface GraficoDeHoja {
+  titulo: string;
+  /** Nombre de la hoja de donde salen los datos. */
+  hoja: string;
+  /** Columna (desde 0) con el nombre de cada barra: el día, el cliente… */
+  etiquetas: number;
+  /** Columnas (desde 0) con los valores de cada serie y su color (hexadecimal, sin #). */
+  series: { columna: number; color: string }[];
+}
 
 export interface Hoja {
   nombre: string;
   columnas: string[];
   filas: Celda[][];
+  graficos?: GraficoDeHoja[];
 }
 
 const FECHA_FIJA = new Date("2000-01-01T00:00:00Z");
+/** Tamaño de cada gráfico, en columnas y filas de la hoja: el ancho de una pantalla. */
+const GRAFICO = { columnas: 22, filas: 24, separacion: 2 };
 
 const xml = (texto: string) => texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -34,41 +52,95 @@ function celdaXml(valor: Celda, ref: string, estilo: number): string {
   return `<c r="${ref}" t="inlineStr"${estilo ? ` s="${estilo}"` : ""}><is><t xml:space="preserve">${xml(valor)}</t></is></c>`;
 }
 
-function hojaXml(h: Hoja): string {
+/** Ancho de cada columna según lo más largo que tiene, para que se lea sin estirarlas a mano. */
+function anchosXml(h: Hoja): string {
+  const largo = (v: Celda | undefined) => (v === null || v === undefined ? 0 : typeof v === "object" ? 14 : v.length);
+  const anchos = h.columnas.map((titulo, j) => Math.min(60, Math.max(10, titulo.length + 2, ...h.filas.map((f) => largo(f[j]) + 2))));
+  if (anchos.length === 0) return "";
+  return `<cols>${anchos.map((a, j) => `<col min="${j + 1}" max="${j + 1}" width="${a}" customWidth="1"/>`).join("")}</cols>`;
+}
+
+function hojaXml(h: Hoja, conDibujo: boolean): string {
   const filas = [h.columnas, ...h.filas].map(
     (fila, i) => `<row r="${i + 1}">${fila.map((v, j) => celdaXml(v, `${columna(j)}${i + 1}`, i === 0 ? 1 : typeof v === "object" && v !== null ? 2 : 0)).join("")}</row>`,
   );
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>${filas.join("")}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>${anchosXml(h)}<sheetData>${filas.join("")}</sheetData>${conDibujo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
 }
 
 /** Nombre de hoja válido para Excel (hasta 31 caracteres, sin \ / ? * [ ] :). */
 const nombreHoja = (n: string) => n.replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
 
+// ─── Gráficos ───────────────────────────────────────────────────────────────────────────────────
+
+const ESPACIOS_GRAFICO = `xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
+const textoDe = (v: Celda | undefined) => (v === null || v === undefined ? "" : typeof v === "object" ? v.numero : v);
+const numeroDe = (v: Celda | undefined) => (typeof v === "object" && v !== null ? Number(v.numero) : 0);
+
+/** Un gráfico de barras verticales, con los valores guardados además de la referencia a la hoja. */
+function graficoXml(g: GraficoDeHoja, datos: Hoja): string {
+  const n = datos.filas.length;
+  const hoja = `'${nombreHoja(datos.nombre).replace(/'/g, "''")}'`;
+  const rango = (col: number) => `${hoja}!$${columna(col)}$2:$${columna(col)}$${n + 1}`;
+  const puntos = (col: number, valor: (v: Celda | undefined) => string | number) => datos.filas.map((f, i) => `<c:pt idx="${i}"><c:v>${xml(String(valor(f[col])))}</c:v></c:pt>`).join("");
+  const series = g.series
+    .map(
+      (s, i) =>
+        `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:strRef><c:f>${hoja}!$${columna(s.columna)}$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${xml(datos.columnas[s.columna] ?? "")}</c:v></c:pt></c:strCache></c:strRef></c:tx><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></c:spPr><c:invertIfNegative val="0"/><c:cat><c:strRef><c:f>${rango(g.etiquetas)}</c:f><c:strCache><c:ptCount val="${n}"/>${puntos(g.etiquetas, textoDe)}</c:strCache></c:strRef></c:cat><c:val><c:numRef><c:f>${rango(s.columna)}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${n}"/>${puntos(s.columna, numeroDe)}</c:numCache></c:numRef></c:val></c:ser>`,
+    )
+    .join("");
+  const linea = (color: string) => `<c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:ln></c:spPr>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace ${ESPACIOS_GRAFICO}><c:roundedCorners val="0"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1400" b="1"/></a:pPr><a:r><a:rPr lang="es-AR" sz="1400" b="1"/><a:t>${xml(g.titulo)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${series}<c:gapWidth val="40"/><c:axId val="1001"/><c:axId val="1002"/></c:barChart><c:catAx><c:axId val="1001"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="low"/>${linea("8C8C8C")}<c:crossAx val="1002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="1002"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines>${linea("D9D9D9")}</c:majorGridlines><c:numFmt formatCode="&quot;$&quot;#,##0" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="1001"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx></c:plotArea>${g.series.length > 1 ? `<c:legend><c:legendPos val="t"/><c:overlay val="0"/></c:legend>` : ""}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>`;
+}
+
+/** Dónde va cada gráfico de la hoja: debajo de sus filas, uno debajo del otro, a todo lo ancho. */
+function dibujoXml(cantidad: number, primeraFila: number): string {
+  const anclas = Array.from({ length: cantidad }, (_, i) => {
+    const desde = primeraFila + i * (GRAFICO.filas + GRAFICO.separacion);
+    const punto = (col: number, fila: number) => `<xdr:col>${col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fila}</xdr:row><xdr:rowOff>0</xdr:rowOff>`;
+    return `<xdr:twoCellAnchor><xdr:from>${punto(0, desde)}</xdr:from><xdr:to>${punto(GRAFICO.columnas, desde + GRAFICO.filas)}</xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 2}" name="Gráfico ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId${i + 1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${anclas.join("")}</xdr:wsDr>`;
+}
+
+const relaciones = (items: { tipo: string; destino: string }[]) =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${items
+    .map((r, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${r.tipo}" Target="${r.destino}"/>`)
+    .join("")}</Relationships>`;
+
 export function planillaXlsx(hojas: readonly Hoja[]): Uint8Array {
+  // Los gráficos que se pueden dibujar: los que apuntan a una hoja del archivo que tiene filas.
+  const graficos = hojas.map((h) =>
+    (h.graficos ?? []).flatMap((g) => {
+      const datos = hojas.find((x) => x.nombre === g.hoja);
+      return datos && datos.filas.length > 0 && g.series.length > 0 ? [{ g, datos }] : [];
+    }),
+  );
+  let numeroDeGrafico = 0;
+  const numeros = graficos.map((lista) => lista.map(() => ++numeroDeGrafico));
+  const tipos = [
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`,
+    `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`,
+    ...hojas.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`),
+    ...graficos.flatMap((lista, i) => (lista.length ? [`<Override PartName="/xl/drawings/drawing${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`] : [])),
+    ...numeros.flat().map((n) => `<Override PartName="/xl/charts/chart${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`),
+  ];
   const archivos: Zippable = {
     "[Content_Types].xml": strToU8(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${hojas
-        .map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
-        .join("")}</Types>`,
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${tipos.join("")}</Types>`,
     ),
-    "_rels/.rels": strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    ),
+    "_rels/.rels": strToU8(relaciones([{ tipo: "officeDocument", destino: "xl/workbook.xml" }])),
     "xl/workbook.xml": strToU8(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${hojas
         .map((h, i) => `<sheet name="${xml(nombreHoja(h.nombre))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
         .join("")}</sheets></workbook>`,
     ),
-    "xl/_rels/workbook.xml.rels": strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${hojas
-        .map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`)
-        .join("")}<Relationship Id="rId${hojas.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-    ),
+    "xl/_rels/workbook.xml.rels": strToU8(relaciones([...hojas.map((_, i) => ({ tipo: "worksheet", destino: `worksheets/sheet${i + 1}.xml` })), { tipo: "styles", destino: "styles.xml" }])),
     // Estilos: 0 normal, 1 encabezado en negrita, 2 número con separador de miles y 2 decimales.
     "xl/styles.xml": strToU8(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -76,7 +148,15 @@ export function planillaXlsx(hojas: readonly Hoja[]): Uint8Array {
     ),
   };
   hojas.forEach((h, i) => {
-    archivos[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(hojaXml(h));
+    const lista = graficos[i]!;
+    archivos[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(hojaXml(h, lista.length > 0));
+    if (lista.length === 0) return;
+    archivos[`xl/worksheets/_rels/sheet${i + 1}.xml.rels`] = strToU8(relaciones([{ tipo: "drawing", destino: `../drawings/drawing${i + 1}.xml` }]));
+    archivos[`xl/drawings/drawing${i + 1}.xml`] = strToU8(dibujoXml(lista.length, h.filas.length + 2));
+    archivos[`xl/drawings/_rels/drawing${i + 1}.xml.rels`] = strToU8(relaciones(numeros[i]!.map((n) => ({ tipo: "chart", destino: `../charts/chart${n}.xml` }))));
+    lista.forEach(({ g, datos }, k) => {
+      archivos[`xl/charts/chart${numeros[i]![k]}.xml`] = strToU8(graficoXml(g, datos));
+    });
   });
   return zipSync(archivos, { level: 6, mtime: FECHA_FIJA });
 }

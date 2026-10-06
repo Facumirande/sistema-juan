@@ -21,7 +21,7 @@ import { SemaforoCredito } from "@/ui/semaforo";
 import { pagarDeudaAccion } from "../../cuentas-proveedores/acciones";
 import { anularCompraAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Compra · Sistema Juan" };
+export const metadata: Metadata = { title: "Compra · Sistema Repartos" };
 
 /** P-57 Detalle de compra. */
 export default async function PaginaCompra({ params, searchParams }: PageProps<"/compras/[id]">) {

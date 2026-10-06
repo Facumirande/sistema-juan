@@ -113,6 +113,20 @@
       "when": 1791244267753,
       "tag": "0015_datos_transferencia",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791247884324,
+      "tag": "0016_avisos_tildes_y_dibujos",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791265255900,
+      "tag": "0017_quitar_dibujo_de_producto",
+      "breakpoints": true
     }
   ]
 }

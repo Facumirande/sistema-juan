@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 
 import { obtenerBaseDatos } from "@/db/cliente";
+import { marcarAvisosVistos } from "@/modulos/colaboracion/avisos";
 import type { TipoEntidad } from "@/modulos/colaboracion/registro";
 import { borrarNota, escribirNota, marcarNotasLeidas } from "@/modulos/colaboracion/notas";
 import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
@@ -42,5 +43,25 @@ export async function marcarTodasLeidasAccion(): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const n = await marcarNotasLeidas(db, authUserId, "TODAS");
     return { ok: true, mensaje: n ? "Listo: todas leídas." : "No había notas sin leer." };
+  });
+}
+
+/** Al abrir la campanita: lo que hicieron los demás hasta ahora queda visto. */
+export async function marcarAvisosVistosAccion(): Promise<void> {
+  const authUserId = await obtenerAuthUserId();
+  if (!authUserId) return;
+  await marcarAvisosVistos(obtenerBaseDatos(), authUserId);
+}
+
+/**
+ * "Pedirle algo" a otra persona desde la campanita: un aviso que no es sobre un pedido ni una
+ * ficha en particular. Le aparece como "para vos" hasta que lo lee.
+ */
+export async function pedirAlgoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const para = campo(datos, "para");
+    if (!para) return { ok: false, mensaje: "Elegí a quién le querés avisar." };
+    await escribirNota(db, authUserId, { entidadTipo: "USUARIO", entidadId: para, texto: campo(datos, "texto"), paraUsuarioId: para });
+    return { ok: true, mensaje: "Listo: le va a aparecer en la campanita." };
   });
 }

@@ -167,3 +167,175 @@ body {
     display: none;
   }
 }
+
+/*
+ * Colores vivos del tablero y del paso a paso (06/10/2026): cada etapa tiene su color. `--col` es
+ * el fondo de la columna, `--col-fuerte` la franja de arriba de cada tarjeta y `--col-claro` el
+ * recuadro de sus productos; cada uno con el color de texto que se lee bien encima.
+ */
+.color-azul {
+  --col: #579dff;
+  --col-texto: #0b1f44;
+  --col-fuerte: #0c66e4;
+  --col-fuerte-texto: #ffffff;
+  --col-claro: #cfe1ff;
+  --col-claro-texto: #09326c;
+}
+.color-violeta {
+  --col: #9f8fef;
+  --col-texto: #1d1640;
+  --col-fuerte: #6e5dc6;
+  --col-fuerte-texto: #ffffff;
+  --col-claro: #dfd8fd;
+  --col-claro-texto: #352c63;
+}
+.color-naranja {
+  --col: #fea362;
+  --col-texto: #3d1c00;
+  --col-fuerte: #c25100;
+  --col-fuerte-texto: #ffffff;
+  --col-claro: #fedec8;
+  --col-claro-texto: #702e00;
+}
+.color-amarillo {
+  --col: #f5cd47;
+  --col-texto: #2e2300;
+  --col-fuerte: #946f00;
+  --col-fuerte-texto: #ffffff;
+  --col-claro: #f8e6a0;
+  --col-claro-texto: #533f04;
+}
+.color-verde {
+  --col: #4bce97;
+  --col-texto: #0b2b1e;
+  --col-fuerte: #1f845a;
+  --col-fuerte-texto: #ffffff;
+  --col-claro: #baf3db;
+  --col-claro-texto: #164b35;
+}
+.color-rosa {
+  --col: #e774bb;
+  --col-texto: #3a0f2a;
+  --col-fuerte: #ae4787;
+  --col-fuerte-texto: #ffffff;
+  --col-claro: #fdd0ec;
+  --col-claro-texto: #50253f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .color-azul {
+    --col: #0c4fb0;
+    --col-texto: #ffffff;
+    --col-fuerte: #579dff;
+    --col-fuerte-texto: #0b1f44;
+    --col-claro: #09326c;
+    --col-claro-texto: #cfe1ff;
+  }
+  .color-violeta {
+    --col: #5e4db2;
+    --col-texto: #ffffff;
+    --col-fuerte: #9f8fef;
+    --col-fuerte-texto: #1d1640;
+    --col-claro: #352c63;
+    --col-claro-texto: #dfd8fd;
+  }
+  .color-naranja {
+    --col: #a54800;
+    --col-texto: #ffffff;
+    --col-fuerte: #fea362;
+    --col-fuerte-texto: #3d1c00;
+    --col-claro: #702e00;
+    --col-claro-texto: #fedec8;
+  }
+  .color-amarillo {
+    --col: #7f5f01;
+    --col-texto: #ffffff;
+    --col-fuerte: #f5cd47;
+    --col-fuerte-texto: #2e2300;
+    --col-claro: #533f04;
+    --col-claro-texto: #f8e6a0;
+  }
+  .color-verde {
+    --col: #216e4e;
+    --col-texto: #ffffff;
+    --col-fuerte: #4bce97;
+    --col-fuerte-texto: #0b2b1e;
+    --col-claro: #164b35;
+    --col-claro-texto: #baf3db;
+  }
+  .color-rosa {
+    --col: #943d73;
+    --col-texto: #ffffff;
+    --col-fuerte: #e774bb;
+    --col-fuerte-texto: #3a0f2a;
+    --col-claro: #50253f;
+    --col-claro-texto: #fdd0ec;
+  }
+}
+
+/* Arrastrar tarjetas del tablero: la que se lleva va inclinada y con sombra, como en Trello. */
+@keyframes levantar-tarjeta {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+}
+@keyframes posar-tarjeta {
+  from {
+    transform: rotate(3deg) scale(1.04);
+  }
+}
+.tarjeta-en-el-aire {
+  transform: rotate(4deg) scale(1.03);
+  animation: levantar-tarjeta 140ms ease-out;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 22px 44px rgb(9 30 66 / 0.4),
+    0 0 1px rgb(9 30 66 / 0.4);
+}
+.tarjeta-recien-llegada {
+  animation: posar-tarjeta 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+/* Mientras se arrastra con el dedo no se selecciona texto ni aparece el menú del enlace. */
+.tarjeta-arrastrable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta-en-el-aire,
+  .tarjeta-recien-llegada {
+    animation: none;
+  }
+}
+@media print {
+  .color-azul,
+  .color-violeta,
+  .color-naranja,
+  .color-amarillo,
+  .color-verde,
+  .color-rosa {
+    --col: #ffffff;
+    --col-texto: #000000;
+    --col-fuerte: #ffffff;
+    --col-fuerte-texto: #000000;
+    --col-claro: #ffffff;
+    --col-claro-texto: #000000;
+  }
+}
+
+/* Todo lo que se toca responde al instante: se hunde apenas al apretarlo. */
+button:not(:disabled):active,
+a[class*="rounded"]:active,
+summary:active {
+  transform: scale(0.98);
+  filter: brightness(0.96);
+}
+button,
+a,
+summary {
+  transition: transform 80ms ease-out, filter 80ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+button:disabled {
+  cursor: progress;
+}

@@ -20,7 +20,7 @@ import { SemaforoCredito } from "@/ui/semaforo";
 
 import { pagarDeudaAccion } from "../acciones";
 
-export const metadata: Metadata = { title: "Cuenta del proveedor · Sistema Juan" };
+export const metadata: Metadata = { title: "Cuenta del proveedor · Sistema Repartos" };
 
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
