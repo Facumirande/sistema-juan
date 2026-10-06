@@ -60,16 +60,29 @@ describe("tablero de pedidos", () => {
     expect(estadoDelPlazo({ ...base, hoy: "2026-09-28", hora: "23:00" })).toBe("a_tiempo");
   });
 
-  it("arrastrar una tarjeta: confirmar, agregar a la lista o sacarla", () => {
+  it("arrastrar una tarjeta: agregar a la lista, sacarla o mandarla en camino", () => {
     expect(accionAlMover("pedidos", "en_lista")).toBe("AGREGAR_A_LISTA");
     expect(accionAlMover("en_lista", "pedidos")).toBe("SACAR_DE_LISTA");
+    expect(accionAlMover("preparando", "en_camino")).toBe("SALIR");
     expect(accionAlMover("pedidos", "comprados")).toBeNull();
     expect(accionAlMover("preparando", "en_lista")).toBeNull();
+    expect(accionAlMover("comprados", "en_camino")).toBeNull();
+    expect(COLUMNAS.find((c) => c.clave === "preparando")?.seleccionable).toBe(true);
   });
 
   it("qué se puede hacer con lo elegido", () => {
-    expect(resumenDeSeleccion(["BORRADOR", "CONFIRMADO", "CONFIRMADO", "EN_COMPRA"])).toEqual({ total: 4, paraLista: 3, paraSacar: 1 });
-    expect(resumenDeSeleccion([])).toEqual({ total: 0, paraLista: 0, paraSacar: 0 });
+    expect(
+      resumenDeSeleccion([
+        { estado: "BORRADOR", columna: "pedidos" },
+        { estado: "CONFIRMADO", columna: "pedidos" },
+        { estado: "CONFIRMADO", columna: "pedidos" },
+        { estado: "EN_COMPRA", columna: "en_lista" },
+        { estado: "EN_COMPRA", columna: "comprados" },
+        { estado: "EN_COMPRA", columna: "preparando" },
+        { estado: "PREPARADO", columna: "preparando" },
+      ]),
+    ).toEqual({ total: 7, paraLista: 3, paraSacar: 2, paraSalir: 2 });
+    expect(resumenDeSeleccion([])).toEqual({ total: 0, paraLista: 0, paraSacar: 0, paraSalir: 0 });
   });
 
   it("con faltantes, primero los pedidos de prioridad alta y dentro de cada grupo la del cliente", () => {

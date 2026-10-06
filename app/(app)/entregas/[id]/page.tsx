@@ -94,9 +94,28 @@ export default async function DetalleEntrega({ params }: PageProps<"/entregas/[i
         )}
       </Tarjeta>
 
-      <Tarjeta titulo="Documentos">
+      <Tarjeta titulo="🧾 Remito y lista con precios">
+        {e.documentosAlDia && (
+          <div className="flex flex-wrap gap-2">
+            {puede("documentos.imprimir_entrega") && (
+              <>
+                <Link href={`/entregas/${e.id}/documento/lista-entrega`} className={clasesBoton("secundario")}>
+                  👁 Ver el remito
+                </Link>
+                <Link href={`/entregas/${e.id}/documento/lista-entrega?imprimir=1`} className={clasesBoton("principal")}>
+                  🖨️ Imprimir el remito
+                </Link>
+              </>
+            )}
+            {puede("documentos.imprimir_contable") && (
+              <Link href={`/entregas/${e.id}/documento/lista-contable`} className={clasesBoton("secundario")}>
+                💲 Lista con precios
+              </Link>
+            )}
+          </div>
+        )}
         {e.documentos.length === 0 ? (
-          <p className="text-texto-suave">Todavía no se emitieron.</p>
+          <p className="text-texto-suave">Todavía no se hizo el remito: se hace solo al marcar preparada la entrega.</p>
         ) : (
           <ul className="flex flex-col">
             {e.documentos
@@ -104,7 +123,7 @@ export default async function DetalleEntrega({ params }: PageProps<"/entregas/[i
               .map((d) => (
                 <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 border-t border-borde py-2 first:border-t-0">
                   <span>
-                    {d.tipo === "DOC_02" ? "Lista de entrega" : "Lista contable"} · versión {d.version}
+                    {d.tipo === "DOC_02" ? "Remito (sin precios)" : "Lista contable (con precios)"} · versión {d.version}
                     <span className="block text-sm text-texto-suave">
                       {formatearFechaHora(d.emitidoEn, sesion.zonaHoraria)} · {d.estado === "VIGENTE" ? "vigente" : d.estado === "REEMPLAZADO" ? "reemplazada" : "anulada"}
                     </span>
@@ -119,7 +138,7 @@ export default async function DetalleEntrega({ params }: PageProps<"/entregas/[i
           </ul>
         )}
         {emitible && abierta && !e.documentosAlDia && puede("entregas.emitir_documentos") && (
-          <FormularioAccion accion={emitirDocumentosAccion} boton="Emitir documentos">
+          <FormularioAccion accion={emitirDocumentosAccion} boton="🧾 Hacer el remito">
             <input type="hidden" name="entregaId" value={e.id} />
           </FormularioAccion>
         )}

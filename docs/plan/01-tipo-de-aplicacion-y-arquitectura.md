@@ -64,7 +64,8 @@ Lo usan dos personas (el dueño y su esposa), las dos con acceso completo.
 | **Zod** | Validación de toda entrada en el servidor. |
 | **decimal.js** | Dinero, precios y cantidades (nunca `number`). |
 | **date-fns** y `@date-fns/tz` | Fechas en la zona horaria de la empresa. |
-| **fflate** | Arma el Excel de la exportación para el contador (siempre el mismo archivo para el mismo período). |
+| **fflate** | Arma el Excel de la exportación para el contador (siempre el mismo archivo para el mismo período) y la planilla modelo de productos, y lee la planilla que se sube. |
+| **Leaflet** + mapas de OpenStreetMap | El mapa incrustado para marcar la ubicación de un cliente o del depósito (se carga solo al abrirlo). |
 | **Vistas HTML de impresión** (`@media print`, A4) | Todos los documentos imprimibles. |
 | **Vercel** | Hosting, en São Paulo junto a la base. |
 | **Vitest** y **PGlite** | Pruebas del dominio y de integración contra PostgreSQL en memoria, sin Docker. |

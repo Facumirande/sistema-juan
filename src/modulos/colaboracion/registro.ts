@@ -33,7 +33,9 @@ export type AccionActividad =
   | "FACTURAR"
   | "HABILITAR"
   | "UBICAR"
-  | "CAMBIAR_PRODUCTOS";
+  | "CAMBIAR_PRODUCTOS"
+  | "MOVER"
+  | "IMPORTAR";
 
 export interface DatosActividad {
   accion: AccionActividad;

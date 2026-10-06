@@ -9,6 +9,7 @@ import { datosDelPanel, type DiaDeTrabajo } from "@/modulos/jornadas/dia";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 import { emitirRemitosDelDiaAccion } from "../entregas/acciones";
 import { generarListaAccion } from "../lista-compra/acciones";
@@ -192,10 +193,10 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
         ),
         acciones: (
           <>
-            {e.conDocumentos > 0 && <Enlace href={`/entregas/remitos?fecha=${fecha}`}>🖨️ Imprimir los remitos</Enlace>}
+            {e.conDocumentos > 0 && <Enlace href={`/entregas/remitos?fecha=${fecha}`}>🧾 Ver e imprimir los remitos</Enlace>}
             {puede("repartos.ver") && e.total > 0 && e.enCamino < e.total && (
               <Enlace href={`/viaje?fecha=${fecha}`} destacado={actual}>
-                🧭 Armar el reparto y el viaje
+                <FlechaNavegacion className="" /> Armar el reparto y el viaje
               </Enlace>
             )}
             {puede("entregas.ver") && e.enCamino > 0 && (

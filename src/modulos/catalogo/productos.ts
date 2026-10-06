@@ -9,6 +9,7 @@ import { dec } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
+import { ocultarCategoriasVacias, resolverCategoria } from "./categorias";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
 import { numeroObligatorio, numeroOpcional, textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
@@ -87,7 +88,13 @@ const camposProducto = {
   codigo: textoObligatorio("Escribí un código corto (ej. TOM-R).", 20).transform((v) => v.toUpperCase()),
   nombre: textoObligatorio("Escribí el nombre del producto.", 120),
   nombreCorto: textoOpcional(40),
-  categoriaId: z.uuid("Elegí la categoría."),
+  /** Una categoría que existe; si no se da, `categoriaNombre` (una nueva o preelegida; vacío = "Sin categoría"). RN-154. */
+  categoriaId: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() ? v.trim() : null))
+    .pipe(z.uuid("Elegí la categoría.").nullable()),
+  categoriaNombre: textoOpcional(80),
   unidadBase: z.enum(unidadMedida.enumValues, "Elegí la unidad base."),
   admiteFraccion: z.boolean(),
   observaciones: textoOpcional(500),
@@ -258,11 +265,6 @@ async function exigirProductoLibre(tx: Transaccion, codigo: string, nombre: stri
   }
 }
 
-async function exigirCategoriaActiva(tx: Transaccion, categoriaId: string) {
-  const [cat] = await tx.select({ activo: categoria.activo }).from(categoria).where(eq(categoria.id, categoriaId));
-  if (!cat?.activo) throw new ErrorDeNegocio("VALIDACION", "Elegí una categoría activa (RN-005).");
-}
-
 async function exigirNombrePresentacionLibre(tx: Transaccion, productoId: string, nombre: string, excluirId?: string) {
   const [repetida] = await tx
     .select({ id: presentacion.id })
@@ -279,61 +281,73 @@ async function exigirNombrePresentacionLibre(tx: Transaccion, productoId: string
 
 export async function crearProducto(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaNuevoProducto>): Promise<string> {
   const d = validar(esquemaNuevoProducto, datos);
-  return ejecutarComoUsuario(db, authUserId, "productos.editar", async (tx, c) => {
-    const codigo = d.codigo ?? codigoSugerido(d.nombre, new Set((await tx.select({ codigo: producto.codigo }).from(producto)).map((p) => p.codigo)));
-    await exigirProductoLibre(tx, codigo, d.nombre);
-    await exigirCategoriaActiva(tx, d.categoriaId);
-    const [e] = await tx.select({ alicuota: empresa.alicuotaIvaDefault }).from(empresa);
+  return ejecutarComoUsuario(db, authUserId, "productos.editar", (tx, c) => crearProductoEnTransaccion(tx, c, d));
+}
 
-    const [nuevo] = await tx
-      .insert(producto)
-      .values({
-        empresaId: c.empresaId,
-        codigo,
-        nombre: d.nombre,
-        nombreCorto: d.nombreCorto,
-        categoriaId: d.categoriaId,
-        unidadBase: d.unidadBase,
-        admiteFraccion: d.admiteFraccion,
-        alicuotaIva: e?.alicuota ?? "0.000", // RN-006
-        observaciones: d.observaciones,
-        creadoPor: c.usuarioId,
-        actualizadoPor: c.usuarioId,
-      })
-      .returning({ id: producto.id });
-    const productoId = nuevo!.id;
-    const comunes = { empresaId: c.empresaId, productoId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId };
+/**
+ * Alta de un producto dentro de una transacción (la usan el alta guiada y la carga desde la
+ * planilla): con su presentación de unidad base, la de compra si se dio, y la ganancia propia si
+ * se dio. La categoría se resuelve antes (RN-154).
+ */
+export async function crearProductoEnTransaccion(
+  tx: Transaccion,
+  c: ContextoUsuario,
+  d: z.output<typeof esquemaNuevoProducto> & { recargo?: string | null; actividad?: boolean },
+): Promise<string> {
+  const codigo = d.codigo ?? codigoSugerido(d.nombre, new Set((await tx.select({ codigo: producto.codigo }).from(producto)).map((p) => p.codigo)));
+  await exigirProductoLibre(tx, codigo, d.nombre);
+  const categoriaId = await resolverCategoria(tx, c, { id: d.categoriaId, nombre: d.categoriaNombre });
+  const [e] = await tx.select({ alicuota: empresa.alicuotaIvaDefault }).from(empresa);
 
-    const [base] = await tx
-      .insert(presentacion)
-      .values({ ...comunes, nombre: NOMBRE_UNIDAD[d.unidadBase], factorABase: "1", esUnidadBase: true })
-      .returning({ id: presentacion.id });
-    let compraId: string | null = null;
-    if (d.presentacionCompraNombre && d.presentacionCompraFactor) {
-      await exigirNombrePresentacionLibre(tx, productoId, d.presentacionCompraNombre);
-      const [pc] = await tx
-        .insert(presentacion)
-        .values({ ...comunes, nombre: d.presentacionCompraNombre, factorABase: d.presentacionCompraFactor })
-        .returning({ id: presentacion.id });
-      compraId = pc!.id;
-    }
-    await tx
-      .update(producto)
-      .set({ presentacionVentaDefaultId: base!.id, presentacionCompraDefaultId: compraId })
-      .where(eq(producto.id, productoId));
-
-    await auditar(tx, {
+  const [nuevo] = await tx
+    .insert(producto)
+    .values({
       empresaId: c.empresaId,
-      usuarioId: c.usuarioId,
-      accion: "CREAR",
-      entidad: "producto",
-      entidadId: productoId,
-      resumen: `Alta del producto ${codigo} · ${d.nombre}.`,
-      datosDespues: { codigo, nombre: d.nombre, unidadBase: d.unidadBase, categoriaId: d.categoriaId },
-    });
-    await registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "PRODUCTO", entidadId: productoId, resumen: `agregó el producto ${d.nombre}` });
-    return productoId;
+      codigo,
+      nombre: d.nombre,
+      nombreCorto: d.nombreCorto,
+      categoriaId,
+      unidadBase: d.unidadBase,
+      admiteFraccion: d.admiteFraccion,
+      recargoDefault: d.recargo ?? null,
+      alicuotaIva: e?.alicuota ?? "0.000", // RN-006
+      observaciones: d.observaciones,
+      creadoPor: c.usuarioId,
+      actualizadoPor: c.usuarioId,
+    })
+    .returning({ id: producto.id });
+  const productoId = nuevo!.id;
+  const comunes = { empresaId: c.empresaId, productoId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId };
+
+  const [base] = await tx
+    .insert(presentacion)
+    .values({ ...comunes, nombre: NOMBRE_UNIDAD[d.unidadBase], factorABase: "1", esUnidadBase: true })
+    .returning({ id: presentacion.id });
+  let compraId: string | null = null;
+  if (d.presentacionCompraNombre && d.presentacionCompraFactor) {
+    await exigirNombrePresentacionLibre(tx, productoId, d.presentacionCompraNombre);
+    const [pc] = await tx
+      .insert(presentacion)
+      .values({ ...comunes, nombre: d.presentacionCompraNombre, factorABase: d.presentacionCompraFactor })
+      .returning({ id: presentacion.id });
+    compraId = pc!.id;
+  }
+  await tx
+    .update(producto)
+    .set({ presentacionVentaDefaultId: base!.id, presentacionCompraDefaultId: compraId })
+    .where(eq(producto.id, productoId));
+
+  await auditar(tx, {
+    empresaId: c.empresaId,
+    usuarioId: c.usuarioId,
+    accion: "CREAR",
+    entidad: "producto",
+    entidadId: productoId,
+    resumen: `Alta del producto ${codigo} · ${d.nombre}.`,
+    datosDespues: { codigo, nombre: d.nombre, unidadBase: d.unidadBase, categoriaId, recargoDefault: d.recargo ?? null },
   });
+  if (d.actividad !== false) await registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "PRODUCTO", entidadId: productoId, resumen: `agregó el producto ${d.nombre}` });
+  return productoId;
 }
 
 async function productoParaEditar(tx: Transaccion, id: string) {
@@ -369,7 +383,7 @@ export async function editarProducto(db: BaseDatos, authUserId: string, datos: z
   await ejecutarComoUsuario(db, authUserId, "productos.editar", async (tx, c) => {
     const actual = await productoParaEditar(tx, d.id);
     await exigirProductoLibre(tx, d.codigo, d.nombre, d.id);
-    if (d.categoriaId !== actual.categoriaId) await exigirCategoriaActiva(tx, d.categoriaId);
+    const categoriaId = d.categoriaId === actual.categoriaId ? actual.categoriaId : await resolverCategoria(tx, c, { id: d.categoriaId, nombre: d.categoriaNombre });
 
     const presentaciones = await tx.select().from(presentacion).where(eq(presentacion.productoId, d.id));
     if (d.unidadBase !== actual.unidadBase) {
@@ -401,7 +415,7 @@ export async function editarProducto(db: BaseDatos, authUserId: string, datos: z
       codigo: d.codigo,
       nombre: d.nombre,
       nombreCorto: d.nombreCorto,
-      categoriaId: d.categoriaId,
+      categoriaId,
       unidadBase: d.unidadBase,
       admiteFraccion: d.admiteFraccion,
       observaciones: d.observaciones,
@@ -410,6 +424,7 @@ export async function editarProducto(db: BaseDatos, authUserId: string, datos: z
     };
     if (!(await auditarCambioProducto(tx, c, actual, valores, `Cambios en el producto ${d.codigo} · ${d.nombre}.`))) return;
     await tx.update(producto).set({ ...valores, actualizadoPor: c.usuarioId }).where(eq(producto.id, d.id));
+    if (categoriaId !== actual.categoriaId) await ocultarCategoriasVacias(tx, c, [actual.categoriaId]);
   });
 }
 
@@ -418,11 +433,10 @@ export async function cambiarEstadoProducto(db: BaseDatos, authUserId: string, d
   await ejecutarComoUsuario(db, authUserId, "productos.editar", async (tx, c) => {
     const actual = await productoParaEditar(tx, datos.id);
     if (actual.activo === datos.activo) return;
-    if (datos.activo) {
-      const [cat] = await tx.select({ activo: categoria.activo }).from(categoria).where(eq(categoria.id, actual.categoriaId));
-      if (!cat?.activo) throw new ErrorDeNegocio("VALIDACION", "Su categoría está desactivada: reactivala o cambiale la categoría primero.");
-    }
+    // Su categoría vuelve a verse con él (RN-154).
+    if (datos.activo) await resolverCategoria(tx, c, { id: actual.categoriaId });
     await tx.update(producto).set({ activo: datos.activo, actualizadoPor: c.usuarioId }).where(eq(producto.id, datos.id));
+    if (!datos.activo) await ocultarCategoriasVacias(tx, c, [actual.categoriaId]);
     await auditar(tx, {
       empresaId: c.empresaId,
       usuarioId: c.usuarioId,

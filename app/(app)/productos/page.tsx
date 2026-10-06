@@ -2,40 +2,40 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
+import { CATEGORIAS_PREELEGIDAS, preelegida } from "@/dominio/catalogo/categorias";
+import { dibujoDeProducto, grupoDeProducto } from "@/dominio/catalogo/productos";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { listarProductos, type ProductoListado } from "@/modulos/catalogo/productos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
+import { VistaTarjetasOLista } from "@/ui/cuadricula";
 import { UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { Aviso, Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
+
+import { TableroDeProductos, type GrupoDeProductos, type TarjetaDeProducto } from "./tablero-productos";
 
 export const metadata: Metadata = { title: "Productos · Sistema Juan" };
 
 const FRANJA: Readonly<Record<string, string>> = { VERDURA: "var(--etiqueta-verde)", FRUTA: "var(--etiqueta-naranja)", OTRO: "var(--etiqueta-gris)" };
 
-function TarjetaProducto({ p }: { p: ProductoListado }) {
+/** Los datos de la tarjeta de un producto, ya escritos (la tarjeta se dibuja en el navegador para poder arrastrarla). */
+function tarjetaDe(p: ProductoListado): TarjetaDeProducto {
   const unidad = UNIDADES_CORTAS[p.unidadBase] ?? "";
-  return (
-    <TarjetaRegistro href={`/productos/${p.id}`} franja={FRANJA[p.grupo] ?? FRANJA.OTRO!} dibujo={dibujoDeProducto(p.nombre, p.grupo)} titulo={p.nombre} subtitulo={`${p.codigo} · se cuenta por ${unidad}`} inactivo={!p.activo}>
-      <Dato icono="📦">{p.presentacionCompra ? `Se compra en ${p.presentacionCompra}` : "Sin envase de compra"}</Dato>
-      {p.ofertas === 0 ? (
-        <span className="flex items-center gap-2 font-semibold text-error">
-          <span aria-hidden className="w-4 text-center">
-            ⚠
-          </span>
-          Sin precio de compra
-        </span>
-      ) : (
-        <Dato icono="💲">
-          {p.mejorCosto ? `Desde ${formatearMoneda(p.mejorCosto)} el ${unidad}` : "Con precio"} · {p.ofertas === 1 ? "1 proveedor" : `${p.ofertas} proveedores`}
-        </Dato>
-      )}
-      {p.proveedorPreferido && <Dato icono="★">Preferido: {p.proveedorPreferido}</Dato>}
-    </TarjetaRegistro>
-  );
+  const grupo = grupoDeProducto(p.nombre, p.grupo);
+  const datos: TarjetaDeProducto["datos"] = [{ icono: "📦", texto: p.presentacionCompra ? `Se compra en ${p.presentacionCompra}` : "Sin envase de compra" }];
+  if (p.ofertas === 0) datos.push({ icono: "⚠", texto: "Sin precio de compra", aviso: true });
+  else datos.push({ icono: "💲", texto: `${p.mejorCosto ? `Desde ${formatearMoneda(p.mejorCosto)} el ${unidad}` : "Con precio"} · ${p.ofertas === 1 ? "1 proveedor" : `${p.ofertas} proveedores`}` });
+  if (p.proveedorPreferido) datos.push({ icono: "★", texto: `Preferido: ${p.proveedorPreferido}` });
+  return {
+    id: p.id,
+    nombre: p.nombre,
+    dibujo: dibujoDeProducto(p.nombre, grupo),
+    franja: FRANJA[grupo] ?? FRANJA.OTRO!,
+    subtitulo: `${p.codigo} · se cuenta por ${unidad}`,
+    datos,
+    inactivo: !p.activo,
+  };
 }
 
 /** P-10 Productos (08 §5.2): en tarjetas por categoría o en lista. */
@@ -50,11 +50,16 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
   const db = obtenerBaseDatos();
   const [productos, categorias] = await Promise.all([
     listarProductos(db, sesion.authUserId, { texto, categoriaId, estado }),
-    listarCategorias(db, sesion.authUserId),
+    listarCategorias(db, sesion.authUserId, { soloConProductos: true }),
   ]);
   const puedeEditar = sesion.permisos.includes("productos.editar");
-  const grupos = new Map<string, ProductoListado[]>();
-  for (const p of productos) grupos.set(p.categoria, [...(grupos.get(p.categoria) ?? []), p]);
+  // Una categoría se ve solo si tiene productos (RN-154): los grupos salen de los productos.
+  const grupos = new Map<string, GrupoDeProductos>();
+  for (const p of productos) {
+    const g = grupos.get(p.categoriaId) ?? { categoriaId: p.categoriaId, nombre: p.categoria, icono: preelegida(p.categoria)?.icono ?? dibujoDeProducto("", p.grupo), productos: [] };
+    g.productos.push(tarjetaDe(p));
+    grupos.set(p.categoriaId, g);
+  }
   const enlaceVista = (v: "tarjetas" | "lista") => {
     const q = new URLSearchParams();
     if (texto) q.set("texto", texto);
@@ -67,10 +72,15 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
   return (
     <section className="flex max-w-6xl flex-col gap-6">
       <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende. Tocá un producto para ver qué puestos lo venden y a qué precio.">
-        {puedeEditar && categorias.some((c) => c.activo) && (
-          <Link href="/productos/nuevo" className={clasesBoton("principal")}>
-            ＋ Nuevo producto
-          </Link>
+        {puedeEditar && (
+          <>
+            <Link href="/productos/nuevo" className={clasesBoton("principal")}>
+              ＋ Nuevo producto
+            </Link>
+            <Link href="/productos/cargar" className={clasesBoton("secundario")}>
+              📥 Cargar desde una planilla
+            </Link>
+          </>
         )}
         <Link href="/productos/categorias" className={clasesBoton("secundario")}>
           Categorías
@@ -87,15 +97,6 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
         )}
       </Encabezado>
 
-      {puedeEditar && !categorias.some((c) => c.activo) && (
-        <Aviso>
-          Para cargar productos primero creá al menos una categoría (ej. Verduras, Frutas) en{" "}
-          <Link href="/productos/categorias" className="font-medium underline">
-            Categorías
-          </Link>
-          .
-        </Aviso>
-      )}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Filtros>
@@ -108,15 +109,19 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
       </div>
 
       {productos.length === 0 ? (
-        <p className="text-texto-suave">No hay productos {texto || categoriaId ? "con esos filtros" : "cargados todavía"}.</p>
+        texto || categoriaId ? (
+          <p className="text-texto-suave">No hay productos con esos filtros.</p>
+        ) : (
+          <Aviso>
+            Todavía no hay productos. Cargalos de a uno con “＋ Nuevo producto” o todos juntos con la{" "}
+            <Link href="/productos/cargar" className="font-medium underline">
+              planilla de productos
+            </Link>{" "}
+            (alcanza con los nombres uno debajo del otro).
+          </Aviso>
+        )
       ) : vista === "tarjetas" ? (
-        [...grupos.entries()].map(([categoria, lista]) => (
-          <Grupo key={categoria} titulo={categoria} icono={dibujoDeProducto("", lista[0]!.grupo)} cantidad={lista.length}>
-            {lista.map((p) => (
-              <TarjetaProducto key={p.id} p={p} />
-            ))}
-          </Grupo>
-        ))
+        <TableroDeProductos grupos={[...grupos.values()]} preelegidas={CATEGORIAS_PREELEGIDAS.map(({ nombre, icono, ayuda }) => ({ nombre, icono, ayuda }))} puedeEditar={puedeEditar} />
       ) : (
         <Tabla>
           <thead>
@@ -135,7 +140,7 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
               <tr key={p.id}>
                 <td>
                   <Link href={`/productos/${p.id}`} className="font-medium underline-offset-4 hover:underline">
-                    <span aria-hidden>{dibujoDeProducto(p.nombre, p.grupo)}</span> {p.nombre}
+                    <span aria-hidden>{dibujoDeProducto(p.nombre, grupoDeProducto(p.nombre, p.grupo))}</span> {p.nombre}
                   </Link>
                   <span className="block text-sm text-texto-suave">{p.codigo}</span>
                 </td>

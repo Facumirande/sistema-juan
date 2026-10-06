@@ -217,8 +217,8 @@ Ejemplo con la jornada del jueves 24/09 (la hora de corte es configurable).
 | Mié 23/09, 20:00 | Hora de corte. Desde el tablero se mandan los pedidos a la **Lista de compras** (se puede imprimir, `DOC-01`). | `COMPRANDO` |
 | Mié 23/09, 21:30 | Pedido tardío: el restaurante agrega 10 kg de cebolla. La lista avisa que quedó desactualizada y se vuelve a calcular mostrando la diferencia. | `COMPRANDO` |
 | Jue 24/09, 04:30–06:00 | Compra en el mercado con la lista en el celular: **✓ Lo compré** en cada producto. La lista se va tachando, el semáforo de cada proveedor se actualiza y los pedidos con todo comprado pasan a **Comprado**. Lo que no hubo se marca "No lo conseguí". | `COMPRANDO` |
-| Jue 24/09, 06:00–07:30 | **Empezar a preparar**: cada cliente con su lista. "✓ Está todo" o "Falta algo" con el motivo; al **marcar como preparado** se hacen `DOC-02` y `DOC-03`. | `PREPARANDO` |
-| Jue 24/09, 07:00 | **Viaje de entrega**: el mejor orden de las paradas, se arma el reparto, se imprimen los remitos y la hoja de ruta `DOC-04` y sale. | `REPARTIENDO` |
+| Jue 24/09, 06:00–07:30 | **Empezar a preparar**: cada cliente con su lista, siguiendo los tres pasos a la vista (separar → marcar preparado → sale). "✓ Está todo" o "Falta algo" con el motivo; al **marcar como preparado** se hacen `DOC-02` y `DOC-03`. Los remitos se ven e imprimen en **Remitos** (menú). | `PREPARANDO` |
+| Jue 24/09, 07:00 | **Viaje de entrega**: el mejor orden de las paradas, se arma el reparto, se imprimen los remitos y la hoja de ruta `DOC-04` y sale ("Salir" en el reparto, o arrastrando las tarjetas de Preparando a En camino en el tablero: "🚚 Sale ahora"). | `REPARTIENDO` |
 | Jue 24/09, 07:15–11:00 | Entregas: confirmación en el celular con quién recibió y las diferencias. Si hay diferencias se rehacen los remitos. | `REPARTIENDO` |
 | Jue 24/09, 14:00–16:00 | Pagos a proveedores, comprobantes de los clientes que facturan por entrega (salen solos) y **cierre del día** con su resumen. | `CERRADA` |
 
@@ -694,7 +694,10 @@ stateDiagram-v2
 4. En cada producto: **✓ Está todo** (un toque, con lo propuesto) o **Falta algo o pesa distinto**: la **cantidad real** (peso de la balanza o unidades contadas, RN-112) y, si falta, **por qué** (no se consiguió, no alcanzó lo comprado, estaba en mal estado, error al preparar, el cliente lo sacó, otro). Lo que falta queda a la vista en la tarjeta del cliente y en el tablero ("Va 30 kg de 36 kg · no se consiguió") para avisarle. Si la diferencia con lo pedido está dentro de la tolerancia (3 % por defecto) no se considera diferencia (RN-113); si está fuera, pide confirmación y la línea queda marcada.
 5. Registra sustituciones si corresponde (5.e.2).
 6. Cuando todas las líneas tienen cantidad preparada (0 con motivo si no hay), marca la entrega `PREPARADA` (RN-118). Los pedidos pasan a `PREPARADO`. En ese momento se **emiten los documentos** de la entrega (5.f.2); si falta un precio, quedan pendientes hasta completarlo.
-7. Al terminar todas las entregas, el sistema muestra los **sobrantes** por producto: comprado − Σ preparado.
+7. **🚚 Sale ahora** (RN-153): cuando el pedido se va a entregar, desde la preparación, la tarjeta abierta o arrastrando la tarjeta de Preparando a En camino en el tablero, pasa a `EN_REPARTO` en un paso (5.f.1). Si todavía hay productos sin tildar, primero pide confirmar que salen con lo propuesto.
+8. Al terminar todas las entregas, el sistema muestra los **sobrantes** por producto: comprado − Σ preparado.
+
+La pantalla muestra siempre los tres pasos (separar → marcar preparado → sale) con el que toca resaltado, y agrupa a los clientes en "Por separar", "Listos para salir" y "En camino y entregados".
 
 **Ejemplo de peso real:** el restaurante pidió 36 kg de tomate; si la balanza marca 36,4 kg, la diferencia es 1,1 % (< 3 %), se registra 36,4 kg y la lista contable cobra 36,4 kg.
 
@@ -779,7 +782,8 @@ función distribuirFaltante(producto, disponible, lineas):
 1. **Viaje de entrega**: muestra las entregas del día que faltan llevar y calcula el orden con menos kilómetros desde el depósito o el mercado (o desde donde está el celular), empezando por la parada que se elija o por la más cómoda.
 2. **Armar el reparto con este orden**: crea el reparto `REP-xxxxxx` a cargo de quien lo arma, con las paradas en ese orden. Una entrega está en un solo reparto a la vez (RN-123).
 3. Desde "Repartos armados" se abre el reparto: se cambia el orden si hace falta, se hacen los remitos que falten y se imprime `DOC-04` Hoja de ruta (orden, cliente, dirección, horario, contacto, instrucciones, bultos; sin precios).
-4. **Salir**: exige que todas las entregas del reparto tengan los remitos de su versión vigente (RN-122). Reparto → `EN_CURSO` (registra `salida_en`), entregas y pedidos → `EN_REPARTO`, jornada → `REPARTIENDO` si era el primer reparto (RN-039).
+4. **Salir** (en el reparto o en "Repartos armados" del viaje): exige que todas las entregas del reparto estén preparadas y tengan los remitos de su versión vigente (RN-122); si no se eligió quién lo hace, queda a cargo de quien toca Salir. Reparto → `EN_CURSO` (registra `salida_en`), entregas y pedidos → `EN_REPARTO`, jornada → `REPARTIENDO` si era el primer reparto (RN-039).
+   - **Atajo "🚚 Sale ahora"** (RN-153): arrastrar una tarjeta de Preparando a En camino en el tablero (o elegir varias y "🚚 Salen ahora", o el botón en la tarjeta abierta y en la preparación) hace todo junto: completa lo que falte separar (si se confirma), marca preparado, hace el remito si falta y sale. Si la entrega ya estaba en un reparto armado, sale ese reparto con todas sus paradas (que tienen que estar listas); si no, sale en un reparto nuevo a cargo de quien la manda (las sueltas elegidas juntas van en el mismo). Si falta un precio para el remito no sale nada y el aviso lleva a cargarlo.
 5. En el camino, cada parada tiene **Ir** (Google Maps), **Waze** y llamar.
 6. Al confirmar la última parada (o con "Regresé"), el reparto pasa a `FINALIZADO` y registra `regreso_en`.
 

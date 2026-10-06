@@ -14,12 +14,14 @@ describe("menú por permisos (08 §2.2)", () => {
   it("el REPARTIDOR ve su reparto, entregas y sus documentos, nada con precios ni deudas (08 §6)", () => {
     const menu = menuPara(ROLES_SISTEMA.REPARTIDOR.porDefecto);
     expect(menu.map((g) => g.grupo)).toEqual(["Día de trabajo"]);
-    expect(menu[0]?.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Mi reparto", "Actividad y notas"]);
+    expect(menu[0]?.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Remitos", "Mi reparto", "Actividad y notas"]);
   });
 
   it("quien maneja todos los repartos no ve \"Mi reparto\": usa el viaje de entrega", () => {
     const dia = menuPara(PERMISOS).find((g) => g.grupo === "Día de trabajo")!;
-    expect(dia.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Nuevo pedido", "Lista de compras", "Viaje de entrega", "Actividad y notas"]);
+    expect(dia.items.map((i) => i.etiqueta)).toEqual(["Nuevo pedido", "Tablero de pedidos", "Lista de compras", "Preparación", "Remitos", "Viaje de entrega", "Actividad y notas"]);
+    // Las etapas del día van juntas, debajo del tablero.
+    expect(dia.items.filter((i) => i.etapa).map((i) => i.etiqueta)).toEqual(["Lista de compras", "Preparación", "Remitos", "Viaje de entrega"]);
   });
 
   it("el VENDEDOR no ve proveedores, precios de compra ni configuración", () => {

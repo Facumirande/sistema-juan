@@ -3,6 +3,7 @@ import { and, asc, eq, gte, lte, ne, or, sql, sum } from "drizzle-orm";
 import { compra, entrega, jornada, pedido } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
+import { etapasDelMenu, type EtapaDelMenu } from "@/dominio/jornadas/etapas";
 import { pasosDelDia, type DatosDelDia, type PasosDelDia } from "@/dominio/jornadas/pasos";
 import type { EstadoJornada } from "@/dominio/precios/venta";
 import { panelEnTransaccion, type PanelJornada } from "@/modulos/entregas/panel";
@@ -119,5 +120,28 @@ export async function diaDeTrabajo(db: BaseDatos, authUserId: string, pedida?: s
       }
     }
     return { fecha, hoy, sugerida, panel, pasos: pasosDelDia(datosDelPanel(panel)), plata, dias: await diasCercanos(tx, hoy, sugerida, fecha) };
+  });
+}
+
+export interface ProcesoEnCurso {
+  fecha: FechaISO;
+  hoy: FechaISO;
+  etapas: EtapaDelMenu[];
+}
+
+/**
+ * El día que se está trabajando, para las etapas del menú de la izquierda (pedido del usuario,
+ * 06/10/2026): el mismo día que abre el tablero, si ya arrancó (tiene pedidos confirmados o pasó
+ * de ABIERTA) y no está cerrado. Nulo si no hay ningún proceso en curso.
+ */
+export async function procesoEnCurso(db: BaseDatos, authUserId: string): Promise<ProcesoEnCurso | null> {
+  return ejecutarComoUsuario(db, authUserId, "jornada.ver", async (tx) => {
+    const { hoy, sugerida } = await hoyYSugerida(tx);
+    const fecha = await diaParaTrabajar(tx, hoy, sugerida);
+    const panel = await panelEnTransaccion(tx, fecha);
+    if (!panel.estado || panel.estado === "CERRADA") return null;
+    const datos = datosDelPanel(panel);
+    if (panel.estado === "ABIERTA" && datos.pedidos.confirmados === 0) return null;
+    return { fecha, hoy, etapas: etapasDelMenu(datos, pasosDelDia(datos)) };
   });
 }

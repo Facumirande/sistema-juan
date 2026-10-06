@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
 import { obtenerCliente } from "@/modulos/clientes/clientes";
+import { salidaDeRepartos } from "@/modulos/entregas/viaje";
 import { notasDe } from "@/modulos/colaboracion/notas";
 import { ultimosPedidosDeCliente } from "@/modulos/pedidos/pedidos";
 import { listarReglasCliente, recargosActuales } from "@/modulos/precios-venta/reglas";
@@ -11,6 +12,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { DIAS_SEMANA, PERIODICIDADES, TIPOS_CLIENTE } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Encabezado, Estado, Tarjeta } from "@/ui/formularios";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 import { cambiarEstadoClienteAccion, cambiarEstadoPuntoAccion, editarClienteAccion, guardarPuntoAccion, marcarPrincipalAccion } from "../acciones";
 import { HiloDeNotas } from "../../actividad/notas";
@@ -32,11 +34,13 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
   const id = idDeRuta((await params).id);
   const db = obtenerBaseDatos();
   const c = await cargarFicha(obtenerCliente(db, sesion.authUserId, id));
-  const [precios, objetivos, pedidos, notas] = await Promise.all([
+  const [precios, objetivos, pedidos, notas, salida] = await Promise.all([
     sesion.permisos.includes("precios.ver_margenes") ? listarReglasCliente(db, sesion.authUserId, id) : Promise.resolve(null),
     sesion.permisos.includes("precios.editar_reglas") ? recargosActuales(db, sesion.authUserId) : Promise.resolve(null),
     sesion.permisos.includes("pedidos.ver") ? ultimosPedidosDeCliente(db, sesion.authUserId, id) : Promise.resolve(null),
     notasDe(db, sesion.authUserId, { tipo: "CLIENTE", id }),
+    // Para que el mapa de las ubicaciones empiece cerca de donde salen los repartos.
+    sesion.permisos.includes("repartos.ver") ? salidaDeRepartos(db, sesion.authUserId).catch(() => null) : Promise.resolve(null),
   ]);
   const puedeEditar = sesion.permisos.includes("clientes.editar");
   const activos = c.puntosEntrega.filter((p) => p.activo);
@@ -87,14 +91,20 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
               {p.instruccionesEntrega && <p className="text-sm">{p.instruccionesEntrega}</p>}
               <div className="flex flex-wrap gap-2 py-1">
                 <a href={enlacesGoogleMaps([{ coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad }])[0]} target="_blank" rel="noreferrer" className="rounded-md bg-fondo px-3 py-1.5 text-sm font-medium hover:bg-borde">
-                  🧭 Cómo llegar
+                  <FlechaNavegacion /> Cómo llegar
                 </a>
                 <a href={enlaceWaze({ coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad })} target="_blank" rel="noreferrer" className="rounded-md bg-fondo px-3 py-1.5 text-sm font-medium hover:bg-borde">
                   Waze
                 </a>
               </div>
               {(puedeEditar || sesion.permisos.includes("entregas.confirmar")) && p.activo && (
-                <MarcarUbicacion accion={ubicarPuntoAccion} campos={{ puntoId: p.id }} actual={p.coordenada} direccion={[p.direccion, p.localidad].filter(Boolean).join(", ")} />
+                <MarcarUbicacion
+                  accion={ubicarPuntoAccion}
+                  campos={{ puntoId: p.id }}
+                  actual={p.coordenada}
+                  direccion={[p.direccion, p.localidad].filter(Boolean).join(", ")}
+                  centro={salida?.coordenada ?? null}
+                />
               )}
               {puedeEditar && (
                 <details>

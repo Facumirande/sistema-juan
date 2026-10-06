@@ -5,10 +5,9 @@ import { connection } from "next/server";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { configuracionSupabase } from "@/lib/supabase/configuracion";
-import { googleHabilitado } from "@/lib/supabase/proveedores";
 import { configuracionInicialPendiente } from "@/modulos/configuracion/configuracion-inicial";
 
-import { entrarConGoogle } from "./acciones";
+import { AvisoGoogle, BotonGoogle } from "./boton-google";
 import { FormularioIngreso } from "./formulario-ingreso";
 
 export const metadata: Metadata = { title: "Entrar · Sistema Juan" };
@@ -21,8 +20,9 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/login"
   const primerUso = conectado && process.env.DATABASE_URL ? await configuracionInicialPendiente(obtenerBaseDatos()).catch(() => null) : false;
   if (primerUso) redirect("/configuracion-inicial");
   const sinBase = primerUso === null;
-  const conGoogle = conectado && (await googleHabilitado());
-  const { error } = await searchParams;
+  // Google se ofrece siempre (06/10/2026): si falta activarlo en Supabase, el botón lo avisa.
+  const conGoogle = conectado;
+  const error = (await searchParams).error;
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-10">
@@ -40,21 +40,10 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/login"
           El sistema no está disponible en este momento (no responde la base de datos). Probá de nuevo en unos minutos; si sigue igual, avisale a Facundo.
         </p>
       )}
-      {error === "google" && (
-        <p role="alert" className="rounded-lg border border-error px-3 py-2 text-error">
-          No se pudo entrar con Google. Probá de nuevo.
-        </p>
-      )}
+      <AvisoGoogle error={typeof error === "string" ? error : undefined} />
       {conGoogle && (
         <>
-          <form action={entrarConGoogle}>
-            <button type="submit" className="flex h-12 w-full items-center justify-center gap-3 rounded-lg border border-borde bg-superficie font-semibold">
-              <span aria-hidden className="text-lg font-bold">
-                G
-              </span>
-              Entrar con Google
-            </button>
-          </form>
+          <BotonGoogle />
           <p className="text-center text-sm text-texto-suave">o con tu usuario</p>
         </>
       )}

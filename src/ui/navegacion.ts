@@ -3,7 +3,7 @@ import type { Permiso } from "@/seguridad/catalogo-permisos";
 export interface ItemMenu {
   pantalla: string;
   etiqueta: string;
-  /** Dibujo que acompaña el nombre en el menú. */
+  /** Dibujo que acompaña el nombre en el menú (`ICONO_NAVEGACION`: la flecha del GPS). */
   icono: string;
   ruta: string;
   /** Se muestra si el usuario tiene alguno. Vacío = cualquier usuario con sesión. */
@@ -14,7 +14,15 @@ export interface ItemMenu {
   destacado?: true;
   /** Pantalla todavía no construida (se muestra deshabilitada). */
   enConstruccion?: true;
+  /**
+   * Es una etapa del día: con un día en curso, el menú la muestra dentro de "Etapas del día" (con
+   * su avance y el enlace a ese día) en vez de suelta.
+   */
+  etapa?: true;
 }
+
+/** El ícono de la flecha de navegación (se dibuja en SVG, no es un emoji). */
+export const ICONO_NAVEGACION = "flecha-navegacion";
 
 export interface GrupoMenu {
   grupo: string;
@@ -24,19 +32,22 @@ export interface GrupoMenu {
 }
 
 /**
- * Menú por grupos (08 §2.2, reducido el 29/09/2026 a lo esencial): el día de trabajo, los
- * registros y las cuentas. Lo demás se abre desde la pantalla que corresponde (los precios desde
- * Productos, los reportes desde Balance, los usuarios y la configuración desde Mi cuenta, cada
- * etapa del día desde el tablero o el paso a paso).
+ * Menú por grupos (08 §2.2): el día de trabajo, los registros y las cuentas. Las etapas del día
+ * (lista de compras, preparación, remitos, viaje) se agrupan debajo del tablero cuando hay un día
+ * en curso. Lo demás se abre desde la pantalla que corresponde (los precios desde Productos, los
+ * reportes desde Balance, los usuarios y la configuración desde Mi cuenta).
  */
 export const MENU: readonly GrupoMenu[] = [
   {
     grupo: "Día de trabajo",
     items: [
-      { pantalla: "P-02", etiqueta: "Tablero de pedidos", icono: "📋", ruta: "/inicio", permisos: [] },
       { pantalla: "P-41", etiqueta: "Nuevo pedido", icono: "＋", ruta: "/pedidos/nuevo", permisos: ["pedidos.crear"], destacado: true },
-      { pantalla: "P-50", etiqueta: "Lista de compras", icono: "🛒", ruta: "/lista-compra", permisos: ["lista_compra.ver"] },
-      { pantalla: "P-78b", etiqueta: "Viaje de entrega", icono: "🧭", ruta: "/viaje", permisos: ["repartos.ver"] },
+      { pantalla: "P-02", etiqueta: "Tablero de pedidos", icono: "📋", ruta: "/inicio", permisos: [] },
+      // Etapas: con un día en curso van agrupadas debajo del tablero, cada una con su avance.
+      { pantalla: "P-50", etiqueta: "Lista de compras", icono: "🛒", ruta: "/lista-compra", permisos: ["lista_compra.ver"], etapa: true },
+      { pantalla: "P-70", etiqueta: "Preparación", icono: "📦", ruta: "/preparacion", permisos: ["preparacion.ver"], etapa: true },
+      { pantalla: "P-81", etiqueta: "Remitos", icono: "🧾", ruta: "/entregas/remitos", permisos: ["documentos.imprimir_entrega"], etapa: true },
+      { pantalla: "P-78b", etiqueta: "Viaje de entrega", icono: ICONO_NAVEGACION, ruta: "/viaje", permisos: ["repartos.ver"], etapa: true },
       { pantalla: "P-77", etiqueta: "Mi reparto", icono: "🚚", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"], ocultarCon: ["repartos.gestionar"] },
       { pantalla: "P-94", etiqueta: "Actividad y notas", icono: "💬", ruta: "/actividad", permisos: [] },
     ],

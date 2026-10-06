@@ -1,8 +1,13 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { cambiarEstadoCategoria, guardarCategoria, type GrupoProducto } from "@/modulos/catalogo/categorias";
+import type { ProductoAImportar } from "@/dominio/catalogo/importacion";
+import { ErrorDeNegocio, esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
+import { leerCsv, leerXlsx } from "@/lib/planilla";
+import { guardarCategoria, moverProductoDeCategoria, type GrupoProducto } from "@/modulos/catalogo/categorias";
+import { importarProductos, previsualizarProductos } from "@/modulos/catalogo/importacion";
 import {
   agregarPresentacion,
   cambiarEstadoPresentacion,
@@ -15,11 +20,25 @@ import {
 } from "@/modulos/catalogo/productos";
 import { nombreDePresentacion } from "@/dominio/catalogo/productos";
 import { cambiarRecargo } from "@/modulos/precios-venta/reglas";
-import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
+import { obtenerBaseDatos } from "@/db/cliente";
+import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
+import { MENSAJE_ERROR_INESPERADO, ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
 // Acciones de P-10, P-11 y P-12. Los permisos los verifica cada caso de uso.
+
+/**
+ * La categoría elegida en un formulario (RN-154): "id:<uuid>" (una que existe), "nombre:<texto>"
+ * (preelegida o nueva) o "ninguna". También acepta el campo viejo `categoriaId`.
+ */
+function categoriaElegida(datos: FormData): { categoriaId: string | null; categoriaNombre: string | null } {
+  const valor = campo(datos, "categoria");
+  if (valor.startsWith("id:")) return { categoriaId: valor.slice(3), categoriaNombre: null };
+  if (valor.startsWith("nombre:")) return { categoriaId: null, categoriaNombre: valor.slice(7) || null };
+  if (valor === "ninguna") return { categoriaId: null, categoriaNombre: null };
+  return { categoriaId: campo(datos, "categoriaId") || null, categoriaNombre: campo(datos, "categoriaNombre") || null };
+}
 
 export async function guardarCategoriaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
@@ -34,14 +53,6 @@ export async function guardarCategoriaAccion(_estado: EstadoAccion, datos: FormD
   });
 }
 
-export async function cambiarEstadoCategoriaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    const activo = campo(datos, "activo") === "true";
-    await cambiarEstadoCategoria(db, authUserId, { id: campo(datos, "id"), activo });
-    return { ok: true, mensaje: activo ? "Categoría reactivada." : "Categoría desactivada." };
-  });
-}
-
 export async function editarProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await editarProducto(db, authUserId, {
@@ -49,7 +60,7 @@ export async function editarProductoAccion(_estado: EstadoAccion, datos: FormDat
       codigo: campo(datos, "codigo"),
       nombre: campo(datos, "nombre"),
       nombreCorto: campo(datos, "nombreCorto"),
-      categoriaId: campo(datos, "categoriaId"),
+      ...categoriaElegida(datos),
       unidadBase: campo(datos, "unidadBase") as UnidadBase,
       admiteFraccion: tildada(datos, "admiteFraccion"),
       observaciones: campo(datos, "observaciones"),
@@ -121,7 +132,7 @@ export async function crearProductoGuiadoAccion(_estado: EstadoAccion, datos: Fo
       codigo: campo(datos, "codigo"),
       nombre: campo(datos, "nombre"),
       nombreCorto: "",
-      categoriaId: campo(datos, "categoriaId"),
+      ...categoriaElegida(datos),
       unidadBase,
       admiteFraccion: tildada(datos, "admiteFraccion"),
       observaciones: campo(datos, "observaciones"),
@@ -140,4 +151,50 @@ export async function crearProductoGuiadoAccion(_estado: EstadoAccion, datos: Fo
   });
   if (resultado.ok) redirect(`/productos/${id}`);
   return resultado;
+}
+
+/** Arrastrar la tarjeta de un producto a otra categoría (o a una nueva, o a "Ninguna"). */
+export async function moverProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const elegida = categoriaElegida(datos);
+    const r = await moverProductoDeCategoria(db, authUserId, { productoId: campo(datos, "productoId"), id: elegida.categoriaId, nombre: elegida.categoriaNombre });
+    return { ok: true, mensaje: `Listo: ahora está en ${r.categoria}.` };
+  });
+}
+
+type Respuesta<T> = ({ ok: true } & T) | { ok: false; mensaje: string };
+
+async function responder<T>(fn: (authUserId: string) => Promise<T>): Promise<Respuesta<T>> {
+  const authUserId = await obtenerAuthUserId();
+  if (!authUserId) return { ok: false, mensaje: "Tu sesión terminó: ingresá de nuevo." };
+  try {
+    return { ok: true, ...(await fn(authUserId)) };
+  } catch (error) {
+    if (esErrorDeNegocio(error)) return { ok: false, mensaje: textoParaPersona(error.message) };
+    if (error instanceof Error && /no es una planilla/.test(error.message)) return { ok: false, mensaje: `${error.message} Bajá la planilla modelo, completala y subila de nuevo (o un .csv).` };
+    console.error("Error inesperado al leer o cargar la planilla:", error);
+    return { ok: false, mensaje: MENSAJE_ERROR_INESPERADO };
+  }
+}
+
+/** Lee la planilla subida (.xlsx o .csv) y dice qué va a pasar con cada fila; todavía no carga nada. */
+export async function leerPlanillaDeProductosAccion(datos: FormData): Promise<Respuesta<{ productos: ProductoAImportar[]; categorias: string[]; hoja: string }>> {
+  return responder(async (authUserId) => {
+    const archivo = datos.get("planilla");
+    if (!(archivo instanceof File) || archivo.size === 0) throw new Error("El archivo no es una planilla de Excel (.xlsx).");
+    if (archivo.size > 2_000_000) throw new ErrorDeNegocio("VALIDACION", "El archivo es muy grande para una lista de productos (más de 2 MB): dejá solo la hoja Productos.");
+    const bytes = new Uint8Array(await archivo.arrayBuffer());
+    const hojas = /\.csv$/i.test(archivo.name) || archivo.type === "text/csv" ? [leerCsv(new TextDecoder().decode(bytes))] : leerXlsx(bytes);
+    // La hoja "Productos" de la planilla modelo; si no está, la primera que tenga algo.
+    const hoja = hojas.find((h) => h.nombre.toLowerCase() === "productos") ?? hojas.find((h) => h.filas.some((f) => f.some((c) => c.trim()))) ?? hojas[0];
+    if (!hoja) throw new Error("El archivo no es una planilla de Excel (.xlsx).");
+    return { ...(await previsualizarProductos(obtenerBaseDatos(), authUserId, hoja.filas)), hoja: hoja.nombre };
+  });
+}
+
+/** Carga los productos revisados (los que se dejaron elegidos). */
+export async function cargarProductosDePlanillaAccion(filas: Parameters<typeof importarProductos>[2]): Promise<Respuesta<{ creados: number; salteados: string[] }>> {
+  const r = await responder((authUserId) => importarProductos(obtenerBaseDatos(), authUserId, filas));
+  if (r.ok) refresh();
+  return r;
 }

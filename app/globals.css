@@ -54,6 +54,8 @@
   --pastel-verde-texto: #164b35;
   --pastel-rosa: #fdd0ec;
   --pastel-rosa-texto: #50253f;
+  /* La flecha de navegación (viaje, GPS, cómo llegar). */
+  --navegacion: #1a73e8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -103,6 +105,7 @@
     --pastel-verde-texto: #baf3db;
     --pastel-rosa: #50253f;
     --pastel-rosa-texto: #fdd0ec;
+    --navegacion: #8ab4f8;
   }
 }
 
@@ -128,6 +131,7 @@
   --color-tarjeta-suave: var(--tarjeta-suave);
   --color-modal: var(--modal-fondo);
   --color-etiqueta-texto: var(--etiqueta-texto);
+  --color-navegacion: var(--navegacion);
   --shadow-tarjeta: var(--tarjeta-sombra);
   --font-sans: var(--font-geist-sans);
 }
@@ -166,4 +170,15 @@ body {
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* El punto del mapa para marcar ubicaciones (Leaflet): una gota con el color de la navegación. */
+.marca-del-mapa {
+  width: 28px;
+  height: 28px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--navegacion);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
 }

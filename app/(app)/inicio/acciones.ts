@@ -3,10 +3,12 @@
 import { accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
 import { generarListaCompra, sacarPedidoDeLista } from "@/modulos/compras/lista-compra";
+import { mandarEnCamino } from "@/modulos/entregas/repartos";
 import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido } from "@/modulos/pedidos/pedidos";
 import { estadosDePedidos } from "@/modulos/pedidos/tablero";
-import { ejecutarAccion } from "@/ui/accion-servidor";
+import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, esEnlace, type EstadoAccion } from "@/ui/estado-accion";
+import { resultadoDeSalida } from "@/ui/texto-salida";
 
 // Acciones del tablero de pedidos (estilo Trello). Los permisos los verifica cada caso de uso.
 
@@ -96,9 +98,10 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
   return ejecutarAccion(async ({ db, authUserId }) => {
     const id = campo(datos, "pedido");
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
-    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: comprado, preparación, reparto y entrega avanzan solos cuando se hacen esos pasos." };
+    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: comprado, preparación y entrega avanzan solos cuando se hacen esos pasos." };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
     if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
+    if (accion === "SALIR") return resultadoDeSalida(await mandarEnCamino(db, authUserId, { pedidoIds: [id], confirmar: tildada(datos, "confirmarVariacion") }));
     if (accion === "SACAR_DE_LISTA") {
       await sacarPedidoDeLista(db, authUserId, id);
       return { ok: true, mensaje: "El pedido volvió a Pedidos: salió de la lista de compras." };

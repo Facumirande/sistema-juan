@@ -21,8 +21,9 @@ export const COLUMNAS: readonly Columna[] = [
   { clave: "en_lista", titulo: "Lista de compras", ayuda: "Se están comprando: falta algo de lo suyo.", estados: ["EN_COMPRA"], seleccionable: true },
   // Pedidos en la lista con todo lo suyo ya comprado (la columna se decide con columnaDeTarjeta).
   { clave: "comprados", titulo: "Comprado", ayuda: "Ya está todo lo suyo: listo para preparar.", estados: [], seleccionable: false },
-  { clave: "preparando", titulo: "Preparando", ayuda: "Armándose con lo que se compró.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: false },
-  { clave: "en_camino", titulo: "En camino", ayuda: "Salieron en un reparto.", estados: ["EN_REPARTO"], seleccionable: false },
+  // Desde "Preparando" se arrastran (o se eligen) a "En camino" cuando salen a entregar.
+  { clave: "preparando", titulo: "Preparando", ayuda: "Separándose. Cuando sale, arrastralo a En camino.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: true },
+  { clave: "en_camino", titulo: "En camino", ayuda: "Salieron a entregar.", estados: ["EN_REPARTO"], seleccionable: false },
   { clave: "entregados", titulo: "Entregados", ayuda: "Ya los recibió el cliente.", estados: ["ENTREGADO"], seleccionable: false },
 ];
 
@@ -85,21 +86,31 @@ export function textoPlazo(desde: string | null, hasta: string | null): string |
   return null;
 }
 
-export type AccionAlMover = "AGREGAR_A_LISTA" | "SACAR_DE_LISTA";
+export type AccionAlMover = "AGREGAR_A_LISTA" | "SACAR_DE_LISTA" | "SALIR";
 
-/** Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). */
+/**
+ * Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). De "Preparando" a
+ * "En camino" sale a entregar: se termina de preparar, se hace el remito y sale el reparto.
+ */
 export function accionAlMover(desde: ClaveColumna, hacia: ClaveColumna): AccionAlMover | null {
   if (desde === "pedidos" && hacia === "en_lista") return "AGREGAR_A_LISTA";
   if (desde === "en_lista" && hacia === "pedidos") return "SACAR_DE_LISTA";
+  if (desde === "preparando" && hacia === "en_camino") return "SALIR";
   return null;
 }
 
-/** Qué se puede hacer con las tarjetas elegidas. */
-export function resumenDeSeleccion(estados: readonly EstadoPedido[]): { total: number; paraLista: number; paraSacar: number } {
+/** Qué se puede hacer con las tarjetas elegidas (según su estado y la columna en la que están). */
+export function resumenDeSeleccion(tarjetas: readonly { estado: EstadoPedido; columna: ClaveColumna | null }[]): {
+  total: number;
+  paraLista: number;
+  paraSacar: number;
+  paraSalir: number;
+} {
   return {
-    total: estados.length,
-    paraLista: estados.filter((e) => e === "BORRADOR" || e === "CONFIRMADO").length,
-    paraSacar: estados.filter((e) => e === "EN_COMPRA").length,
+    total: tarjetas.length,
+    paraLista: tarjetas.filter((t) => t.columna === "pedidos" && (t.estado === "BORRADOR" || t.estado === "CONFIRMADO")).length,
+    paraSacar: tarjetas.filter((t) => t.estado === "EN_COMPRA" && t.columna !== "preparando").length,
+    paraSalir: tarjetas.filter((t) => t.columna === "preparando").length,
   };
 }
 

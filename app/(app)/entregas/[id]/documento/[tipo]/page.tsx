@@ -28,23 +28,36 @@ export default async function DocumentoDeEntrega({ params, searchParams }: PageP
   const v = Number(parametro(f.v));
   const dosCopias = parametro(f.copias) === "2";
   const doc = await cargarFicha(documentoDeEntrega(obtenerBaseDatos(), sesion.authUserId, { entregaId: idDeRuta(id), tipo: clave, version: Number.isInteger(v) && v > 0 ? v : undefined }));
-  const volver = sesion.permisos.includes("entregas.ver") ? `/entregas/${id}` : "/repartos/mios";
+  const fecha = doc?.contenido.fechaEntrega;
 
   return (
     <article className="relative mx-auto flex max-w-4xl flex-col gap-4 bg-superficie p-4 print:max-w-none print:p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <Link href={volver} className="text-texto-suave hover:underline">
-          ← Entrega
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {fecha && (
+            <Link href={`/entregas/remitos?fecha=${fecha}`} className="text-texto-suave hover:underline">
+              ← Remitos del día
+            </Link>
+          )}
+          {sesion.permisos.includes("entregas.ver") ? (
+            <Link href={`/entregas/${id}`} className="text-texto-suave hover:underline">
+              Ver la entrega
+            </Link>
+          ) : (
+            <Link href="/repartos/mios" className="text-texto-suave hover:underline">
+              Mi reparto
+            </Link>
+          )}
+        </div>
         {doc?.tipo === "DOC_02" && (
           <Link href={`/entregas/${id}/documento/${tipo}?v=${doc.version}${dosCopias ? "" : "&copias=2"}`} className="underline-offset-4 hover:underline">
-            {dosCopias ? "Una copia" : "Dos copias (cliente y empresa)"}
+            {dosCopias ? "Una copia" : "Dos copias (cliente y negocio)"}
           </Link>
         )}
-        {doc && <BotonImprimir />}
+        {doc && <BotonImprimir automatico={parametro(f.imprimir) === "1"} />}
       </div>
       {!doc ? (
-        <p>Todavía no se emitieron los documentos de esta entrega.</p>
+        <p>Todavía no se hizo el remito de esta entrega: se hace solo al marcarla preparada.</p>
       ) : (
         <>
           {(doc.estado !== "VIGENTE" || doc.version < doc.vigente) && (
@@ -54,7 +67,7 @@ export default async function DocumentoDeEntrega({ params, searchParams }: PageP
             dosCopias ? (
               <>
                 <ListaEntrega c={doc.contenido} zona={sesion.zonaHoraria} copia="ORIGINAL — CLIENTE" />
-                <ListaEntrega c={doc.contenido} zona={sesion.zonaHoraria} copia="DUPLICADO — EMPRESA" />
+                <ListaEntrega c={doc.contenido} zona={sesion.zonaHoraria} copia="DUPLICADO — NEGOCIO" />
               </>
             ) : (
               <ListaEntrega c={doc.contenido} zona={sesion.zonaHoraria} copia={null} />

@@ -2,10 +2,12 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, ne, sql, type SQL } fr
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
-import { cliente, entrega, jornada, puntoEntrega, reparto, rol, usuario, usuarioRol } from "@/db/esquema";
+import { cliente, entrega, entregaItem, jornada, pedido, pedidoItem, puntoEntrega, reparto, rol, usuario, usuarioRol } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
+import { dec } from "@/dominio/dinero/decimal";
 import { ordenarParadas } from "@/dominio/entregas/entregas";
+import { enumerar, planDeSalida } from "@/dominio/entregas/salida";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa, sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
@@ -207,41 +209,226 @@ export async function emitirDocumentosDelDia(db: BaseDatos, authUserId: string, 
   });
 }
 
+type ContextoDeSalida = { tx: Transaccion; c: ContextoUsuario };
+
 /**
- * "Salir" (RN-122, RN-039): exige repartidor y documentos emitidos de la versión vigente de todas
- * las entregas, que tienen que estar preparadas. Entregas y pedidos pasan a EN_REPARTO; la jornada,
- * a REPARTIENDO si era el primero.
+ * Lo que comparten "Salir" y "🚚 Sale ahora": exige documentos emitidos de la versión vigente de
+ * todas las paradas, que tienen que estar preparadas; si nadie quedó a cargo del reparto, lo hace
+ * quien lo manda a salir. Entregas y pedidos pasan a EN_REPARTO; la jornada, a REPARTIENDO si era
+ * el primero.
+ */
+async function salirEnTransaccion({ tx, c }: ContextoDeSalida, r: typeof reparto.$inferSelect, j: typeof jornada.$inferSelect): Promise<string[]> {
+  if (r.estado !== "PLANIFICADO") throw new ErrorDeNegocio("VALIDACION", "El reparto ya salió.");
+  const paradas = await tx
+    .select({ id: entrega.id, estado: entrega.estado, version: entrega.version, cliente: cliente.nombre })
+    .from(entrega)
+    .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+    .where(and(eq(entrega.repartoId, r.id), ne(entrega.estado, "ANULADA")))
+    .orderBy(sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre));
+  const enlace = { href: `/repartos/${r.id}`, texto: `Ver el reparto ${numeroReparto(r.numero)}` };
+  if (paradas.length === 0) throw new ErrorDeNegocio("VALIDACION", "El reparto no tiene entregas.");
+  const sinPreparar = paradas.filter((p) => p.estado !== "PREPARADA").map((p) => p.cliente);
+  if (sinPreparar.length) {
+    throw new ErrorDeNegocio("VALIDACION", `El reparto ${numeroReparto(r.numero)} también lleva lo de ${enumerar(sinPreparar)}, que todavía no está preparado: terminá de prepararlo o sacalo del reparto.`, { enlace });
+  }
+  const alDia = await documentosAlDiaDe(tx, paradas);
+  const sinDocumentos = paradas.filter((p) => !alDia.has(p.id)).map((p) => p.cliente);
+  if (sinDocumentos.length) {
+    throw new ErrorDeNegocio("VALIDACION", `Falta hacer el remito de ${enumerar(sinDocumentos)} (RN-122): tocá "Hacer los remitos que faltan" en el reparto.`, { enlace });
+  }
+  await tx
+    .update(reparto)
+    .set({ estado: "EN_CURSO", salidaEn: sql`now()`, repartidorId: r.repartidorId ?? c.usuarioId, actualizadoPor: c.usuarioId })
+    .where(eq(reparto.id, r.id));
+  for (const p of paradas) {
+    await tx.update(entrega).set({ estado: "EN_REPARTO", actualizadoPor: c.usuarioId }).where(eq(entrega.id, p.id));
+    await moverPedidosDeEntrega(tx, p.id, ["PREPARADO"], "EN_REPARTO");
+  }
+  if (j.estado === "PREPARANDO") {
+    await tx.update(jornada).set({ estado: "REPARTIENDO", repartoIniciadoEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
+    j.estado = "REPARTIENDO";
+  }
+  await registrarActividad(tx, c, {
+    accion: "SALIR",
+    entidadTipo: "REPARTO",
+    entidadId: r.id,
+    jornadaId: j.id,
+    resumen: `salió con el reparto ${numeroReparto(r.numero)} (${paradas.length === 1 ? "1 entrega" : `${paradas.length} entregas`})`,
+  });
+  return paradas.map((p) => p.cliente);
+}
+
+/**
+ * "Salir" (RN-122, RN-039) desde el reparto: todas las paradas preparadas y con su remito. Si no
+ * se eligió quién lo hace, lo hace quien toca "Salir".
  */
 export async function salirDeReparto(db: BaseDatos, authUserId: string, repartoId: string): Promise<void> {
   await ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     const { r, j } = await repartoBloqueado(tx, repartoId);
     exigirManejo(c, r);
-    if (r.estado !== "PLANIFICADO") throw new ErrorDeNegocio("VALIDACION", "El reparto ya salió.");
-    if (!r.repartidorId) throw new ErrorDeNegocio("VALIDACION", "Elegí quién hace el reparto antes de salir.");
-    const paradas = await tx
-      .select({ id: entrega.id, estado: entrega.estado, version: entrega.version, cliente: cliente.nombre })
-      .from(entrega)
-      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-      .where(and(eq(entrega.repartoId, r.id), ne(entrega.estado, "ANULADA")));
-    if (paradas.length === 0) throw new ErrorDeNegocio("VALIDACION", "El reparto no tiene entregas.");
-    const sinPreparar = paradas.filter((p) => p.estado !== "PREPARADA").map((p) => p.cliente);
-    if (sinPreparar.length) throw new ErrorDeNegocio("VALIDACION", `Todavía no están preparadas: ${sinPreparar.join(", ")}.`);
-    const alDia = await documentosAlDiaDe(tx, paradas);
-    const sinDocumentos = paradas.filter((p) => !alDia.has(p.id)).map((p) => p.cliente);
-    if (sinDocumentos.length) throw new ErrorDeNegocio("VALIDACION", `Faltan emitir los documentos de: ${sinDocumentos.join(", ")} (RN-122).`);
-    await tx.update(reparto).set({ estado: "EN_CURSO", salidaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(reparto.id, r.id));
-    for (const p of paradas) {
-      await tx.update(entrega).set({ estado: "EN_REPARTO", actualizadoPor: c.usuarioId }).where(eq(entrega.id, p.id));
-      await moverPedidosDeEntrega(tx, p.id, ["PREPARADO"], "EN_REPARTO");
+    await salirEnTransaccion({ tx, c }, r, j);
+  });
+}
+
+export interface ResultadoSalida {
+  /** El día de las entregas. */
+  fecha: FechaISO;
+  /** Los repartos que salieron, con los clientes que llevan. */
+  repartos: { id: string; numero: string; clientes: string[] }[];
+  /** Clientes elegidos que ya estaban en camino o entregados. */
+  yaEnCamino: string[];
+}
+
+const ESTADOS_SIN_SALIR = ["BORRADOR", "EN_PREPARACION", "PREPARADA"];
+
+/**
+ * "🚚 Sale ahora" (pedido del usuario, 06/10/2026): lleva a "En camino" los pedidos elegidos en un
+ * solo paso, como arrastrar la tarjeta en el tablero. Lo que falte separar se marca con lo propuesto
+ * (lo pedido o lo que alcanzó), pero solo después de que la persona lo confirma; la entrega queda
+ * preparada, se hacen los remitos que falten y sale el reparto: el armado en el que ya estaba (con
+ * todas sus paradas) o uno nuevo con las entregas sueltas, a cargo de quien lo manda (RN-122, RN-123,
+ * RN-153). Todo en una transacción: si algo frena (falta un precio para el remito, otra parada del
+ * reparto sin preparar), no cambia nada y el mensaje dice cómo seguir.
+ */
+export async function mandarEnCamino(
+  db: BaseDatos,
+  authUserId: string,
+  datos: { pedidoIds?: readonly string[]; entregaIds?: readonly string[]; confirmar?: boolean },
+): Promise<ResultadoSalida> {
+  return ejecutarComoUsuario(db, authUserId, "repartos.gestionar", async (tx, c) => {
+    const pedidoIds = [...new Set(datos.pedidoIds ?? [])];
+    const ids = new Set(datos.entregaIds ?? []);
+    if (pedidoIds.length) {
+      const vinculos = await tx
+        .selectDistinct({ pedidoId: pedidoItem.pedidoId, entregaId: entrega.id })
+        .from(entregaItem)
+        .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
+        .innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
+        .where(inArray(pedidoItem.pedidoId, pedidoIds));
+      for (const v of vinculos) ids.add(v.entregaId);
+      const sinPreparar = pedidoIds.filter((id) => !vinculos.some((v) => v.pedidoId === id));
+      if (sinPreparar.length) {
+        const pedidos = await tx
+          .select({ cliente: cliente.nombre, fecha: jornada.fecha })
+          .from(pedido)
+          .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+          .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+          .where(inArray(pedido.id, sinPreparar));
+        if (pedidos.length) {
+          throw new ErrorDeNegocio("VALIDACION", `Todavía no se empezó a preparar lo de ${enumerar(pedidos.map((p) => p.cliente))}: primero tocá "Empezar a preparar".`, {
+            enlace: { href: `/preparacion/${pedidos[0]!.fecha}`, texto: "Ir a preparación" },
+          });
+        }
+      }
     }
-    if (j.estado === "PREPARANDO") await tx.update(jornada).set({ estado: "REPARTIENDO", repartoIniciadoEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
-    await registrarActividad(tx, c, {
-      accion: "SALIR",
-      entidadTipo: "REPARTO",
-      entidadId: r.id,
-      jornadaId: j.id,
-      resumen: `salió con el reparto ${numeroReparto(r.numero)} (${paradas.length === 1 ? "1 entrega" : `${paradas.length} entregas`})`,
-    });
+    if (ids.size === 0) throw new ErrorDeNegocio("VALIDACION", "Elegí al menos un pedido que se esté preparando.");
+
+    const elegidas = await tx.select().from(entrega).where(inArray(entrega.id, [...ids])).orderBy(asc(entrega.numero)).for("update");
+    if (elegidas.length !== ids.size) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró alguna de las entregas: recargá la página.");
+    const jornadas = new Set(elegidas.map((e) => e.jornadaId));
+    if (jornadas.size > 1) throw new ErrorDeNegocio("VALIDACION", "Elegí pedidos de un mismo día: cada reparto es de un día.");
+    const [j] = await tx.select().from(jornada).where(eq(jornada.id, elegidas[0]!.jornadaId)).for("update");
+    exigirJornadaAbierta(j);
+    const nombres = new Map(
+      (await tx.select({ id: cliente.id, nombre: cliente.nombre }).from(cliente).where(inArray(cliente.id, [...new Set(elegidas.map((e) => e.clienteId))]))).map((x) => [x.id, x.nombre]),
+    );
+    const nombre = (e: { clienteId: string }) => nombres.get(e.clienteId) ?? "un cliente";
+    const anuladas = elegidas.filter((e) => e.estado === "ANULADA");
+    if (anuladas.length) throw new ErrorDeNegocio("VALIDACION", `La entrega de ${enumerar(anuladas.map(nombre))} está anulada.`);
+    const pendientes = elegidas.filter((e) => ESTADOS_SIN_SALIR.includes(e.estado));
+
+    // 1. Lo que falta separar: se marca con lo propuesto, solo si la persona lo confirmó.
+    const sinSeparar = pendientes.length
+      ? await tx
+          .select({ id: entregaItem.id, entregaId: entregaItem.entregaId, producto: entregaItem.productoNombre, pedida: entregaItem.cantidadPedida, propuesta: entregaItem.cantidadPropuesta })
+          .from(entregaItem)
+          .where(and(inArray(entregaItem.entregaId, pendientes.map((e) => e.id)), isNull(entregaItem.cantidadPreparada)))
+          .orderBy(asc(entregaItem.linea))
+      : [];
+    if (sinSeparar.length) {
+      c.permisos.exigir("preparacion.registrar");
+      if (!datos.confirmar) {
+        const detalle = pendientes
+          .filter((e) => sinSeparar.some((l) => l.entregaId === e.id))
+          .map((e) => `${nombre(e)} (${enumerar(sinSeparar.filter((l) => l.entregaId === e.id).map((l) => l.producto.toLowerCase()))})`);
+        const primera = pendientes.find((e) => sinSeparar.some((l) => l.entregaId === e.id))!;
+        throw new ErrorDeNegocio("VALIDACION", `Falta tildar lo separado de ${enumerar(detalle)}. Si sale así, tocá "Confirmar": se marca lo pedido (o lo que alcanzó) y después se puede corregir.`, {
+          requiereConfirmacion: true,
+          enlace: { href: `/preparacion/${j!.fecha}/entrega/${primera.id}`, texto: `Ver lo de ${nombre(primera)}` },
+        });
+      }
+      for (const l of sinSeparar) {
+        const cantidad = l.propuesta ?? l.pedida;
+        await tx
+          .update(entregaItem)
+          .set({ cantidadPreparada: cantidad, motivoFaltante: dec(cantidad).lt(l.pedida) ? "FALTANTE" : null, actualizadoPor: c.usuarioId })
+          .where(eq(entregaItem.id, l.id));
+      }
+    }
+
+    // 2. Preparadas: la entrega y sus pedidos.
+    for (const e of pendientes.filter((x) => x.estado !== "PREPARADA")) {
+      c.permisos.exigir("preparacion.registrar");
+      await tx.update(entrega).set({ estado: "PREPARADA", actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id));
+      await moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO");
+      await registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${nombre(e)}` });
+      e.estado = "PREPARADA";
+    }
+
+    // 3. Los remitos que falten (lista de entrega y lista contable de la versión vigente).
+    const alDia = await documentosAlDiaDe(tx, pendientes);
+    for (const e of pendientes.filter((x) => !alDia.has(x.id))) {
+      c.permisos.exigir("entregas.emitir_documentos");
+      const r = await emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true });
+      if (r.resultado === "SIN_PRECIO") {
+        const [falta] = await tx
+          .select({ id: entregaItem.productoId })
+          .from(entregaItem)
+          .where(and(eq(entregaItem.entregaId, e.id), eq(entregaItem.productoNombre, r.productos[0]!)))
+          .limit(1);
+        throw new ErrorDeNegocio("PRECIO_SIN_COSTO", `No se puede hacer el remito de ${nombre(e)}: falta el precio de ${enumerar(r.productos)}. Cargale el precio de compra y volvé a mandarlo.`, {
+          enlace: { href: falta ? `/productos/${falta.id}` : "/precios/compra", texto: `Poner el precio de ${r.productos[0]}` },
+        });
+      }
+    }
+
+    // 4. Los repartos: el armado en el que estaban o uno nuevo con las sueltas.
+    const repartosDe = [...new Set(pendientes.map((e) => e.repartoId).filter((x): x is string => x !== null))];
+    const planificados = new Set(
+      repartosDe.length
+        ? (await tx.select({ id: reparto.id }).from(reparto).where(and(inArray(reparto.id, repartosDe), eq(reparto.estado, "PLANIFICADO")))).map((r) => r.id)
+        : [],
+    );
+    const plan = planDeSalida(elegidas.map((e) => ({ id: e.id, repartoPlanificado: e.repartoId && planificados.has(e.repartoId) ? e.repartoId : null, yaSalio: !ESTADOS_SIN_SALIR.includes(e.estado) })));
+    const aSalir = [...plan.repartos];
+    if (plan.agregar) {
+      const { n } = unico(await tx.select({ n: count() }).from(entrega).where(eq(entrega.repartoId, plan.agregar.repartoId)));
+      for (const [i, id] of plan.agregar.entregaIds.entries()) {
+        await tx.update(entrega).set({ repartoId: plan.agregar.repartoId, ordenEnReparto: Number(n) + i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, id));
+      }
+    }
+    if (plan.nuevo.length) {
+      const lugares = await tx
+        .select({ id: entrega.id, horarioDesde: puntoEntrega.horarioDesde, localidad: puntoEntrega.localidad })
+        .from(entrega)
+        .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
+        .where(inArray(entrega.id, plan.nuevo));
+      const { numero } = await siguienteNumero(tx, "REPARTO");
+      const [r] = await tx
+        .insert(reparto)
+        .values({ empresaId: c.empresaId, numero, jornadaId: j!.id, repartidorId: c.usuarioId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
+        .returning({ id: reparto.id });
+      for (const [i, l] of ordenarParadas(lugares).entries()) {
+        await tx.update(entrega).set({ repartoId: r!.id, ordenEnReparto: i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, l.id));
+      }
+      aSalir.push(r!.id);
+    }
+    const salieron: ResultadoSalida["repartos"] = [];
+    for (const id of aSalir) {
+      const { r } = await repartoBloqueado(tx, id);
+      salieron.push({ id, numero: numeroReparto(r.numero), clientes: await salirEnTransaccion({ tx, c }, r, j!) });
+    }
+    return { fecha: j!.fecha, repartos: salieron, yaEnCamino: elegidas.filter((e) => plan.yaSalieron.includes(e.id)).map(nombre) };
   });
 }
 

@@ -30,14 +30,20 @@ const MARGEN = { izq: 84, der: 16, arr: 12, aba: 28 };
 function escala(min: number, max: number) {
   let lo = Math.min(0, min);
   let hi = Math.max(0, max);
-  if (lo === hi) hi = lo + 1;
+  // Sin movimientos (todo en cero) igual se dibuja una escala de pesos enteros: $0 a $4.
+  if (lo === hi) hi = lo + 4;
   const bruto = (hi - lo) / 4;
   const potencia = 10 ** Math.floor(Math.log10(bruto));
-  const paso = [1, 2, 2.5, 5, 10].map((m) => m * potencia).find((p) => p >= bruto) ?? bruto;
+  // Las marcas son pesos enteros: el paso nunca es menor a $1 (con pasos de 0,25 las marcas se
+  // redondeaban al mismo número y React avisaba de claves repetidas en el balance).
+  const paso = Math.max(1, [1, 2, 2.5, 5, 10].map((m) => m * potencia).find((p) => p >= bruto) ?? bruto);
   lo = Math.floor(lo / paso) * paso;
   hi = Math.ceil(hi / paso) * paso;
   const marcas: number[] = [];
-  for (let t = lo; t <= hi + paso / 2; t += paso) marcas.push(Math.round(t));
+  for (let t = lo; t <= hi + paso / 2; t += paso) {
+    const marca = Math.round(t);
+    if (marcas.at(-1) !== marca) marcas.push(marca);
+  }
   return { lo, hi, marcas };
 }
 

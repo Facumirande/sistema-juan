@@ -17,8 +17,10 @@ import { BotonAccion } from "@/ui/boton-accion";
 import { ESTADOS_PEDIDO, fechaConDia } from "@/ui/etiquetas";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";
+import { FlechaNavegacion } from "@/ui/iconos";
 
 import { HiloDeNotas } from "../actividad/notas";
+import { salenAhoraAccion } from "../repartos/acciones";
 import {
   armarListaConElegidosAccion,
   asignarElegidosAccion,
@@ -210,7 +212,7 @@ export function TarjetaAbierta({
             </p>
             <div className="flex flex-wrap gap-2">
               <a href={enlacesGoogleMaps([destino])[0]} target="_blank" rel="noreferrer" className="flex min-h-11 items-center rounded-xl bg-black/5 px-4 font-medium hover:bg-black/10 dark:bg-white/10">
-                🧭 Cómo llegar (Google Maps)
+                <FlechaNavegacion /> Cómo llegar (Google Maps)
               </a>
               <a href={enlaceWaze(destino)} target="_blank" rel="noreferrer" className="flex min-h-11 items-center rounded-xl bg-black/5 px-4 font-medium hover:bg-black/10 dark:bg-white/10">
                 Waze
@@ -265,6 +267,22 @@ export function TarjetaAbierta({
             {(columna?.clave === "preparando" || columna?.clave === "comprados") && puede("preparacion.ver") && (
               <Link href={avance.entregaId ? `/preparacion/${p.fecha}/entrega/${avance.entregaId}` : `/preparacion/${p.fecha}`} className="flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--pastel-amarillo)] px-4 text-left text-base font-semibold text-[var(--pastel-amarillo-texto)] hover:brightness-95">
                 📦 {p.estado === "PREPARADO" ? "Ver lo que se separó" : "Preparar su pedido"}
+              </Link>
+            )}
+            {columna?.clave === "preparando" && avance.entregaId && puede("repartos.gestionar") && (
+              <BotonAccion
+                accion={salenAhoraAccion}
+                datos={{ pedido: p.id }}
+                mostrarExito
+                className="flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--pastel-verde)] px-4 text-left text-base font-semibold text-[var(--pastel-verde-texto)] hover:brightness-95"
+                titulo="Pasa a En camino: se hace el remito y sale el reparto"
+              >
+                🚚 Sale ahora (En camino)
+              </BotonAccion>
+            )}
+            {avance.entregaId && ["PREPARADO", "EN_REPARTO", "ENTREGADO"].includes(p.estado) && puede("documentos.imprimir_entrega") && (
+              <Link href={`/entregas/${avance.entregaId}/documento/lista-entrega`} className={botonLateral}>
+                🧾 Ver o imprimir el remito
               </Link>
             )}
             <Link href={`/pedidos/${p.id}`} className={botonLateral}>

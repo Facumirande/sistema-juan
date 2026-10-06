@@ -5,14 +5,16 @@ import {
   agregarAlReparto,
   anularReparto,
   emitirDocumentosDelReparto,
+  mandarEnCamino,
   moverParada,
   proponerOrden,
   quitarDelReparto,
   regresarDeReparto,
   salirDeReparto,
 } from "@/modulos/entregas/repartos";
-import { ejecutarAccion } from "@/ui/accion-servidor";
+import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
+import { resultadoDeSalida } from "@/ui/texto-salida";
 
 // Acciones de P-76 y P-77. Los permisos los verifica cada caso de uso.
 
@@ -60,9 +62,21 @@ export async function proponerOrdenAccion(_estado: EstadoAccion, datos: FormData
 export async function emitirPendientesAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const r = await emitirDocumentosDelReparto(db, authUserId, campo(datos, "repartoId"));
-    const texto = r.emitidas ? `Documentos emitidos: ${r.emitidas}.` : "No había documentos para emitir.";
+    const texto = r.emitidas ? `Remitos hechos: ${r.emitidas}.` : "No faltaba ningún remito.";
     return r.problemas.length ? { ok: false, mensaje: `${texto} ${r.problemas.join(" ")}` } : { ok: true, mensaje: texto };
   });
+}
+
+const todos = (datos: FormData, nombre: string) => datos.getAll(nombre).filter((v): v is string => typeof v === "string" && v !== "");
+
+/**
+ * "🚚 Sale ahora": los pedidos (o entregas) elegidos pasan a En camino en un paso: se termina de
+ * preparar lo que falte (con confirmación), se hacen los remitos y sale el reparto.
+ */
+export async function salenAhoraAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) =>
+    resultadoDeSalida(await mandarEnCamino(db, authUserId, { pedidoIds: todos(datos, "pedido"), entregaIds: todos(datos, "entrega"), confirmar: tildada(datos, "confirmarVariacion") })),
+  );
 }
 
 export async function salirAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {

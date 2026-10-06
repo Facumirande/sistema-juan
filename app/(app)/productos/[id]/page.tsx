@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearNumero } from "@/dominio/dinero/formato";
+import { CATEGORIAS_PREELEGIDAS, SIN_CATEGORIA } from "@/dominio/catalogo/categorias";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { obtenerProducto } from "@/modulos/catalogo/productos";
@@ -164,9 +165,17 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
               <Campo etiqueta="Nombre" name="nombre" defaultValue={p.nombre} />
               <Selector
                 etiqueta="Categoría"
-                name="categoriaId"
-                opciones={categorias.filter((c) => c.activo || c.id === p.categoriaId).map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
-                defaultValue={p.categoriaId}
+                name="categoria"
+                ayuda="Las preelegidas y “Ninguna” se crean al usarlas. Para mover muchos, arrastrá las tarjetas en Productos."
+                opciones={[
+                  ...categorias.filter((c) => c.productosActivos > 0 || c.id === p.categoriaId).map((c) => ({ valor: `id:${c.id}`, etiqueta: c.nombre })),
+                  ...CATEGORIAS_PREELEGIDAS.filter((pre) => !categorias.some((c) => (c.productosActivos > 0 || c.id === p.categoriaId) && c.nombre.toLowerCase() === pre.nombre.toLowerCase())).map((pre) => ({
+                    valor: `nombre:${pre.nombre}`,
+                    etiqueta: `${pre.nombre} (preelegida)`,
+                  })),
+                  ...(p.categoria === SIN_CATEGORIA.nombre ? [] : [{ valor: "ninguna", etiqueta: "Ninguna" }]),
+                ]}
+                defaultValue={`id:${p.categoriaId}`}
               />
               {p.unidadBaseEditable ? (
                 <Selector etiqueta="Unidad base" name="unidadBase" opciones={opciones(UNIDADES)} defaultValue={p.unidadBase} />

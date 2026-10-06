@@ -121,7 +121,7 @@ export function Desplegable({ titulo, abierto, children }: { titulo: string; abi
   );
 }
 
-export function Tarjeta({ titulo, children }: { titulo?: string; children: ReactNode }) {
+export function Tarjeta({ titulo, children }: { titulo?: ReactNode; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-4">
       {titulo && <h2 className="text-lg font-semibold">{titulo}</h2>}

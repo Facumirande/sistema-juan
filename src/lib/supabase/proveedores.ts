@@ -4,15 +4,17 @@ import { configuracionSupabase } from "./configuracion";
 
 /**
  * ¿Está activado "Entrar con Google" en Supabase (Authentication → Sign In / Providers)? Se
- * consulta la configuración pública de Auth para no mostrar un botón que no funciona.
+ * consulta la configuración pública de Auth. El botón se muestra siempre (pedido del usuario,
+ * 06/10/2026); esto decide si se puede ir a Google o hay que avisar que falta activarlo. Con
+ * `alMomento` no usa la copia guardada (se pregunta justo antes de ir a Google).
  */
-export async function googleHabilitado(): Promise<boolean> {
+export async function googleHabilitado(alMomento = false): Promise<boolean> {
   const configuracion = configuracionSupabase();
   if (!configuracion) return false;
   try {
     const respuesta = await fetch(`${configuracion.url}/auth/v1/settings`, {
       headers: { apikey: configuracion.clavePublica },
-      next: { revalidate: 300 },
+      ...(alMomento ? { cache: "no-store" as const } : { next: { revalidate: 300 } }),
     });
     if (!respuesta.ok) return false;
     const ajustes = (await respuesta.json()) as { external?: { google?: boolean } };

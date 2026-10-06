@@ -190,14 +190,13 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           personas={tablero.personas}
           yo={tablero.yo}
           base={base}
-          puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar") }}
+          puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar"), salir: puede("repartos.gestionar") && dia.panel.estado !== "CERRADA" }}
           enlaces={{
-
             en_lista: { href: `/lista-compra?fecha=${dia.fecha}`, texto: "🛒 Ir a la lista de compras" },
             comprados: { href: `/preparacion/${dia.fecha}`, texto: "📦 Ir a preparar" },
-            preparando: { href: `/preparacion/${dia.fecha}`, texto: "Ir a preparación" },
-            en_camino: { href: `/viaje?fecha=${dia.fecha}`, texto: "🧭 Ver el viaje y el GPS" },
-            entregados: { href: `/entregas?fecha=${dia.fecha}`, texto: "Ver las entregas" },
+            preparando: { href: `/preparacion/${dia.fecha}`, texto: "📦 Ir a preparación" },
+            en_camino: { href: `/viaje?fecha=${dia.fecha}`, texto: "Ver el viaje y el GPS" },
+            entregados: { href: `/entregas/remitos?fecha=${dia.fecha}`, texto: "🧾 Ver los remitos" },
           }}
         />
       ) : (

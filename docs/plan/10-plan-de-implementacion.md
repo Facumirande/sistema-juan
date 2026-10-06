@@ -25,7 +25,7 @@
 | I5 | Cuentas con proveedores | Hecha |
 | I6 | Preparación, repartos, entregas y documentos | Hecha |
 | I7 | Facturación interna, cierre del día y reportes | Hecha |
-| — | Interfaz para el uso diario: tablero de pedidos, paso a paso, carga visual de pedidos, lista de compras con "✓ Lo compré", preparación por cliente | Hecha |
+| — | Interfaz para el uso diario: tablero de pedidos, paso a paso, carga visual de pedidos, lista de compras con "✓ Lo compré", preparación por cliente, "Sale ahora", etapas del día en el menú, remitos del día, planilla de productos | Hecha |
 | I8 | Puesta en marcha | En curso (§3) |
 
 El orden siguió el circuito del negocio; cada iteración quedó usable antes de pasar a la siguiente.
@@ -57,7 +57,7 @@ Cada una se da por terminada con sus pruebas automáticas en verde y los número
 | I5 · Cuentas con proveedores | Pagos con imputación automática o elegida, saldo a favor, ajustes, anulaciones, vencimientos (DOC-05). | Los 12 pasos de 06 §12 dan los mismos saldos e imputaciones. |
 | I6 · Preparación y entregas | Preparación por cliente con reparto de faltantes, peso real, reemplazos, remitos sin precios y con precios congelados (DOC-02, DOC-03), repartos, confirmación en el celular (DOC-04, DOC-07). | Faltante de lechuga 48/22/14; la verdulería pasa a $222.770 en la versión 2; ningún documento sin precios lee precios. |
 | I7 · Facturación y cierre | Comprobante interno no fiscal (DOC-08) automático o por período, exportación al contador (Excel o CSV), cierre del día con resumen, reportes básicos, balance con gráficos. | Resumen del 24/09: vendido $806.370, margen $174.780, resultado $153.320, deuda $680.550. |
-| Interfaz de uso diario | Tablero de pedidos (Pedidos → Lista de compras → Comprado → Preparando → En camino → Entregados), el día paso a paso, carga visual de pedidos, lista de compras para el mercado con "✓ Lo compré", preparación por cliente con "Está todo" o "Falta algo" y el motivo, viaje de entrega con GPS, notas y actividad, pagar cada compra en un toque con los datos para transferir a la vista, balance con tarjetas de colores y comparación con el período anterior. | Recorridas en el navegador con datos de ejemplo, en celular y computadora. |
+| Interfaz de uso diario | Tablero de pedidos (Pedidos → Lista de compras → Comprado → Preparando → En camino → Entregados), el día paso a paso, carga visual de pedidos, lista de compras para el mercado con "✓ Lo compré", preparación por cliente con "Está todo" o "Falta algo" y el motivo, viaje de entrega con GPS, notas y actividad, pagar cada compra en un toque con los datos para transferir a la vista, balance con tarjetas de colores y comparación con el período anterior. Las etapas del día en curso en el menú de la izquierda, "🚚 Sale ahora" desde Preparando (arrastrando, eligiendo o con el botón) que arma el reparto y lo hace salir, la preparación explicada en tres pasos, los remitos del día en una pantalla para verlos o imprimirlos, la ubicación de los clientes en un mapa en la computadora, y los productos cargados de una vez desde la planilla modelo, con categorías que se arrastran. | Recorridas en el navegador con datos de ejemplo, en celular y computadora, sin errores en la consola; "Sale ahora" y la planilla con pruebas de integración. |
 
 Los pedidos no se confirman a mano: se cargan completos y, al mandarlos a la lista de compras o al empezar a preparar, los que quedaron sin terminar pero tienen productos se completan solos.
 
@@ -74,6 +74,7 @@ Los pedidos no se confirman a mano: se cargan completos y, al mandarlos a la lis
 | Revisión de permisos y RLS | Hecha: las pruebas de integración recorren los permisos con dos empresas y el rol sin precios |
 | Base de producción: un proyecto de Supabase aparte (plan gratuito mientras alcance), con las migraciones aplicadas con `pnpm db:aplicar` | Pendiente |
 | Publicar en Vercel con las variables de `.env.example` (y el dominio gratuito de Vercel) | Pendiente |
+| Activar "Entrar con Google" (el botón ya está en el ingreso y en Crear una cuenta; mientras no se active, avisa que falta y ofrece entrar con usuario): en Google Cloud, crear un cliente OAuth "Aplicación web" con la dirección de retorno `https://<ref>.supabase.co/auth/v1/callback`; en Supabase, Authentication → Sign In / Providers → Google con ese Client ID y Client Secret, y en URL Configuration agregar `https://<dominio>/auth/callback` (y `http://localhost:3000/auth/callback` para probar). Hacerlo en el proyecto de desarrollo y repetirlo en el de producción | Pendiente (lo hace el usuario: necesita su cuenta de Google Cloud) |
 | Primer uso en producción: configuración inicial, y habilitar al dueño y a su esposa desde Usuarios | Pendiente |
 | Cargar los datos reales (§5) | Pendiente |
 | Usar un día completo en paralelo con el papel y corregir lo que aparezca | Pendiente |
@@ -100,7 +101,7 @@ Cada prueba lleva en su nombre la regla o el caso que cubre (`RN-063`, `06 §12`
 | # | Qué | De dónde sale | Dónde se carga |
 |---|---|---|---|
 | 1 | Datos del negocio y valores por defecto | Dueño | Mi cuenta → Configuración del negocio |
-| 2 | Productos con sus envases de compra y venta | Lista de precios actual | Productos → Nuevo producto |
+| 2 | Productos con sus envases de compra y venta | Lista de precios actual | Productos → 📄 Cargar desde una planilla: bajar la planilla modelo, escribir los nombres uno debajo del otro (lo demás es opcional) y subirla; el sistema arma el código y el dibujo, propone la categoría y avisa lo importante que falta. De a uno, Productos → Nuevo producto |
 | 3 | Proveedores (puesto, teléfono, límite de crédito, días para pagar) | Cuaderno de deudas | Proveedores → Nuevo proveedor |
 | 4 | Precios de cada puesto | Última semana de compras | Precios de compra (o "✓ Lo compré" en la lista, que los actualiza) |
 | 5 | Clientes con su dirección, horario y cada cuánto se les factura | Cuaderno de pedidos | Clientes → Nuevo cliente |
@@ -134,9 +135,11 @@ Todas cerradas; cualquiera se revisa si el uso real lo pide. El detalle está en
 
 **Pendiente (pedido del usuario, 05/10/2026): facturación legal.** La factura válida es la electrónica de ARCA con CAE; hoy el sistema emite un comprobante interno. Para conectarlo con ARCA falta saber si el negocio es monotributista (Factura C, compatible con precios sin IVA) o responsable inscripto (A/B con IVA, cambia D-04), su CUIT con clave fiscal nivel 3, un punto de venta para web service y el certificado digital (la solicitud la prepara el sistema). Se prueba primero en el entorno de homologación de ARCA.
 
-**Ideas** (no pedidas; solo si el uso real las justifica):
+**Pendiente: activar "Entrar con Google"** en Supabase y Google Cloud (pasos en §3). Lo tiene que hacer el usuario porque necesita su cuenta de Google Cloud; el sistema ya está listo.
 
-No fueron pedidas; se hacen solo si el uso real las justifica.
+**A tener en cuenta:** el mapa para marcar ubicaciones usa los mapas gratuitos de OpenStreetMap, que piden no abusar (un negocio chico está muy lejos del límite). Si algún día se cortan, las ubicaciones se siguen marcando desde el celular (estando ahí, buscando la dirección o pegando un enlace de Google Maps).
+
+**Ideas** (no pedidas; solo si el uso real las justifica):
 
 - Consultar la lista de compras y anotar compras sin señal en el mercado.
 - Sobrantes y mermas que se descuenten de la compra siguiente.

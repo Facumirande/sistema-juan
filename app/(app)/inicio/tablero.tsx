@@ -12,6 +12,7 @@ import { Avatar } from "@/ui/avatar";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 
+import { salenAhoraAccion } from "../repartos/acciones";
 import {
   armarListaConElegidosAccion,
   asignarElegidosAccion,
@@ -22,8 +23,8 @@ import {
 
 // Tablero de pedidos estilo Trello: una columna por etapa y una tarjeta grande por pedido, con lo
 // que lleva a la vista, etiquetas, plazo, notas, avance y quién se encarga. Se arrastran entre
-// columnas (mandar a la lista de compras o sacarla) y en "Elegir pedidos" se marcan varias (o
-// todas) para mandarlas juntas a la lista de compras.
+// columnas (mandar a la lista de compras o sacarla, y de Preparando a En camino cuando sale) y en
+// "Elegir pedidos" se marcan varias (o todas) para mandarlas juntas a la lista o a entregar.
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
 
@@ -35,7 +36,8 @@ interface Props {
   yo: string;
   /** "/inicio?fecha=…": las tarjetas se abren agregando `&pedido=…`. */
   base: string;
-  puede: { crear: boolean; armar: boolean; editar: boolean };
+  /** `salir`: puede mandar pedidos a En camino (arma el reparto y sale). */
+  puede: { crear: boolean; armar: boolean; editar: boolean; salir: boolean };
   /** Destino de cada columna para ir a la pantalla de esa etapa. */
   enlaces: Partial<Record<ClaveColumna, { href: string; texto: string }>>;
 }
@@ -192,13 +194,18 @@ function Tarjeta({
   );
 }
 
-function Aviso({ estado, cerrar }: { estado: EstadoAccion; cerrar: () => void }) {
+function Aviso({ estado, cerrar, confirmar }: { estado: EstadoAccion; cerrar: () => void; confirmar: (() => void) | null }) {
   return (
     <div
       role={estado.ok ? "status" : "alert"}
       className={`flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-base font-medium shadow-tarjeta ${estado.ok ? "bg-tarjeta text-tarjeta-texto" : "bg-[var(--vence-fondo)] text-[var(--vence-texto)]"}`}
     >
       <span className="min-w-0 flex-1">{estado.mensaje}</span>
+      {estado.requiereConfirmacion && confirmar && (
+        <button type="button" onClick={confirmar} className="rounded-lg bg-[#172b4d] px-4 py-2 font-semibold text-white shadow-sm">
+          Confirmar
+        </button>
+      )}
       {estado.enlace && (
         <Link href={estado.enlace.href} className="rounded-lg bg-white px-4 py-2 font-semibold text-[#172b4d] shadow-sm">
           {estado.enlace.texto} →
@@ -219,23 +226,27 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
   const [arrastrando, setArrastrando] = useState<{ id: string; desde: ClaveColumna } | null>(null);
   const [sobre, setSobre] = useState<ClaveColumna | null>(null);
   const [mensaje, setMensaje] = useState<EstadoAccion>(ESTADO_INICIAL);
+  // Lo último que se mandó, para reenviarlo con "Confirmar" si el servidor lo pide.
+  const [ultimo, setUltimo] = useState<{ accion: Accion; datos: Record<string, string | string[]>; despues?: () => void } | null>(null);
   const [pendiente, empezar] = useTransition();
   const [verCancelados, setVerCancelados] = useState(false);
 
   const todas = useMemo(() => columnas.flatMap((c) => c.tarjetas), [columnas]);
   const pasaFiltro = (t: TarjetaPedido) => (!filtroPersona || t.responsable?.id === filtroPersona) && (!soloUrgentes || t.prioridad === "ALTA");
   const elegidasTarjetas = todas.filter((t) => elegidas.has(t.id));
-  const resumen = resumenDeSeleccion(elegidasTarjetas.map((t) => t.estado));
+  const resumen = resumenDeSeleccion(elegidasTarjetas);
 
   const ejecutar = (accion: Accion, datos: Record<string, string | string[]>, despues?: () => void) => {
     const fd = new FormData();
     for (const [clave, valor] of Object.entries(datos)) for (const v of Array.isArray(valor) ? valor : [valor]) fd.append(clave, v);
+    setUltimo({ accion, datos, despues });
     empezar(async () => {
       const r = await accion(ESTADO_INICIAL, fd);
       setMensaje(r);
       if (r.ok) despues?.();
     });
   };
+  const confirmarUltimo = ultimo ? () => ejecutar(ultimo.accion, { ...ultimo.datos, confirmarVariacion: "on" }, ultimo.despues) : null;
   const alternar = (id: string) =>
     setElegidas((previas) => {
       const nuevas = new Set(previas);
@@ -280,7 +291,13 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
     const tarjeta = todas.find((t) => t.id === arrastrando.id);
     setArrastrando(null);
     if (!DESTINO_PERMITIDO(arrastrando.desde, hacia)) {
-      setMensaje({ ok: false, mensaje: "Esa tarjeta no se puede mover ahí: preparación, reparto y entrega avanzan solas cuando se hacen esos pasos." });
+      setMensaje({
+        ok: false,
+        mensaje:
+          hacia === "en_camino"
+            ? "A En camino se pasa desde Preparando: arrastrá ahí la tarjeta cuando el pedido sale a entregar."
+            : "Esa tarjeta no se puede mover ahí: comprado, preparación y entrega avanzan solos cuando se hacen esos pasos.",
+      });
       return;
     }
     if (tarjeta && tarjeta.lineas === 0 && hacia === "en_lista") {
@@ -333,7 +350,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
         </div>
       </div>
 
-      {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} />}
+      {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} confirmar={pendiente ? null : confirmarUltimo} />}
 
       <nav aria-label="Ir a una columna" className="sin-barra -mx-1 flex gap-2 overflow-x-auto px-1 md:hidden">
         {columnas.map((col) => (
@@ -394,7 +411,7 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
                       eligiendo={eligiendo && col.seleccionable}
                       elegida={elegidas.has(t.id)}
                       alElegir={() => alternar(t.id)}
-                      arrastrable={puede.editar && (col.clave === "pedidos" || col.clave === "en_lista")}
+                      arrastrable={(puede.editar && (col.clave === "pedidos" || col.clave === "en_lista")) || (puede.salir && col.clave === "preparando")}
                       alArrastrar={(e) => {
                         e.dataTransfer.effectAllowed = "move";
                         e.dataTransfer.setData("text/plain", t.id);
@@ -403,7 +420,11 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
                     />
                   </li>
                 ))}
-                {visibles.length === 0 && <li className="px-1 py-3 text-tarjeta-suave">{col.tarjetas.length ? "Nada con este filtro." : "Sin pedidos."}</li>}
+                {visibles.length === 0 && (
+                  <li className="px-1 py-3 text-tarjeta-suave">
+                    {col.tarjetas.length ? "Nada con este filtro." : col.clave === "en_camino" && puede.salir ? "Arrastrá acá desde Preparando lo que sale a entregar." : "Sin pedidos."}
+                  </li>
+                )}
               </ol>
               <footer className="px-3 pt-2 pb-3">
                 {col.clave === "pedidos" && puede.crear ? (
@@ -465,6 +486,11 @@ export function TableroTrello({ fecha, columnas, cancelados, personas, yo, base,
           {puede.armar && resumen.paraLista > 0 && (
             <button type="button" disabled={pendiente} onClick={() => ejecutar(armarListaConElegidosAccion, { pedido: [...elegidas] }, terminar)} className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60">
               🛒 Mandar a la lista de compras ({resumen.paraLista})
+            </button>
+          )}
+          {puede.salir && resumen.paraSalir > 0 && (
+            <button type="button" disabled={pendiente} onClick={() => ejecutar(salenAhoraAccion, { pedido: elegidasTarjetas.filter((t) => t.columna === "preparando").map((t) => t.id) }, terminar)} className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60">
+              🚚 Salen ahora ({resumen.paraSalir})
             </button>
           )}
           {puede.armar && resumen.paraSacar > 0 && (

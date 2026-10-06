@@ -7,8 +7,12 @@ import { viajeDelDia } from "@/modulos/entregas/viaje";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { fechaConDia } from "@/ui/etiquetas";
+import { BotonAccion } from "@/ui/boton-accion";
 import { Encabezado, Tarjeta, clasesBoton } from "@/ui/formularios";
+import { FlechaNavegacion } from "@/ui/iconos";
 import { parametro } from "@/ui/parametros";
+
+import { salirAccion } from "../repartos/acciones";
 
 import { ubicarSalidaAccion } from "./acciones";
 import { paradasDelDia } from "./paradas";
@@ -29,11 +33,18 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
   const { salida, paradas } = await viajeDelDia(db, sesion.authUserId, fecha);
   const sueltas = paradas.filter((p) => !p.repartoId);
   const enCamino = paradas.filter((p) => p.estado === "EN_REPARTO").sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99));
-  const repartos = [...new Map(paradas.filter((p) => p.repartoId).map((p) => [p.repartoId!, p.reparto!])).entries()];
+  const repartos = [...new Map(paradas.filter((p) => p.repartoId).map((p) => [p.repartoId!, p.reparto!])).entries()].map(([id, numero]) => {
+    const suyas = paradas.filter((p) => p.repartoId === id);
+    return { id, numero, paradas: suyas, enCamino: suyas.some((p) => p.estado === "EN_REPARTO"), listo: suyas.every((p) => p.estado === "PREPARADA") };
+  });
+  const puedeSalir = sesion.permisos.includes("repartos.gestionar");
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado titulo="Viaje de entrega" descripcion={`Las entregas del ${fechaConDia(fecha)} que faltan llevar. El sistema calcula el orden con menos kilómetros; tocá “Ir” para abrir el GPS en cada parada.`}>
+      <Encabezado
+        titulo="Viaje de entrega"
+        descripcion={`Las entregas del ${fechaConDia(fecha)} que faltan llevar. El sistema calcula el orden con menos kilómetros; tocá “Ir” para abrir el GPS en cada parada. Cuando sale un reparto, sus pedidos pasan a En camino.`}
+      >
         <Link href={`/inicio?fecha=${fecha}`} className={clasesBoton("secundario")}>
           Volver al tablero
         </Link>
@@ -86,12 +97,24 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
       {repartos.length > 0 && (
         <Tarjeta titulo="Repartos armados">
           <ul className="flex flex-col gap-2">
-            {repartos.map(([id, numero]) => (
-              <li key={id}>
-                <Link href={`/repartos/${id}#recorrido`} className="flex min-h-11 items-center justify-between rounded-lg border border-borde px-3 font-medium hover:border-marca">
-                  {numero} · {paradas.filter((p) => p.repartoId === id).length} paradas
-                  <span>Ver el recorrido →</span>
-                </Link>
+            {repartos.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-borde p-3">
+                <span className="min-w-0">
+                  <span className="block font-semibold">
+                    {r.numero} · {r.paradas.length === 1 ? "1 parada" : `${r.paradas.length} paradas`} · {r.enCamino ? "🚚 en camino" : r.listo ? "✓ listo para salir" : "preparándose"}
+                  </span>
+                  <span className="block text-sm text-texto-suave">{r.paradas.map((p) => p.cliente).join(", ")}</span>
+                </span>
+                <span className="flex flex-wrap gap-2">
+                  {!r.enCamino && r.listo && puedeSalir && (
+                    <BotonAccion accion={salirAccion} datos={{ repartoId: r.id }} mostrarExito confirmar="¿Sale el reparto? Sus pedidos pasan a En camino." className={clasesBoton("principal")}>
+                      🚚 Salir
+                    </BotonAccion>
+                  )}
+                  <Link href={`/repartos/${r.id}#recorrido`} className={`${clasesBoton("secundario")} gap-2`}>
+                    <FlechaNavegacion /> Ver el recorrido
+                  </Link>
+                </span>
               </li>
             ))}
           </ul>
