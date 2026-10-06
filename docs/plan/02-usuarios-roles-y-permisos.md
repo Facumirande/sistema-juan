@@ -36,11 +36,11 @@ Documentos relacionados: 01-tipo-de-aplicacion-y-arquitectura.md (seguridad téc
 
 Roles canónicos (creados automáticamente en cada empresa como roles de sistema; no se pueden borrar):
 
-| Rol | Quién es en la vida real | Qué hace en el circuito (pasos de R13) | Dispositivo principal | Nunca puede |
+| Rol | Quién es en la vida real | Qué hace en el circuito (pasos de 04 §3.2) | Dispositivo principal | Nunca puede |
 |---|---|---|---|---|
 | **ADMIN** | El dueño (o socio a cargo). | Todo: configura precios y márgenes, autoriza excesos de límite, corrige y anula documentos, ve reportes de rentabilidad. | PC en la oficina y celular en el mercado. | — (tiene todos los permisos). |
 | **VENDEDOR** | Quien atiende a los clientes y toma pedidos por teléfono, WhatsApp o correo. | Pasos 1–2: carga pedidos, mantiene datos de clientes y puntos de entrega, informa al cliente el precio estimado y el estado del pedido. | Celular (con WhatsApp al lado) o PC. | Ver costos, márgenes, precios de compra, deudas con proveedores; registrar compras o pagos. |
-| **COMPRADOR** | Quien va al mercado de madrugada. | Pasos 3–6: genera y usa la lista de compra, compara proveedores, registra compras (contado, crédito o mixta), actualiza precios de compra, ve el crédito disponible de cada proveedor. | Celular (una mano, poca luz, apuro). | Ver precios de venta y márgenes (salvo opcional), cambiar límites de crédito, exceder un límite sin autorización. |
+| **COMPRADOR** | Quien va al mercado de madrugada. | Pasos 3–6: genera y usa la lista de compras, compara proveedores, registra compras (contado, crédito o mixta), actualiza precios de compra, ve el crédito disponible de cada proveedor. | Celular (una mano, poca luz, apuro). | Ver precios de venta y márgenes (salvo opcional), cambiar límites de crédito, exceder un límite sin autorización. |
 | **PREPARADOR** | Personal del depósito que arma la mercadería de cada cliente. | Paso 8: usa la hoja de preparación (DOC-07), carga cantidades preparadas (pesadas o contadas), informa faltantes, imprime la lista de entrega (DOC-02). | Tablet o celular en el depósito, o la hoja impresa. | Ver cualquier precio, costo, margen o deuda. |
 | **REPARTIDOR** | Chofer o persona que entrega. | Pasos 9–10: sigue su hoja de ruta (DOC-04), entrega con la lista de entrega sin precios (DOC-02), confirma la entrega (quién recibió, hora, firma o foto, diferencias). | Celular. | Ver cualquier precio, costo, margen o deuda; ver repartos de otros repartidores. |
 | **ADMINISTRATIVO** | Persona de administración / contable interna. | Pasos 7, 11–12: registra pagos a proveedores, controla cuentas corrientes y vencimientos, emite la lista contable (DOC-03) y el comprobante interno, exporta ventas para el contador, reportes. | PC con impresora. | Cambiar reglas de precios o configuración (salvo que el ADMIN se lo otorgue). |
@@ -81,22 +81,22 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `precios.editar_reglas` | Crear y modificar recargos (global, categoría, producto, cliente) y reglas por cliente (RECARGO y PRECIO_FIJO). | Sí | M |
 | `precios.override_linea` | Fijar manualmente el precio de una línea de pedido o de entrega, con motivo obligatorio. | Sí | V |
 
-### 4.3 Pedidos, jornada y lista de compra
+### 4.3 Pedidos, jornada y lista de compras
 
 | Clave | Descripción | Auditado | Clase de datos |
 |---|---|---|---|
 | `pedidos.ver` | Ver pedidos de todos los clientes y su estado. | No | O (V si además tiene `precios.ver_venta`) |
 | `pedidos.crear` | Crear pedidos (BORRADOR) y cargar líneas. | No | O |
 | `pedidos.editar` | Modificar pedidos en BORRADOR o CONFIRMADO (líneas, cantidades, observaciones, punto de entrega). | Solo si está CONFIRMADO | O |
-| `pedidos.confirmar` | Pasar un pedido de BORRADOR a CONFIRMADO (entra en la lista de compra). | No | O |
-| `pedidos.editar_en_curso` | Modificar pedidos EN_COMPRA; cargar pedidos (o agregar líneas) en jornadas PREPARANDO o REPARTIENDO (afecta la lista de compra o la preparación en curso). | Sí | O |
+| `pedidos.confirmar` | Pasar un pedido de BORRADOR a CONFIRMADO (entra en la lista de compras). | No | O |
+| `pedidos.editar_en_curso` | Modificar pedidos EN_COMPRA; cargar pedidos (o agregar líneas) en jornadas PREPARANDO o REPARTIENDO (afecta la lista de compras o la preparación en curso). | Sí | O |
 | `pedidos.cancelar` | Cancelar pedidos en BORRADOR, CONFIRMADO o EN_COMPRA, con motivo. | Sí | O |
 | `jornada.ver` | Ver jornadas y su estado. | No | O |
 | `jornada.gestionar` | Iniciar la preparación y avanzar manualmente el estado de la jornada cuando no lo hace una acción (ver 04-procesos-y-flujos.md). | Sí | O |
 | `jornada.cerrar` | Cerrar la jornada (REPARTIENDO → CERRADA) con sus validaciones y resumen. | Sí | O |
 | `jornada.reabrir` | Reabrir una jornada CERRADA (para correcciones), con motivo. | Sí | O |
-| `lista_compra.ver` | Ver la lista de compra (productos y cantidades; los precios sugeridos solo con `precios.ver_costos`). | No | O |
-| `lista_compra.generar` | Generar o regenerar la lista de compra de una jornada a partir de los pedidos. | Sí | O |
+| `lista_compra.ver` | Ver la lista de compras (productos y cantidades; los precios sugeridos solo con `precios.ver_costos`). | No | O |
+| `lista_compra.generar` | Generar o regenerar la lista de compras de una jornada a partir de los pedidos. | Sí | O |
 | `lista_compra.editar` | Ajustar cantidad a comprar, presentación o proveedor sugerido, asignar comprador, marcar NO_CONSEGUIDO. | Sí | O |
 
 ### 4.4 Compras y cuentas corrientes de proveedores
@@ -133,7 +133,7 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 
 | Clave | Descripción | Auditado | Clase de datos |
 |---|---|---|---|
-| `documentos.imprimir_compra` | Imprimir/descargar DOC-01 Lista de compra y DOC-06 Lista general de precios de compra (los precios solo aparecen si además tiene `precios.ver_costos`). | No | O / C |
+| `documentos.imprimir_compra` | Imprimir/descargar DOC-01 Lista de compras y DOC-06 Lista general de precios de compra (los precios solo aparecen si además tiene `precios.ver_costos`). | No | O / C |
 | `documentos.imprimir_entrega` | Ver, imprimir y descargar DOC-02 Lista de entrega, DOC-04 Hoja de ruta y DOC-07 Hoja de preparación (todos sin precios). | Sí (reimpresión) | O |
 | `documentos.imprimir_contable` | Ver, imprimir y descargar DOC-03 Lista contable (remito valorizado), DOC-08 Comprobante interno de venta y demás documentos valorizados de venta. | Sí (reimpresión) | V |
 | `documentos.imprimir_cuenta` | Imprimir/descargar DOC-05 Estado de cuenta de proveedor. | No | F |
@@ -159,7 +159,7 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `usuarios.administrar` | Dar de alta, desactivar y reactivar usuarios; asignar roles; crear y editar roles personalizados; cerrar sesiones de otros. | Sí | P |
 | `auditoria.ver` | Consultar el registro de auditoría. | No | P |
 
-**Notas y actividad (28/09/2026).** No tienen permisos propios: cualquiera con sesión puede escribir notas y ver la actividad, pero una nota o una entrada de actividad solo se muestra —y solo se puede escribir una nota— si la persona puede ver lo que nombra (pedido → `pedidos.ver`, cliente → `clientes.ver`, proveedor → `proveedores.ver`, producto → `productos.ver`, compra → `compras.ver`, pago → `pagos.ver`, entrega → `entregas.ver`, reparto → `repartos.ver`, día → `jornada.ver`, lista de compra → `lista_compra.ver`, comprobante → `facturacion.ver`, usuario → `usuarios.administrar`; el REPARTIDOR, solo las entregas de sus repartos). Una nota la borra solo quien la escribió. Marcar la ubicación de un punto de entrega pide `clientes.editar` o `entregas.confirmar` (el repartidor en el lugar); la del depósito, `configuracion.editar`.
+**Notas y actividad (28/09/2026).** No tienen permisos propios: cualquiera con sesión puede escribir notas y ver la actividad, pero una nota o una entrada de actividad solo se muestra —y solo se puede escribir una nota— si la persona puede ver lo que nombra (pedido → `pedidos.ver`, cliente → `clientes.ver`, proveedor → `proveedores.ver`, producto → `productos.ver`, compra → `compras.ver`, pago → `pagos.ver`, entrega → `entregas.ver`, reparto → `repartos.ver`, día → `jornada.ver`, lista de compras → `lista_compra.ver`, comprobante → `facturacion.ver`, usuario → `usuarios.administrar`; el REPARTIDOR, solo las entregas de sus repartos). Una nota la borra solo quien la escribió. Marcar la ubicación de un punto de entrega pide `clientes.editar` o `entregas.confirmar` (el repartidor en el lugar); la del depósito, `configuracion.editar`.
 
 ---
 
@@ -273,13 +273,13 @@ Si una persona necesita, por ejemplo, preparar y además facturar, se le asignan
 | Pantalla / documento | ADMIN | VENDEDOR | COMPRADOR | PREPARADOR | REPARTIDOR | ADMINISTRATIVO |
 |---|---|---|---|---|---|---|
 | Detalle de pedido | Todo | Cantidades + precio estimado + origen de la regla | Cantidades (si tiene `pedidos.ver`) | No accede | No accede | Cantidades + precio estimado |
-| Lista de compra (pantalla y DOC-01) | Todo | Cantidades (si Opc.) | Cantidades + proveedor sugerido + precio sugerido + crédito disponible | Cantidades (si Opc.) | No accede | Cantidades (si Opc.) |
+| Lista de compras (pantalla y DOC-01) | Todo | Cantidades (si Opc.) | Cantidades + proveedor sugerido + precio sugerido + crédito disponible | Cantidades (si Opc.) | No accede | Cantidades (si Opc.) |
 | Hoja de preparación (DOC-07) | Solo cantidades | No accede | Solo cantidades (si Opc.) | Solo cantidades | No accede | No accede |
 | Hoja de ruta (DOC-04) y confirmación | Solo operativo | No accede | No accede | Solo operativo (si Opc.) | Solo operativo, solo sus repartos | Solo operativo (si Opc.) |
 | Lista de entrega (DOC-02) | Sin precios | Sin precios | No accede | Sin precios | Sin precios | Sin precios |
 | Lista contable (DOC-03) | Con precios | Con precios (si Opc.) | No accede | No accede (403) | No accede (403) | Con precios |
 | Ficha de proveedor | Todo | No accede | Datos + productos + precios + crédito | No accede | No accede | Datos + precios + cuenta corriente |
-| Ficha de producto (R14) | Todo | Datos + precio de venta por cliente | Datos + proveedores + precios de compra | Datos básicos (si Opc.) | No accede | Datos + costos + ventas |
+| Ficha de producto | Todo | Datos + precio de venta por cliente | Datos + proveedores + precios de compra | Datos básicos (si Opc.) | No accede | Datos + costos + ventas |
 
 ---
 

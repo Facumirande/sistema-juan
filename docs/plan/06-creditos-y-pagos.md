@@ -67,7 +67,7 @@ Para saber **qué compra está pagada** no alcanza con el saldo: hace falta impu
 - Las imputaciones no se borran: se desactivan (`activa = false`, con fecha y motivo) y se crean nuevas.
 - **Ajustes:** un ajuste de crédito con compra relacionada se imputa a esa compra y baja su pendiente (cambia su estado de pago); sin compra relacionada se imputa FIFO como un pago. Un ajuste de débito es una partida pendiente más, que los pagos cancelan por FIFO (campos en `03-modelo-de-datos.md` §10.4).
 
-**Invariante** (se verifica con un control nocturno y en las pruebas automáticas):
+**Invariante** (lo verifican las pruebas automáticas):
 
 ```text
 saldo_neto(proveedor) = Σ pendiente(partidas deudoras)
@@ -95,7 +95,7 @@ WHERE pr.empresa_id = :empresa_id
 GROUP BY pr.id, pr.nombre, pr.limite_credito;
 ```
 
-En el modelo esta consulta es la vista `v_saldo_proveedor` (`03-modelo-de-datos.md` §17.7), que agrega el semáforo y la deuda vencida. Si con el volumen hiciera falta, se puede cachear el saldo en una columna del proveedor actualizada en la misma transacción que cada movimiento y conciliada por el control nocturno; la fuente de verdad es siempre el libro.
+En el código esta consulta es `cuentaDeProveedor` (`03-modelo-de-datos.md` §17), que agrega el semáforo y la deuda vencida. `proveedor.saldo_actual` guarda una copia que se actualiza en la misma transacción que cada movimiento; la fuente de verdad es siempre el libro.
 
 ---
 
@@ -154,6 +154,8 @@ función imputarFIFO(partida_acreedora, proveedor):
 
 El usuario marca las compras a cancelar y el importe de cada una. Validaciones (RN-097): cada importe ≤ pendiente de esa compra; la suma ≤ monto del pago. Lo no asignado queda como saldo a favor. Uso típico: el proveedor pide cancelar una compra puntual ("pagame la del martes").
 
+**Pagar una compra entera con un toque** (RN-097b): en la cuenta del proveedor y en el detalle de la compra, cada compra sin pagar tiene **💵 Pagué en efectivo** y **🏦 Pagué por transferencia**. Registra un pago de hoy por todo lo que falta de esa compra, imputado a ella; lo que falta se calcula en el momento, así un doble toque o un pago anterior no hacen pagar de más. Para transferir, la cuenta muestra el alias, el CBU y a nombre de quién está la cuenta del proveedor, con botones para copiarlos.
+
 ### 4.4 Saldo a favor
 
 Un pago mayor a la deuda deja la diferencia sin imputar. Se muestra en la ficha del proveedor como "Saldo a favor: $30.000" (en verde), aumenta el crédito disponible y se aplica a la próxima compra `CREDITO` o `MIXTA` (§3). También puede imputarse manualmente desde el pago.
@@ -208,7 +210,7 @@ Permiso `compras.anular`, motivo obligatorio (RN-065). Siempre se crea `ANULACIO
 
 Ejemplo (`CONTADO` de $120.000): `CARGO_COMPRA` +120.000, `PAGO` −120.000 → saldo 0. Se anula la compra: `ANULACION_COMPRA` −120.000 → saldo −120.000 (a favor). Si el proveedor devolvió el dinero: `ANULACION_PAGO` +120.000 → saldo 0.
 
-Además, la anulación recalcula la lista de compra y el costo real de la jornada (`04-procesos-y-flujos.md` §5.d.6).
+Además, la anulación recalcula la lista de compras y el costo real de la jornada (`04-procesos-y-flujos.md` §5.d.6).
 
 ### 6.2 Anulación de un pago
 
@@ -254,7 +256,7 @@ Todos los montos en `numeric(14,2)`, aritmética decimal exacta (nunca flotantes
 ```text
 función estadoPago(compra):                                   // RN-099
     si compra.estado = ANULADA: devolver null                  // no aplica
-    pagado    = Σ monto de imputaciones activas a la compra (vista v_compra_estado_pago)
+    pagado    = Σ monto de imputaciones activas a la compra (pagadoDeCompra)
     pendiente = compra.total − pagado
     si pendiente = 0:  devolver PAGADA
     si pagado = 0:     devolver PENDIENTE
@@ -308,7 +310,7 @@ El semáforo siempre se muestra con **color + ícono + texto + porcentaje** (no 
 | Momento | Tipo de control |
 |---|---|
 | Al registrar una compra `CREDITO` o `MIXTA` | BLOQUEA si el saldo proyectado supera el límite; ADVIERTE si queda en `ROJO` (RN-063). |
-| Al generar o regenerar la lista de compra | Influye en la sugerencia de proveedor (§9.4). |
+| Al generar o regenerar la lista de compras | Influye en la sugerencia de proveedor (§9.4). |
 | Al anular un pago | ADVIERTE si el saldo pasa a superar el límite (RN-100). |
 | Al registrar un ajuste de débito | ADVIERTE si supera el límite. |
 | Al bajar el límite de un proveedor | ADVIERTE si queda por debajo del saldo actual (§9.5). |
@@ -365,7 +367,7 @@ flowchart TD
 - Un COMPRADOR sin el permiso no puede confirmar: la compra la registra un usuario con permiso (el ADMIN).
 - Cada exceso autorizado queda en `auditoria` con límite, saldo anterior, monto, exceso, motivo y usuario.
 
-### 9.4 Influencia en la sugerencia de proveedor de la lista de compra
+### 9.4 Influencia en la sugerencia de proveedor de la lista de compras
 
 Al generar la lista (`04-procesos-y-flujos.md` §5.c.2) el sistema mantiene un **disponible proyectado** por proveedor (disponible actual − lo ya asignado en el plan). Si la línea no entra en el disponible del mejor candidato, pasa al siguiente y deja la alerta `CREDITO_INSUFICIENTE` con el ahorro que se perdería ("Pagando contado a D ahorrás $5.000"). El plan por proveedor muestra el semáforo proyectado de cada uno después de comprar todo lo asignado.
 

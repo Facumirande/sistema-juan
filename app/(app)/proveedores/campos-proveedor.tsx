@@ -37,15 +37,20 @@ export function CamposProveedor({ proveedor, editarCredito }: { proveedor?: Fich
           </>
         )}
       </div>
+      <fieldset className="grid gap-4 rounded-lg border border-borde p-3 sm:grid-cols-2">
+        <legend className="px-1 font-semibold">🏦 Para transferirle</legend>
+        <Campo etiqueta="Alias" name="aliasTransferencia" defaultValue={proveedor?.aliasTransferencia ?? ""} placeholder="Ej. garcia.hnos.mercado" autoCapitalize="none" />
+        <Campo etiqueta="A nombre de quién está la cuenta" name="titularCuenta" defaultValue={proveedor?.titularCuenta ?? ""} placeholder="Ej. García Juan Carlos" ayuda="Para confirmar que el banco muestra el mismo nombre antes de transferir." />
+        <Campo etiqueta="CBU o CVU (opcional)" name="cbu" inputMode="numeric" defaultValue={proveedor?.cbu ?? ""} placeholder="22 números" />
+      </fieldset>
       <details>
-        <summary className="min-h-11 cursor-pointer py-2 font-medium">Más datos (fiscales, banco, código)</summary>
+        <summary className="min-h-11 cursor-pointer py-2 font-medium">Más datos (fiscales, código)</summary>
         <div className="grid gap-4 py-2 sm:grid-cols-2">
           <Campo etiqueta="Código (opcional)" name="codigo" defaultValue={proveedor?.codigo ?? ""} />
           <Campo etiqueta="Razón social" name="razonSocial" defaultValue={proveedor?.razonSocial ?? ""} />
           <Campo etiqueta="CUIT" name="identificacionFiscal" defaultValue={proveedor?.identificacionFiscal ?? ""} />
           <Campo etiqueta="Correo" name="email" type="email" defaultValue={proveedor?.email ?? ""} />
           <Campo etiqueta="Dirección" name="direccion" defaultValue={proveedor?.direccion ?? ""} />
-          <Campo etiqueta="Datos bancarios (CBU / alias)" name="datosBancarios" defaultValue={proveedor?.datosBancarios ?? ""} />
         </div>
       </details>
       <AreaTexto etiqueta="Observaciones" name="observaciones" defaultValue={proveedor?.observaciones ?? ""} />

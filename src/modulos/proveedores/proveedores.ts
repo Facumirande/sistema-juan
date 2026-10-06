@@ -6,6 +6,7 @@ import { condicionPago, proveedor, proveedorProducto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { indicadoresCredito, type Semaforo } from "@/dominio/compras/credito";
 import { dec } from "@/dominio/dinero/decimal";
+import { aliasValido, cbuValido, normalizarAlias, normalizarCbu } from "@/dominio/proveedores/transferencia";
 import { umbralesSemaforo } from "@/modulos/compras/cuenta";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
@@ -50,7 +51,9 @@ export interface FichaProveedor {
   contactoNombre: string | null;
   ubicacionMercado: string | null;
   direccion: string | null;
-  datosBancarios: string | null;
+  aliasTransferencia: string | null;
+  cbu: string | null;
+  titularCuenta: string | null;
   condicionPagoHabitual: CondicionPago;
   observaciones: string | null;
   activo: boolean;
@@ -70,7 +73,13 @@ const esquemaProveedor = z.object({
   contactoNombre: textoOpcional(120),
   ubicacionMercado: textoOpcional(120),
   direccion: textoOpcional(200),
-  datosBancarios: textoOpcional(300),
+  aliasTransferencia: textoOpcional(40)
+    .transform((v) => (v === null ? null : normalizarAlias(v)))
+    .refine((v) => v === null || aliasValido(v), { message: "El alias tiene de 6 a 20 letras, números, puntos o guiones (sin espacios ni tildes). Copialo como te lo pasó el proveedor." }),
+  cbu: textoOpcional(40)
+    .transform((v) => (v === null ? null : normalizarCbu(v)))
+    .refine((v) => v === null || cbuValido(v), { message: "Ese CBU o CVU no es válido: tiene que tener 22 números. Revisá que no falte o sobre uno." }),
+  titularCuenta: textoOpcional(120),
   condicionPagoHabitual: z.enum(condicionPago.enumValues, "Elegí la condición de pago habitual."),
   observaciones: textoOpcional(1000),
   /** `undefined` = no se toca (la pantalla no lo muestra sin permiso); `null` = sin límite. */
@@ -148,7 +157,9 @@ export async function obtenerProveedor(db: BaseDatos, authUserId: string, id: st
       contactoNombre: p.contactoNombre,
       ubicacionMercado: p.ubicacionMercado,
       direccion: p.direccion,
-      datosBancarios: p.datosBancarios,
+      aliasTransferencia: p.aliasTransferencia,
+      cbu: p.cbu,
+      titularCuenta: p.titularCuenta,
       condicionPagoHabitual: p.condicionPagoHabitual,
       observaciones: p.observaciones,
       activo: p.activo,

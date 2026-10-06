@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 
 // Un enlace del menú de la izquierda, marcado cuando es la pantalla en la que se está.
 
-/** Pantallas cuyas subpáginas tienen su propio lugar en el menú (ej. "/pedidos/nuevo" no marca "Lista de pedidos"). */
-const SOLO_EXACTA = ["/inicio", "/pedidos", "/balance"];
+/** Pantallas cuyas subpáginas no las marcan (ej. "/balance/movimientos" no marca "Balance"). */
+const SOLO_EXACTA = ["/inicio", "/balance"];
 
 export function EnlaceDeMenu({ href, icono, etiqueta, destacado }: { href: string; icono: string; etiqueta: string; destacado?: boolean }) {
   const ruta = usePathname();

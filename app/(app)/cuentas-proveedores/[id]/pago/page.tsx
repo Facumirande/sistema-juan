@@ -11,6 +11,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { MEDIOS_PAGO, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { AreaTexto, Campo, Encabezado, Selector } from "@/ui/formularios";
+import { DatosTransferencia } from "@/ui/datos-transferencia";
 import { SemaforoCredito } from "@/ui/semaforo";
 
 import { registrarPagoAccion } from "../../acciones";
@@ -30,7 +31,7 @@ export default async function RegistrarPago({ params }: PageProps<"/cuentas-prov
       <Encabezado
         titulo={`Pagarle a ${c.proveedor.nombre}`}
         volver={{ ruta: `/cuentas-proveedores/${id}`, texto: "Cuenta del proveedor" }}
-        descripcion="Anotá cuánto le pagaste y cómo. Se descuenta primero de las compras más viejas; si querés, elegís vos cuáles cancela."
+        descripcion="Para pagar una parte o varias compras juntas. Se descuenta primero de las compras más viejas; si querés, elegís vos cuáles cancela. Para pagar una compra entera es más rápido el botón de esa compra en la cuenta."
       />
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-borde bg-superficie p-3">
         <SemaforoCredito semaforo={c.indicadores.semaforo} usoPct={c.indicadores.usoPct?.toString()} />
@@ -45,6 +46,7 @@ export default async function RegistrarPago({ params }: PageProps<"/cuentas-prov
           </span>
         )}
       </div>
+      <DatosTransferencia alias={c.proveedor.aliasTransferencia} cbu={c.proveedor.cbu} titular={c.proveedor.titularCuenta} cargar={sesion.permisos.includes("proveedores.editar") ? `/proveedores/${id}?editar#editar` : undefined} />
       <FormularioAccion accion={registrarPagoAccion} boton="Registrar pago">
         <input type="hidden" name="proveedorId" value={id} />
         <input type="hidden" name="claveIdempotencia" value={randomUUID()} />

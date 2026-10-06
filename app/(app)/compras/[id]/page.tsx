@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -10,11 +12,13 @@ import { cuentaDeProveedor } from "@/modulos/compras/cuenta";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { CONDICIONES_COMPRA, ESTADOS_PAGO, MEDIOS_PAGO } from "@/ui/etiquetas";
+import { BotonAccion } from "@/ui/boton-accion";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, Casilla, Encabezado, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
+import { pagarDeudaAccion } from "../../cuentas-proveedores/acciones";
 import { anularCompraAccion } from "../acciones";
 
 export const metadata: Metadata = { title: "Compra · Sistema Juan" };
@@ -121,6 +125,24 @@ export default async function PaginaCompra({ params, searchParams }: PageProps<"
               </li>
             ))}
           </ul>
+        )}
+        {c.estado === "REGISTRADA" && c.total !== null && c.pagado !== null && dec(c.total).gt(c.pagado) && sesion.permisos.includes("pagos.registrar") && (
+          <div className="flex flex-wrap gap-2">
+            {(["EFECTIVO", "TRANSFERENCIA"] as const).map((medio) => (
+              <BotonAccion
+                key={medio}
+                accion={pagarDeudaAccion}
+                datos={{ proveedorId: c.proveedorId, clave: `C:${c.id}`, medio, claveIdempotencia: randomUUID() }}
+                confirmar={`¿Le pagaste ${formatearMoneda(dec(c.total!).minus(c.pagado!))} de ${c.numero} ${medio === "EFECTIVO" ? "en efectivo" : "por transferencia"}?`}
+                className={`min-h-11 rounded-lg px-4 font-semibold ${medio === "EFECTIVO" ? "bg-marca text-marca-texto" : "border-2 border-marca"}`}
+              >
+                {medio === "EFECTIVO" ? "💵 Pagué en efectivo" : "🏦 Pagué por transferencia"}
+              </BotonAccion>
+            ))}
+            <Link href={`/cuentas-proveedores/${c.proveedorId}`} className={clasesBoton("secundario")}>
+              Ver la cuenta y cómo transferirle
+            </Link>
+          </div>
         )}
         {c.fechaVencimiento && c.estadoPago && c.estadoPago !== "PAGADA" && c.fechaVencimiento < hoy && (
           <p className="font-semibold text-error">⏰ Vencida hace {diasEntre(c.fechaVencimiento, hoy)} días.</p>

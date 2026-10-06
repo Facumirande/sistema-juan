@@ -15,6 +15,7 @@ import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { CONDICIONES_COMPRA, CONDICIONES_PAGO, ESTADOS_PAGO } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { CampoNumero, Encabezado, Estado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
+import { DatosTransferencia } from "@/ui/datos-transferencia";
 import { SemaforoCredito } from "@/ui/semaforo";
 
 import { HiloDeNotas } from "../../actividad/notas";
@@ -26,9 +27,10 @@ import { CamposProveedor } from "../campos-proveedor";
 export const metadata: Metadata = { title: "Proveedor · Sistema Juan" };
 
 /** P-21 Ficha de proveedor: datos, productos y precios, crédito (08 §5.4). */
-export default async function FichaDeProveedor({ params }: PageProps<"/proveedores/[id]">) {
+export default async function FichaDeProveedor({ params, searchParams }: PageProps<"/proveedores/[id]">) {
   const sesion = await sesionParaPantalla("proveedores.ver");
   const id = idDeRuta((await params).id);
+  const editar = (await searchParams).editar !== undefined;
   const db = obtenerBaseDatos();
   const p = await cargarFicha(obtenerProveedor(db, sesion.authUserId, id));
 
@@ -68,6 +70,8 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
           </Link>
         )}
       </Encabezado>
+
+      <DatosTransferencia alias={p.aliasTransferencia} cbu={p.cbu} titular={p.titularCuenta} cargar={puedeEditar ? "?editar#editar" : undefined} />
 
       {p.credito && (
         <Tarjeta titulo="Cuenta">
@@ -191,7 +195,7 @@ export default async function FichaDeProveedor({ params }: PageProps<"/proveedor
       </Tarjeta>
 
       {puedeEditar && (
-        <details className="rounded-lg border border-borde bg-superficie p-4">
+        <details id="editar" open={editar} className="rounded-lg border border-borde bg-superficie p-4">
           <summary className="min-h-11 cursor-pointer text-lg font-semibold">✏️ Editar los datos del proveedor (o darlo de baja)</summary>
           <div className="mt-4 flex flex-col gap-3">
           <FormularioAccion accion={editarProveedorAccion} boton="Guardar cambios">

@@ -88,17 +88,6 @@ export async function listarJornadas(db: BaseDatos, authUserId: string): Promise
   });
 }
 
-/** Jornadas próximas con pedidos, para elegir la fecha en la lista de pedidos. */
-export async function fechasConPedidos(tx: Transaccion, desde: FechaISO): Promise<FechaISO[]> {
-  const filas = await tx
-    .selectDistinct({ fecha: jornada.fecha })
-    .from(jornada)
-    .innerJoin(pedido, eq(pedido.jornadaId, jornada.id))
-    .where(and(gte(jornada.fecha, desde)))
-    .orderBy(asc(jornada.fecha));
-  return filas.map((f) => f.fecha);
-}
-
 /** Hoy y el día de entrega que se propone (mañana, o pasado mañana después de la hora de corte). */
 export async function fechasDeTrabajo(db: BaseDatos, authUserId: string): Promise<{ hoy: FechaISO; sugerida: FechaISO }> {
   return ejecutarComoUsuario(db, authUserId, null, async (tx) => {

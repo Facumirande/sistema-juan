@@ -49,7 +49,7 @@ export default async function DetalleComprobante({ params }: PageProps<"/factura
               <tr key={e.id}>
                 <td>
                   <Link href={`/entregas/${e.id}`} className="underline-offset-4 hover:underline">
-                    {e.numero} v{e.version}
+                    {e.numero}
                   </Link>
                   {e.referencia && <span className="block text-sm text-texto-suave">OC {e.referencia}</span>}
                 </td>

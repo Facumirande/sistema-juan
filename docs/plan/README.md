@@ -34,7 +34,7 @@ Es una aplicación web que se usa desde el navegador del celular o de la computa
 | 02 | [Usuarios, roles y permisos](02-usuarios-roles-y-permisos.md) | Cuentas y acceso, los roles y el catálogo de permisos `modulo.accion`, y cómo se garantiza que preparación y reparto nunca muestren precios. | Desarrollo |
 | 03 | [Modelo de datos](03-modelo-de-datos.md) | Todas las tablas, campos, estados, restricciones e índices. **Fuente de verdad de nombres.** | Desarrollo |
 | 04 | [Procesos y flujos](04-procesos-y-flujos.md) | El circuito de 12 pasos, la jornada y cada proceso paso a paso, con excepciones. | Dueño, desarrollo |
-| 05 | [Precios y márgenes](05-precios-y-margenes.md) | Precios de compra y su actualización, comparación entre proveedores, costo de referencia, precio de venta con 7 niveles de reglas, redondeo, IVA, alertas. | Dueño, desarrolladores |
+| 05 | [Precios y márgenes](05-precios-y-margenes.md) | Precios de compra y su actualización, comparación entre proveedores, costo de referencia, precio de venta con 7 niveles de reglas, redondeo, IVA, alertas. | Dueño, desarrollo |
 | 06 | [Créditos y pagos](06-creditos-y-pagos.md) | Cuenta corriente de proveedores, pagos e imputación, límite de crédito y semáforo, vencimientos. | Dueño, desarrollo |
 | 07 | [Reglas de negocio](07-reglas-de-negocio.md) | Catálogo RN-001 a RN-152, casos borde resueltos, parámetros por empresa. | Dueño, desarrollo |
 | 08 | [Pantallas y acciones](08-pantallas-y-acciones.md) | Las pantallas construidas: tablero, carga de pedidos, lista de compras, preparación, viaje de entrega, cuentas, facturación y balance, con sus acciones, permisos y reglas. | Dueño, desarrollo |
@@ -90,7 +90,7 @@ En la revisión del 24/09/2026 se unificaron los nombres que diferían:
 | `COSTO_REAL_JORNADA` | `REAL_JORNADA` (enum `origen_costo`) |
 | Motivos `MAL_ESTADO`, `CALIBRE_O_CALIDAD`, etc. | Enum `motivo_diferencia`: `RECHAZO_CALIDAD`, `FALTANTE`, `NO_CONSEGUIDO`, `ERROR_PREPARACION`, `CAMBIO_CLIENTE`, `OTRO` |
 | Imputaciones con `estado = 'VIGENTE'` y `movimiento_ajuste_id` | `activa` (booleano), `movimiento_acreedor_id` (ajuste de crédito) y `movimiento_deudor_id` (ajuste de débito) |
-| Lista de compra "una fila por versión, una vigente" | Una fila por jornada que incrementa `version` |
+| Lista de compras "una fila por versión, una vigente" | Una fila por jornada que incrementa `version` |
 | `entrega.documentos_version` | No existe: `entrega.version` = 0 sin documentos; la primera emisión la lleva a 1 (09 §4.2) |
 | `empresa.dias_precio_desactualizado` | `empresa.dias_alerta_precio_desactualizado` |
 

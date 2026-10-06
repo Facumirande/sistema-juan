@@ -39,7 +39,7 @@ export const ROLES_SISTEMA: Readonly<Record<RolesConPermisos, DefinicionRolSiste
   },
   COMPRADOR: {
     nombre: "Comprador",
-    descripcion: "Lista de compra, compras, precios de compra y proveedores.",
+    descripcion: "Lista de compras, compras, precios de compra y proveedores.",
     porDefecto: [
       "productos.ver", "productos.editar", "proveedores.ver", "proveedores.editar", "proveedores.ver_credito",
       "precios.ver_costos", "precios.editar_compra", "jornada.ver",

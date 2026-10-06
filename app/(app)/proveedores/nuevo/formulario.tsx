@@ -7,8 +7,8 @@ import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
 
 import { crearProveedorAccion } from "../acciones";
 
-// Alta de un proveedor en tres preguntas (nombre y puesto, cómo se le paga, teléfono). Los datos
-// fiscales y bancarios quedan plegados en "Más datos".
+// Alta de un proveedor en cuatro preguntas (nombre y puesto, cómo se le paga, teléfono y cómo se
+// le transfiere). Los datos fiscales quedan plegados en "Más datos".
 
 const PLAZOS = [
   { texto: "Sin plazo fijo", dias: "" },
@@ -70,16 +70,29 @@ export function FormularioProveedor({ editarCredito }: { editarCredito: boolean 
           <input name="telefono" type="tel" placeholder="Ej. 11 5555-1234" aria-label="Teléfono" className={`${campoGrande} max-w-xs`} />
         </Pregunta>
 
+        <Pregunta n={4} titulo="¿Cómo se le transfiere?" ayuda="Opcional. Queda a la vista al pagarle, para no transferir a otra cuenta.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">Alias</span>
+              <input name="aliasTransferencia" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="Ej. garcia.hnos.mercado" className={campoGrande} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">A nombre de quién está la cuenta</span>
+              <input name="titularCuenta" placeholder="Ej. García Juan Carlos" className={campoGrande} />
+            </label>
+            <label className="flex flex-col gap-1 sm:col-span-2">
+              <span className="font-medium">CBU o CVU (si no tiene alias)</span>
+              <input name="cbu" inputMode="numeric" placeholder="22 números" className={`${campoGrande} max-w-md`} />
+            </label>
+          </div>
+        </Pregunta>
+
         <details className="rounded-2xl border border-borde bg-superficie p-4">
-          <summary className="cursor-pointer text-lg font-semibold">Más datos (opcional): contacto, CUIT, banco</summary>
+          <summary className="cursor-pointer text-lg font-semibold">Más datos (opcional): contacto, CUIT, dirección</summary>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="font-medium">Persona de contacto</span>
               <input name="contactoNombre" className={campoGrande} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="font-medium">CBU o alias para transferir</span>
-              <input name="datosBancarios" className={campoGrande} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="font-medium">Razón social</span>

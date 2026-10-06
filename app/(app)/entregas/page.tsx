@@ -28,10 +28,10 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
     <section className="flex max-w-5xl flex-col gap-6">
       <Encabezado titulo="Entregas" descripcion={`Lo que se le lleva a cada cliente el ${fechaConDia(fecha)}. Cuando el cliente recibe, confirmá la entrega: completa, con diferencias o no recibida.`}>
         <Link href={`/preparacion/${fecha}`} className={clasesBoton("secundario")}>
-          Preparación
+          📦 Preparación
         </Link>
-        <Link href={`/repartos?fecha=${fecha}`} className={clasesBoton("secundario")}>
-          Repartos
+        <Link href={`/viaje?fecha=${fecha}`} className={clasesBoton("secundario")}>
+          🧭 Viaje de entrega
         </Link>
       </Encabezado>
       <nav aria-label="Día" className="flex gap-2">
@@ -53,7 +53,7 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
                 <th>Cliente</th>
                 <th>Reparto</th>
                 <th>Estado</th>
-                <th>Documentos</th>
+                <th>Remito</th>
                 {verVenta && <th className="text-right">Total</th>}
               </tr>
             </thead>
@@ -64,7 +64,6 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
                     <Link href={`/entregas/${e.id}`} className="font-medium underline-offset-4 hover:underline">
                       {e.numero}
                     </Link>
-                    {e.version > 0 && <span className="text-sm text-texto-suave"> v{e.version}</span>}
                   </td>
                   <td>
                     {e.cliente}
@@ -75,13 +74,13 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
                     {ESTADOS_ENTREGA[e.estado]}
                     {e.conDiferencias && <span className="block text-sm text-error">con diferencias</span>}
                   </td>
-                  <td>{e.estado === "ANULADA" ? "—" : e.documentosAlDia ? "Al día" : e.version > 0 ? <span className="text-error">A reemitir</span> : "Sin emitir"}</td>
+                  <td>{e.estado === "ANULADA" ? "—" : e.documentosAlDia ? "✓ Hecho" : e.version > 0 ? <span className="text-error">Hay que rehacerlo</span> : "Sin hacer"}</td>
                   {verVenta && <td className="text-right whitespace-nowrap">{e.total ? formatearMoneda(e.total) : "—"}</td>}
                 </tr>
               ))}
             </tbody>
           </Tabla>
-          {verVenta && <p className="text-texto-suave">Total del día (entregas con documentos): {formatearMoneda(sumar(vigentes.map((e) => e.total ?? "0")))}</p>}
+          {verVenta && <p className="text-texto-suave">Total del día (entregas con remito): {formatearMoneda(sumar(vigentes.map((e) => e.total ?? "0")))}</p>}
         </>
       )}
     </section>

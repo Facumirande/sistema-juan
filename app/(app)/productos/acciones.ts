@@ -42,27 +42,6 @@ export async function cambiarEstadoCategoriaAccion(_estado: EstadoAccion, datos:
   });
 }
 
-export async function crearProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  let id = "";
-  const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
-    id = await crearProducto(db, authUserId, {
-      codigo: campo(datos, "codigo"),
-      nombre: campo(datos, "nombre"),
-      nombreCorto: campo(datos, "nombreCorto"),
-      categoriaId: campo(datos, "categoriaId"),
-      unidadBase: campo(datos, "unidadBase") as UnidadBase,
-      admiteFraccion: tildada(datos, "admiteFraccion"),
-      observaciones: campo(datos, "observaciones"),
-      presentacionCompraNombre: campo(datos, "presentacionCompraNombre"),
-      presentacionCompraFactor: campo(datos, "presentacionCompraFactor"),
-    });
-    return { ok: true, mensaje: "Producto creado." };
-  });
-  // Después del alta se sigue en su ficha, para cargar presentaciones y proveedores.
-  if (resultado.ok) redirect(`/productos/${id}`);
-  return resultado;
-}
-
 export async function editarProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await editarProducto(db, authUserId, {

@@ -161,7 +161,7 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
           ),
         acciones: (
           <>
-            {abierta && e.total === 0 && puede("preparacion.registrar") && d.pedidos.confirmados > 0 && (
+            {abierta && e.total === 0 && puede("preparacion.registrar") && d.pedidos.confirmados + d.pedidos.borradores > 0 && (
               <FormularioAccion accion={iniciarPreparacionAccion} boton="📦 Empezar a preparar" variante={actual ? "principal" : "secundario"}>
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
@@ -176,7 +176,7 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
             )}
-            {e.total > 0 && <Enlace href={`/preparacion/${fecha}/imprimir`}>🖨️ Hoja de preparación</Enlace>}
+            {e.total > 0 && <Enlace href={`/preparacion/${fecha}/imprimir`}>🖨️ Imprimir para separar</Enlace>}
           </>
         ),
       };
@@ -199,7 +199,7 @@ function contenidoDelPaso(clave: ClavePaso, dia: DiaDeTrabajo, puede: (p: Permis
               </Enlace>
             )}
             {puede("entregas.ver") && e.enCamino > 0 && (
-              <Enlace href={`/entregas?fecha=${fecha}`} destacado={actual && e.enCamino === e.total}>
+              <Enlace href={`/viaje?fecha=${fecha}`} destacado={actual && e.enCamino === e.total}>
                 ✅ Confirmar entregas
               </Enlace>
             )}

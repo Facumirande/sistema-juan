@@ -13,7 +13,7 @@ import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/c
 import { textoOpcional, validar } from "@/modulos/validacion";
 
 import { configuracionEmpresa, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto, unico } from "./comun";
-import { documentosAlDia, emitirDocumentosEntrega, type ResultadoEmision } from "./documentos";
+import { documentosAlDia, documentosAlDiaDe, emitirDocumentosEntrega, type ResultadoEmision } from "./documentos";
 
 // Repartos y hoja de ruta (04 §5.f.1): RN-122, RN-123, RN-131. Sin precios.
 
@@ -226,8 +226,8 @@ export async function salirDeReparto(db: BaseDatos, authUserId: string, repartoI
     if (paradas.length === 0) throw new ErrorDeNegocio("VALIDACION", "El reparto no tiene entregas.");
     const sinPreparar = paradas.filter((p) => p.estado !== "PREPARADA").map((p) => p.cliente);
     if (sinPreparar.length) throw new ErrorDeNegocio("VALIDACION", `Todavía no están preparadas: ${sinPreparar.join(", ")}.`);
-    const sinDocumentos: string[] = [];
-    for (const p of paradas) if (!(await documentosAlDia(tx, p.id, p.version))) sinDocumentos.push(p.cliente);
+    const alDia = await documentosAlDiaDe(tx, paradas);
+    const sinDocumentos = paradas.filter((p) => !alDia.has(p.id)).map((p) => p.cliente);
     if (sinDocumentos.length) throw new ErrorDeNegocio("VALIDACION", `Faltan emitir los documentos de: ${sinDocumentos.join(", ")} (RN-122).`);
     await tx.update(reparto).set({ estado: "EN_CURSO", salidaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(reparto.id, r.id));
     for (const p of paradas) {
@@ -422,6 +422,7 @@ export async function obtenerReparto(db: BaseDatos, authUserId: string, repartoI
       .where(and(eq(entrega.repartoId, r.r.id), ne(entrega.estado, "ANULADA")))
       .orderBy(sql`${entrega.ordenEnReparto} nulls last`, asc(entrega.numero));
     const paradas: Parada[] = [];
+    const alDiaParadas = await documentosAlDiaDe(tx, filas);
     for (const f of filas) {
       paradas.push({
         id: f.id,
@@ -442,7 +443,7 @@ export async function obtenerReparto(db: BaseDatos, authUserId: string, repartoI
         longitud: f.longitud,
         bultos: f.bultos,
         conDiferencias: f.conDiferencias,
-        documentosAlDia: await documentosAlDia(tx, f.id, f.version),
+        documentosAlDia: alDiaParadas.has(f.id),
       });
     }
     return {

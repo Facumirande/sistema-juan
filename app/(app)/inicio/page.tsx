@@ -83,29 +83,28 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
   const vencidas = cuentas.filter((c) => dec(c.vencimientos.vencida).gt(0));
   const porVencer = cuentas.filter((c) => dec(c.vencimientos.vencida).isZero() && dec(c.vencimientos.porVencer).gt(0));
   const enTablero = vista === "tablero" && dia !== null;
-  const tablero = enTablero ? await tableroDePedidos(db, sesion.authUserId, dia.fecha) : null;
   const puedeCargar = dia !== null && puede("pedidos.crear") && dia.fecha >= dia.hoy && dia.panel.estado !== "CERRADA";
 
   const base = dia ? `/inicio?fecha=${dia.fecha}${vista === "pasos" ? "&vista=pasos" : ""}` : "/inicio";
-  let tarjeta: {
-    pedido: Awaited<ReturnType<typeof obtenerPedido>>;
-    avance: Awaited<ReturnType<typeof avanceDeTarjeta>>;
-    notas: Awaited<ReturnType<typeof notasDe>>;
-    historial: Awaited<ReturnType<typeof listarActividad>>;
-  } | null = null;
-  if (pedidoAbierto && UUID.test(pedidoAbierto) && puede("pedidos.ver")) {
+  // La tarjeta abierta (si hay una) se carga junto con el tablero, no después.
+  const cargarTarjeta = async (id: string) => {
     try {
       const [pedido, avance, notas, historial] = await Promise.all([
-        obtenerPedido(db, sesion.authUserId, pedidoAbierto),
-        avanceDeTarjeta(db, sesion.authUserId, pedidoAbierto),
-        notasDe(db, sesion.authUserId, { tipo: "PEDIDO", id: pedidoAbierto }),
-        listarActividad(db, sesion.authUserId, { entidad: { tipo: "PEDIDO", id: pedidoAbierto }, limite: 30 }),
+        obtenerPedido(db, sesion.authUserId, id),
+        avanceDeTarjeta(db, sesion.authUserId, id),
+        notasDe(db, sesion.authUserId, { tipo: "PEDIDO", id }),
+        listarActividad(db, sesion.authUserId, { entidad: { tipo: "PEDIDO", id }, limite: 30 }),
       ]);
-      tarjeta = { pedido, avance, notas, historial };
+      return { pedido, avance, notas, historial };
     } catch (error) {
       if (!esErrorDeNegocio(error, "NO_ENCONTRADO")) throw error;
+      return null;
     }
-  }
+  };
+  const [tablero, tarjeta] = await Promise.all([
+    enTablero ? tableroDePedidos(db, sesion.authUserId, dia.fecha) : Promise.resolve(null),
+    pedidoAbierto && UUID.test(pedidoAbierto) && puede("pedidos.ver") ? cargarTarjeta(pedidoAbierto) : Promise.resolve(null),
+  ]);
 
   // El fondo con la imagen va en las dos vistas del día (tablero y paso a paso).
   const sobre = dia !== null;

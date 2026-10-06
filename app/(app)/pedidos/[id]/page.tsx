@@ -68,7 +68,7 @@ export default async function PaginaPedido({ params }: PageProps<"/pedidos/[id]"
     <section className="flex max-w-4xl flex-col gap-6">
       <Encabezado
         titulo={`${p.numero} · ${p.cliente}`}
-        volver={{ ruta: `/pedidos?fecha=${p.fecha}`, texto: "Pedidos del día" }}
+        volver={{ ruta: `/inicio?fecha=${p.fecha}`, texto: "Tablero" }}
         descripcion={
           <span>
             Entrega del {fechaConDia(p.fecha)} · {p.puntoEntrega} ({p.direccion}){p.canal && ` · por ${CANALES[p.canal]}`}

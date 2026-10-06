@@ -94,7 +94,7 @@ export default async function PaginaFacturacion({ searchParams }: PageProps<"/fa
                         {puedeEmitir && <input type="checkbox" name="entrega" value={e.id} defaultChecked={e.documentosAlDia} disabled={!e.documentosAlDia} className="size-5" />}
                         <span>
                           <Link href={`/entregas/${e.id}`} className="underline-offset-4 hover:underline">
-                            {e.numero} v{e.version}
+                            {e.numero}
                           </Link>{" "}
                           · {formatearFecha(e.fecha)} · {e.punto}
                           {!e.documentosAlDia && <span className="text-error"> · faltan documentos</span>}

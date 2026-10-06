@@ -28,6 +28,7 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
   const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await jornadaEnCurso(db, sesion.authUserId);
   const { salida, paradas } = await viajeDelDia(db, sesion.authUserId, fecha);
   const sueltas = paradas.filter((p) => !p.repartoId);
+  const enCamino = paradas.filter((p) => p.estado === "EN_REPARTO").sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99));
   const repartos = [...new Map(paradas.filter((p) => p.repartoId).map((p) => [p.repartoId!, p.reparto!])).entries()];
 
   return (
@@ -53,6 +54,33 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
             <MarcarUbicacion accion={ubicarSalidaAccion} campos={{}} actual={salida.coordenada} direccion={salida.direccion ?? ""} titulo="Punto de salida" />
           </div>
         </details>
+      )}
+
+      {enCamino.length > 0 && (
+        <Tarjeta titulo="🚚 En camino">
+          <p className="text-texto-suave">Al dejar cada pedido, tocá Entregar y anotá quién lo recibió (y si faltó o devolvieron algo).</p>
+          <ul className="flex flex-col gap-2">
+            {enCamino.map((p) => (
+              <li key={p.entregaId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-borde p-3">
+                <span className="min-w-0">
+                  <span className="block font-semibold">
+                    {p.orden ? `${p.orden}. ` : ""}
+                    {p.cliente}
+                  </span>
+                  <span className="block text-sm text-texto-suave">
+                    {p.direccion}
+                    {p.horario && ` · recibe ${p.horario}`}
+                  </span>
+                </span>
+                {sesion.permisos.includes("entregas.confirmar") && (
+                  <Link href={`/repartos/mios/entrega/${p.entregaId}?volver=${encodeURIComponent(`/viaje?fecha=${fecha}`)}`} className={clasesBoton("principal")}>
+                    ✅ Entregar
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Tarjeta>
       )}
 
       {repartos.length > 0 && (

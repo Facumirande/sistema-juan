@@ -41,8 +41,8 @@ export const CATALOGO_PERMISOS = {
   "jornada.gestionar": { clase: "O", descripcion: "Iniciar la preparación y avanzar la jornada a mano." },
   "jornada.cerrar": { clase: "O", descripcion: "Cerrar la jornada con sus validaciones y resumen." },
   "jornada.reabrir": { clase: "O", descripcion: "Reabrir una jornada cerrada, con motivo." },
-  "lista_compra.ver": { clase: "O", descripcion: "Ver la lista de compra (precios solo con precios.ver_costos)." },
-  "lista_compra.generar": { clase: "O", descripcion: "Generar o regenerar la lista de compra." },
+  "lista_compra.ver": { clase: "O", descripcion: "Ver la lista de compras (precios solo con precios.ver_costos)." },
+  "lista_compra.generar": { clase: "O", descripcion: "Armar o volver a calcular la lista de compras." },
   "lista_compra.editar": { clase: "O", descripcion: "Ajustar cantidades, proveedor, comprador; marcar NO_CONSEGUIDO." },
   // 4.4 Compras y cuentas corrientes de proveedores
   "compras.ver": { clase: "C", descripcion: "Ver compras con importes y estado de pago." },

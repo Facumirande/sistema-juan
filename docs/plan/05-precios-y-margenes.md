@@ -56,7 +56,7 @@ Es la pantalla (y el documento `DOC-06`) donde se ve y se actualiza **qué cuest
 | Disponible hoy | Marca `disponible` de la oferta (el proveedor hoy no lo tiene) | Queda fuera del mínimo y de las sugerencias sin desactivar la oferta. |
 | Acciones | Editar · confirmar sin cambios · marcar no disponible · ver historial · marcar preferido · desactivar oferta | Todo sin salir de la lista. |
 
-La lista se alimenta de la vista `v_oferta_vigente` de `03-modelo-de-datos.md` (precio vigente, precio anterior, variación, costo por unidad base, fecha y días desde la actualización, usuario, preferido, más barato, desactualizado).
+La lista la arma `listaGeneralPreciosCompra` (`03-modelo-de-datos.md` §17): precio vigente, precio anterior, variación, costo por unidad base, fecha y días desde la actualización, usuario, preferido, más barato y desactualizado.
 
 Filtros y vistas: búsqueda por texto; por categoría; por proveedor; "solo desactualizados"; "solo mejor precio por producto"; agrupar **por producto** (para comparar) o **por proveedor** (para actualizar recorriendo el mercado). Visible solo con `precios.ver_costos` (RN-074); editable con `precios.editar_compra`.
 
@@ -111,7 +111,7 @@ La **última actualización** de cada oferta (`fecha_actualizacion`, `actualizad
 |---|---|---|---|---|
 | Precio desactualizado | hoy − `fecha_actualizacion` (última carga o confirmación) > N días | `dias_alerta_precio_desactualizado`, por defecto 7 | Lista general, plan de compra, costo de referencia ("costo basado en precio de hace 11 días") | ADVIERTE (RN-069) |
 | Variación brusca | \|nuevo − anterior\| ÷ anterior > X % | `variacion_brusca_pct`, por defecto 30 % | Al guardar: pide confirmación. En la lista: marca "↑ +35 %" durante 7 días | ADVIERTE (RN-058, RN-070) |
-| Producto sin precio | Ningún proveedor activo tiene oferta vigente | — | Lista general, pedidos, lista de compra | ADVIERTE (RN-048) |
+| Producto sin precio | Ningún proveedor activo tiene oferta vigente | — | Lista general, pedidos, lista de compras | ADVIERTE (RN-048) |
 | Preferido caro | El proveedor preferido está más de Y % por encima del mejor precio | `preferido_caro_pct`, por defecto 10 % | Lista general | Informativa |
 
 ---
@@ -221,7 +221,7 @@ función costoReferencia(empresa, producto, jornada):
     devolver { costo: null, origen: SIN_DATO }
 ```
 
-Los valores de `origen` son los del enum `origen_costo` de `03-modelo-de-datos.md` (`PREFERIDO`, `MINIMO`, `ULTIMO_COSTO_REAL`, `REAL_JORNADA`, `SIN_DATO`); la vista `v_costo_referencia_producto` expone los tres costos para que esta función aplique los respaldos.
+Los valores de `origen` son los del enum `origen_costo` de `03-modelo-de-datos.md` (`PREFERIDO`, `MINIMO`, `ULTIMO_COSTO_REAL`, `REAL_JORNADA`, `SIN_DATO`); `costosReales` y `calcularPrecios` (`src/modulos/precios-venta/calculo.ts`) le pasan los tres costos para que aplique los respaldos.
 
 El costo se guarda y se calcula con 4 decimales (`numeric(14,4)`) y se muestra con 2.
 
@@ -485,7 +485,7 @@ stateDiagram-v2
 | `MARGEN_BAJO` | margen < margen mínimo de la empresa (por defecto 15 %) | Pedido (a quien ve costos), precios de venta, emisión, resumen de jornada | ADVIERTE (RN-085) |
 | `MARGEN_NEGATIVO` | precio < costo (ej.: precio fijo menor que el costo real) | Mismos lugares, en rojo | ADVIERTE; al emitir documentos pide confirmación explícita (RN-086) |
 | `SIN_COSTO` | Hay precio fijo pero ningún costo | Pedido, emisión | ADVIERTE: margen desconocido |
-| `SIN_PRECIO` | Ni costo ni precio fijo | Pedido, lista de compra, emisión | BLOQUEA la emisión de documentos (RN-087) |
+| `SIN_PRECIO` | Ni costo ni precio fijo | Pedido, lista de compras, emisión | BLOQUEA la emisión de documentos (RN-087) |
 | `COSTO_DESACTUALIZADO` | El costo estimado sale de una oferta con más de N días | Pedido | ADVIERTE |
 | `PRECIO_FIJO_POR_VENCER` | Un precio fijo vence en 15 días o menos | Ficha del cliente, tablero del ADMIN | ADVIERTE |
 | `RECARGO_ATIPICO` | Al editar: recargo < 0 % o > 300 % | Edición de recargos y reglas | Pide confirmación y AUDITA (RN-084) |

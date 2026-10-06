@@ -86,60 +86,106 @@ async function imputarSegunModo(
 /** P-62 Registrar pago (06 §4.1): movimiento PAGO por el total e imputación FIFO o manual. */
 export async function registrarPago(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaPago>): Promise<ResultadoPago> {
   const d = validar(esquemaPago, datos);
+  return ejecutarComoUsuario(db, authUserId, "pagos.registrar", (tx, c) => pagoEnTransaccion(tx, c, d));
+}
+
+async function pagoEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.output<typeof esquemaPago>): Promise<ResultadoPago> {
+  if (d.claveIdempotencia) {
+    const [ya] = await tx.select().from(pagoProveedor).where(eq(pagoProveedor.claveIdempotencia, d.claveIdempotencia));
+    if (ya) {
+      const [p] = await tx.select({ limite: proveedor.limiteCredito }).from(proveedor).where(eq(proveedor.id, ya.proveedorId));
+      return { pagoId: ya.id, numero: numeroPago(ya.numero), credito: indicadoresCredito(await saldoNeto(tx, ya.proveedorId), p?.limite ?? null, await umbralesSemaforo(tx)) };
+    }
+  }
+  // A un proveedor desactivado se le puede pagar lo que se le debe (RN-108).
+  const prov = await proveedorBloqueado(tx, d.proveedorId);
+  const [e] = await tx.select({ zona: empresa.zonaHoraria }).from(empresa);
+  const hoy = hoyEnEmpresa(new Date(), e!.zona);
+  if (d.fecha > hoy) throw new ErrorDeNegocio("VALIDACION", "La fecha del pago no puede ser futura (RN-095).");
+
+  const { numero, visible } = await siguienteNumero(tx, "PAGO_PROVEEDOR");
+  const [pago] = await tx
+    .insert(pagoProveedor)
+    .values({
+      empresaId: c.empresaId,
+      numero,
+      proveedorId: prov.id,
+      fechaPago: instanteDelDia(d.fecha, hoy),
+      monto: aNumeric(d.monto, 2),
+      medioPago: d.medio,
+      referencia: d.referencia,
+      chequeBanco: d.medio === "CHEQUE" ? d.chequeBanco : null,
+      chequeFechaCobro: d.medio === "CHEQUE" ? d.chequeFechaCobro : null,
+      origen: "POSTERIOR",
+      modoImputacion: d.modo,
+      observaciones: d.observaciones,
+      claveIdempotencia: d.claveIdempotencia ?? null,
+      creadoPor: c.usuarioId,
+      actualizadoPor: c.usuarioId,
+    })
+    .returning({ id: pagoProveedor.id });
+  await registrarMovimiento(tx, c, {
+    proveedorId: prov.id,
+    tipo: "PAGO",
+    importe: aNumeric(dec(d.monto).neg(), 2),
+    descripcion: `Pago ${visible} (${d.medio.toLowerCase()})${d.referencia ? ` ${d.referencia}` : ""}`,
+    pagoProveedorId: pago!.id,
+    fechaOrigen: d.fecha === hoy ? null : d.fecha,
+  });
+  await imputarSegunModo(tx, c, prov.id, pago!.id, d.monto, d.modo, d.asignaciones);
+  await auditar(tx, {
+    empresaId: c.empresaId,
+    usuarioId: c.usuarioId,
+    accion: "CREAR",
+    entidad: "pago_proveedor",
+    entidadId: pago!.id,
+    resumen: `${visible} a ${prov.nombre}: ${formatearMoneda(d.monto)} (${d.modo === "FIFO" ? "a las compras más viejas" : "imputación manual"}).`,
+  });
+  await registrarActividad(tx, c, { accion: "PAGAR", entidadTipo: "PAGO", entidadId: pago!.id, resumen: `le pagó a ${prov.nombre} (${visible})` });
+  return { pagoId: pago!.id, numero: visible, credito: indicadoresCredito(await saldoNeto(tx, prov.id), prov.limiteCredito, await umbralesSemaforo(tx)) };
+}
+
+const esquemaPagarDeuda = z.object({
+  proveedorId: z.uuid("Elegí el proveedor."),
+  clave: z.string().regex(/^[CD]:[0-9a-f-]{36}$/, "Elegí qué compra se pagó."),
+  medio: z.enum(["EFECTIVO", "TRANSFERENCIA"], "Elegí cómo se pagó."),
+  claveIdempotencia: z.uuid().nullish(),
+});
+
+/**
+ * "Pagué esta compra" (uso interno, 05/10/2026): un pago de hoy por todo lo que falta de una
+ * compra (o de una deuda cargada a mano), imputado a ella. Lo que falta se calcula en la misma
+ * transacción, así un doble toque o un pago anterior no hacen pagar de más.
+ */
+export async function pagarDeuda(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaPagarDeuda>): Promise<ResultadoPago & { pagado: string; deuda: string }> {
+  const d = validar(esquemaPagarDeuda, datos);
   return ejecutarComoUsuario(db, authUserId, "pagos.registrar", async (tx, c) => {
+    await tx.select({ id: proveedor.id }).from(proveedor).where(eq(proveedor.id, d.proveedorId)).for("update");
+    // El mismo toque repetido (misma clave) devuelve el pago que ya se hizo.
     if (d.claveIdempotencia) {
-      const [ya] = await tx.select().from(pagoProveedor).where(eq(pagoProveedor.claveIdempotencia, d.claveIdempotencia));
+      const [ya] = await tx.select({ id: pagoProveedor.id, numero: pagoProveedor.numero, monto: pagoProveedor.monto }).from(pagoProveedor).where(eq(pagoProveedor.claveIdempotencia, d.claveIdempotencia));
       if (ya) {
-        const [p] = await tx.select({ limite: proveedor.limiteCredito }).from(proveedor).where(eq(proveedor.id, ya.proveedorId));
-        return { pagoId: ya.id, numero: numeroPago(ya.numero), credito: indicadoresCredito(await saldoNeto(tx, ya.proveedorId), p?.limite ?? null, await umbralesSemaforo(tx)) };
+        const [p] = await tx.select({ limite: proveedor.limiteCredito }).from(proveedor).where(eq(proveedor.id, d.proveedorId));
+        return { pagoId: ya.id, numero: numeroPago(ya.numero), credito: indicadoresCredito(await saldoNeto(tx, d.proveedorId), p?.limite ?? null, await umbralesSemaforo(tx)), pagado: ya.monto, deuda: "La compra" };
       }
     }
-    // A un proveedor desactivado se le puede pagar lo que se le debe (RN-108).
-    const prov = await proveedorBloqueado(tx, d.proveedorId);
+    const deuda = (await partidasDeudoras(tx, d.proveedorId)).find((x) => x.clave === d.clave);
+    if (!deuda) throw new ErrorDeNegocio("VALIDACION", "Esa compra ya está pagada: no queda nada pendiente.");
     const [e] = await tx.select({ zona: empresa.zonaHoraria }).from(empresa);
-    const hoy = hoyEnEmpresa(new Date(), e!.zona);
-    if (d.fecha > hoy) throw new ErrorDeNegocio("VALIDACION", "La fecha del pago no puede ser futura (RN-095).");
-
-    const { numero, visible } = await siguienteNumero(tx, "PAGO_PROVEEDOR");
-    const [pago] = await tx
-      .insert(pagoProveedor)
-      .values({
-        empresaId: c.empresaId,
-        numero,
-        proveedorId: prov.id,
-        fechaPago: instanteDelDia(d.fecha, hoy),
-        monto: aNumeric(d.monto, 2),
-        medioPago: d.medio,
-        referencia: d.referencia,
-        chequeBanco: d.medio === "CHEQUE" ? d.chequeBanco : null,
-        chequeFechaCobro: d.medio === "CHEQUE" ? d.chequeFechaCobro : null,
-        origen: "POSTERIOR",
-        modoImputacion: d.modo,
-        observaciones: d.observaciones,
-        claveIdempotencia: d.claveIdempotencia ?? null,
-        creadoPor: c.usuarioId,
-        actualizadoPor: c.usuarioId,
-      })
-      .returning({ id: pagoProveedor.id });
-    await registrarMovimiento(tx, c, {
-      proveedorId: prov.id,
-      tipo: "PAGO",
-      importe: aNumeric(dec(d.monto).neg(), 2),
-      descripcion: `Pago ${visible} (${d.medio.toLowerCase()})${d.referencia ? ` ${d.referencia}` : ""}`,
-      pagoProveedorId: pago!.id,
-      fechaOrigen: d.fecha === hoy ? null : d.fecha,
+    const r = await pagoEnTransaccion(tx, c, {
+      proveedorId: d.proveedorId,
+      fecha: hoyEnEmpresa(new Date(), e!.zona),
+      monto: deuda.pendiente,
+      medio: d.medio,
+      referencia: null,
+      chequeBanco: null,
+      chequeFechaCobro: null,
+      observaciones: null,
+      modo: "MANUAL",
+      asignaciones: [{ clave: d.clave, monto: deuda.pendiente }],
+      claveIdempotencia: d.claveIdempotencia ?? null,
     });
-    await imputarSegunModo(tx, c, prov.id, pago!.id, d.monto, d.modo, d.asignaciones);
-    await auditar(tx, {
-      empresaId: c.empresaId,
-      usuarioId: c.usuarioId,
-      accion: "CREAR",
-      entidad: "pago_proveedor",
-      entidadId: pago!.id,
-      resumen: `${visible} a ${prov.nombre}: ${formatearMoneda(d.monto)} (${d.modo === "FIFO" ? "a las compras más viejas" : "imputación manual"}).`,
-    });
-    await registrarActividad(tx, c, { accion: "PAGAR", entidadTipo: "PAGO", entidadId: pago!.id, resumen: `le pagó a ${prov.nombre} (${visible})` });
-    return { pagoId: pago!.id, numero: visible, credito: indicadoresCredito(await saldoNeto(tx, prov.id), prov.limiteCredito, await umbralesSemaforo(tx)) };
+    return { ...r, pagado: deuda.pendiente, deuda: deuda.descripcion };
   });
 }
 

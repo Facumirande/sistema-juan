@@ -15,7 +15,7 @@ import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/c
 import { textoOpcional, validar } from "@/modulos/validacion";
 
 import { configuracionEmpresa, entregaBloqueada, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto } from "./comun";
-import { documentosAlDia, documentosDeEntrega, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ContenidoListaContable, type ContenidoListaEntrega, type ResultadoEmision } from "./documentos";
+import { documentosAlDia, documentosAlDiaDe, documentosDeEntrega, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ContenidoListaContable, type ContenidoListaEntrega, type ResultadoEmision } from "./documentos";
 import { finalizarSiCorresponde } from "./repartos";
 import { facturarAlConfirmar } from "@/modulos/facturacion/facturacion";
 
@@ -70,17 +70,14 @@ export async function listarEntregas(db: BaseDatos, authUserId: string, fecha: F
       .where(eq(entrega.jornadaId, j.id))
       .orderBy(sql`${entrega.estado} = 'ANULADA'`, sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre));
     const verVenta = c.permisos.tiene("precios.ver_venta");
-    const res: EntregaListada[] = [];
-    for (const f of filas) {
-      res.push({
-        ...f,
-        numero: numeroEntrega(f.numero),
-        reparto: f.reparto !== null ? numeroReparto(f.reparto) : null,
-        documentosAlDia: await documentosAlDia(tx, f.id, f.version),
-        total: verVenta && f.version > 0 ? f.total : null,
-      });
-    }
-    return res;
+    const alDia = await documentosAlDiaDe(tx, filas);
+    return filas.map((f) => ({
+      ...f,
+      numero: numeroEntrega(f.numero),
+      reparto: f.reparto !== null ? numeroReparto(f.reparto) : null,
+      documentosAlDia: alDia.has(f.id),
+      total: verVenta && f.version > 0 ? f.total : null,
+    }));
   });
 }
 

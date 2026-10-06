@@ -7,7 +7,6 @@ import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { avisoDeFaltante } from "@/dominio/entregas/entregas";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
-import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
 import { COLUMNAS, columnaDeTarjeta, estadoDelPlazo, ordenarTarjetas, textoPlazo, type ClaveColumna, type EstadoDelPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import type { EstadoPedido } from "@/dominio/precios/venta";
 import { contarNotasDe } from "@/modulos/colaboracion/notas";
@@ -21,7 +20,7 @@ import { numeroPedido } from "./pedidos";
 // encarga), plazo como fecha de vencimiento, avance como checklist y notas como comentarios.
 
 export interface AvanceDePedido {
-  /** Qué mide: lo comprado (en la lista de compra) o lo preparado. */
+  /** Qué mide: lo comprado (en la lista de compras) o lo preparado. */
   que: "comprado" | "preparado";
   hechos: number;
   total: number;
@@ -53,8 +52,6 @@ export interface TarjetaPedido {
   notas: { total: number; sinLeer: number };
   /** El miembro de la tarjeta: quién se encarga (o quien lo cargó, si nadie lo tomó). */
   responsable: PersonaVisible | null;
-  cargadoPor: PersonaVisible | null;
-  confirmadoPor: PersonaVisible | null;
   observaciones: string | null;
   esTardio: boolean;
 }
@@ -70,7 +67,6 @@ export interface ColumnaDelTablero {
 export interface TableroDePedidos {
   fecha: FechaISO;
   estadoJornada: string | null;
-  lista: { armada: boolean; desactualizada: boolean; numero: string | null };
   columnas: ColumnaDelTablero[];
   cancelados: TarjetaPedido[];
   personas: PersonaVisible[];
@@ -173,7 +169,6 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
     const vacio: TableroDePedidos = {
       fecha,
       estadoJornada: null,
-      lista: { armada: false, desactualizada: false, numero: null },
       columnas: COLUMNAS.map((col) => ({ clave: col.clave, titulo: col.titulo, ayuda: col.ayuda, seleccionable: col.seleccionable, tarjetas: [] })),
       cancelados: [],
       personas: personas.filter((p) => p.activa).map(soloVisible),
@@ -194,7 +189,6 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
         observaciones: pedido.observaciones,
         esTardio: pedido.esTardio,
         creadoPor: pedido.creadoPor,
-        confirmadoPor: pedido.confirmadoPor,
         responsableId: pedido.responsableId,
         clienteId: cliente.id,
         cliente: cliente.nombre,
@@ -210,7 +204,6 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
       .where(eq(pedido.jornadaId, j.id));
     const avances = await lineasConAvance(tx, j.id, filas);
     const notas = await contarNotasDe(tx, c, "PEDIDO", filas.map((f) => f.id));
-    const [lista] = await tx.select({ numero: listaCompra.numero, desactualizada: listaCompra.desactualizada }).from(listaCompra).where(eq(listaCompra.jornadaId, j.id));
     const verVenta = c.permisos.tiene("precios.ver_venta");
     const ahora = ahoraEnEmpresa(c);
 
@@ -238,8 +231,6 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
         totalEstimado: verVenta ? f.total : null,
         notas: notas.get(f.id) ?? { total: 0, sinLeer: 0 },
         responsable: persona.get(f.responsableId ?? f.creadoPor ?? "") ?? null,
-        cargadoPor: f.creadoPor ? (persona.get(f.creadoPor) ?? null) : null,
-        confirmadoPor: f.confirmadoPor ? (persona.get(f.confirmadoPor) ?? null) : null,
         observaciones: f.observaciones,
         esTardio: f.esTardio,
       };
@@ -249,7 +240,6 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
     return {
       ...vacio,
       estadoJornada: j.estado,
-      lista: { armada: Boolean(lista), desactualizada: lista?.desactualizada ?? false, numero: lista ? formatearNumeroDocumento("LC-", lista.numero) : null },
       columnas: vacio.columnas.map((col) => ({ ...col, tarjetas: ordenadas.filter((t) => t.columna === col.clave) })),
       cancelados: ordenadas.filter((t) => t.estado === "CANCELADO"),
     };
@@ -257,14 +247,14 @@ export async function tableroDePedidos(db: BaseDatos, authUserId: string, fecha:
 }
 
 /** Lo que se ve al abrir una tarjeta: el pedido con sus líneas marcadas (compradas o preparadas). */
-export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoId: string): Promise<{ que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; entregaId: string | null; responsable: PersonaVisible | null; cargadoPor: PersonaVisible | null; confirmadoPor: PersonaVisible | null; estadoPlazo: EstadoDelPlazo; personas: PersonaVisible[] }> {
+export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoId: string): Promise<{ que: AvanceDePedido["que"] | null; lineas: LineaConAvance[]; entregaId: string | null; responsable: PersonaVisible | null; estadoPlazo: EstadoDelPlazo; personas: PersonaVisible[] }> {
   return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx, c) => {
     const [p] = await tx
-      .select({ id: pedido.id, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha, hasta: pedido.entregaHasta, responsableId: pedido.responsableId, creadoPor: pedido.creadoPor, confirmadoPor: pedido.confirmadoPor })
+      .select({ id: pedido.id, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha, hasta: pedido.entregaHasta, responsableId: pedido.responsableId, creadoPor: pedido.creadoPor })
       .from(pedido)
       .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
       .where(eq(pedido.id, pedidoId));
-    if (!p) return { que: null, lineas: [], entregaId: null, responsable: null, cargadoPor: null, confirmadoPor: null, estadoPlazo: "a_tiempo", personas: [] };
+    if (!p) return { que: null, lineas: [], entregaId: null, responsable: null, estadoPlazo: "a_tiempo", personas: [] };
     const personas = await personasDelNegocio(tx);
     const persona = new Map(personas.map((x) => [x.id, soloVisible(x)]));
     const a = (await lineasConAvance(tx, p.jornadaId, [p])).get(p.id)!;
@@ -273,8 +263,6 @@ export async function avanceDeTarjeta(db: BaseDatos, authUserId: string, pedidoI
       lineas: a.lineas,
       entregaId: a.entregaId,
       responsable: persona.get(p.responsableId ?? p.creadoPor ?? "") ?? null,
-      cargadoPor: p.creadoPor ? (persona.get(p.creadoPor) ?? null) : null,
-      confirmadoPor: p.confirmadoPor ? (persona.get(p.confirmadoPor) ?? null) : null,
       estadoPlazo: estadoDelPlazo({ fecha: p.fecha, hasta: hora(p.hasta), estado: p.estado, ...ahoraEnEmpresa(c) }),
       personas: personas.filter((x) => x.activa).map(soloVisible),
     };

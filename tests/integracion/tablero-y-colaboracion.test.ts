@@ -90,7 +90,6 @@ describe("el tablero", () => {
       { nombre: "Tomate redondo", cantidad: "30 kg", grupo: "VERDURA", hecha: false, aviso: null },
       { nombre: "Papa", cantidad: "50 kg", grupo: "VERDURA", hecha: false, aviso: null },
     ]);
-    expect(t.lista.armada).toBe(true);
   });
 
   it("prioridad, plazo y quién se encarga; la prioridad alta va primero", async () => {

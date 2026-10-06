@@ -83,13 +83,13 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
       ) : (
         <>
           <header className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-texto pb-2">
-            <h1 className="text-xl font-bold">LISTA DE COMPRA</h1>
+            <h1 className="text-xl font-bold">LISTA DE COMPRAS</h1>
             <p>
-              {lista.numero} · versión {lista.version} · entrega del {fechaConDia(lista.fecha)}
+              Entrega del {fechaConDia(lista.fecha)}
             </p>
             <p className="w-full text-sm">Armada {formatearFechaHora(lista.generadaEn, sesion.zonaHoraria)} · impresa {formatearFechaHora(new Date(), sesion.zonaHoraria)}</p>
           </header>
-          {lista.desactualizada && <p className="border-2 border-texto p-2 font-bold">DESACTUALIZADA: los pedidos cambiaron después de esta versión.</p>}
+          {lista.desactualizada && <p className="border-2 border-texto p-2 font-bold">DESACTUALIZADA: los pedidos cambiaron después de armarla. Volvé a calcularla antes de comprar.</p>}
           {grupos.length === 0 && <p>No falta comprar nada.</p>}
 
           {grupos.map((p) => (

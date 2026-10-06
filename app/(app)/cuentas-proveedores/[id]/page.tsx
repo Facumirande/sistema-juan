@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -9,10 +11,14 @@ import { cuentaCorriente } from "@/modulos/compras/cuenta-corriente";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import { BotonAccion } from "@/ui/boton-accion";
+import { DatosTransferencia } from "@/ui/datos-transferencia";
 import { ESTADOS_PAGO, MEDIOS_PAGO } from "@/ui/etiquetas";
 import { Encabezado, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
+
+import { pagarDeudaAccion } from "../acciones";
 
 export const metadata: Metadata = { title: "Cuenta del proveedor · Sistema Juan" };
 
@@ -56,8 +62,8 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
           .join(" · ")}
       >
         {puede("pagos.registrar") && (
-          <Link href={`/cuentas-proveedores/${id}/pago`} className={clasesBoton("principal")}>
-            Registrar pago
+          <Link href={`/cuentas-proveedores/${id}/pago`} className={clasesBoton("secundario")}>
+            Otro pago (una parte o varias compras)
           </Link>
         )}
         {puede("pagos.ajustar") && (
@@ -95,7 +101,10 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
         <SemaforoCredito semaforo={i.semaforo} usoPct={i.usoPct?.toString()} />
       </div>
 
+      {puede("pagos.registrar") && <DatosTransferencia alias={c.proveedor.aliasTransferencia} cbu={c.proveedor.cbu} titular={c.proveedor.titularCuenta} cargar={puede("proveedores.editar") ? `/proveedores/${id}?editar#editar` : undefined} />}
+
       <Tarjeta titulo="Compras sin pagar">
+        {c.pendientes.length > 0 && puede("pagos.registrar") && <p className="text-texto-suave">Cuando le pagues una compra entera, tocá cómo la pagaste: se anota el pago por lo que falta de esa compra.</p>}
         {c.pendientes.length === 0 ? (
           <p className="text-texto-suave">No hay nada pendiente.</p>
         ) : (
@@ -108,6 +117,7 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
                 <th className="text-right">Pagado</th>
                 <th className="text-right">Falta</th>
                 <th>Vence</th>
+                {puede("pagos.registrar") && <th>Pagar</th>}
               </tr>
             </thead>
             <tbody>
@@ -115,7 +125,7 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
                 <tr key={p.clave}>
                   <td>
                     {p.compraId ? (
-                      <Link href={`/compras/${p.compraId}`} className="font-medium underline-offset-4 hover:underline">
+                      <Link href={`/compras/${p.compraId}`} className="font-medium whitespace-nowrap underline-offset-4 hover:underline">
                         {p.descripcion}
                       </Link>
                     ) : (
@@ -131,6 +141,23 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
                     {p.vence ? formatearFecha(p.vence) : "—"}
                     {p.diasAtraso && <span className="block text-sm">⏰ {p.diasAtraso} días de atraso</span>}
                   </td>
+                  {puede("pagos.registrar") && (
+                    <td>
+                      <div className="flex flex-wrap gap-2">
+                        {(["EFECTIVO", "TRANSFERENCIA"] as const).map((medio) => (
+                          <BotonAccion
+                            key={medio}
+                            accion={pagarDeudaAccion}
+                            datos={{ proveedorId: id, clave: p.clave, medio, claveIdempotencia: randomUUID() }}
+                            confirmar={`¿Le pagaste ${formatearMoneda(p.pendiente)} de ${p.descripcion} ${medio === "EFECTIVO" ? "en efectivo" : "por transferencia"}?`}
+                            className={`min-h-11 rounded-lg px-3 text-sm font-semibold whitespace-nowrap ${medio === "EFECTIVO" ? "bg-marca text-marca-texto" : "border-2 border-marca"}`}
+                          >
+                            {medio === "EFECTIVO" ? "💵 Pagué en efectivo" : "🏦 Pagué por transferencia"}
+                          </BotonAccion>
+                        ))}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

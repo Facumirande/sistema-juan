@@ -58,10 +58,10 @@ Los grupos sin ninguna pantalla visible no aparecen. Lo demás se abre desde don
 | Pantalla | Se llega desde |
 |---|---|
 | El día paso a paso | Pestaña "☰ Paso a paso" del tablero |
-| Otros días (jornadas) y cierre del día | "📅 Otros días" del tablero; paso "Cierre" |
+| Otros días y cierre del día | "📅 Otros días" del tablero; paso "Cierre" |
 | Compras anotadas | Lista de compras |
 | Preparación | Columnas "Comprado" y "Preparando" del tablero; tarjeta abierta; paso a paso |
-| Repartos y entregas | Viaje de entrega, preparación, paso a paso |
+| Armar un reparto y entregas | Viaje de entrega, preparación, paso a paso |
 | Precios de compra | Productos, ficha del proveedor |
 | Precios de venta | Productos ("Precios de venta") |
 | Movimientos y reportes | Balance |
@@ -89,11 +89,9 @@ Enfoque: **M** = celular primero; **D** = PC primero (usable en celular); **M/D*
 | P-26 | Precios en el puesto | `/precios/compra/rapida` | M | `precios.editar_compra` | C |
 | P-29 | Historial de precios de un producto | `/precios/compra/historial/[id]` | D | `precios.ver_costos` | C |
 | P-32 | Precios de venta | `/precios/venta` | D | `precios.ver_margenes` | M +V +C |
-| P-40 | Lista de pedidos | `/pedidos` | M/D | `pedidos.ver` | O +V |
 | P-41 | Nuevo pedido y cambiar productos | `/pedidos/nuevo`, `/pedidos/[id]/cambiar` | M | `pedidos.crear` o `pedidos.editar` | O +V |
 | P-42 | Detalle de pedido | `/pedidos/[id]` | M/D | `pedidos.ver` | O +V +C +M |
 | P-45 | Otros días | `/jornadas` | M/D | `jornada.ver` | O |
-| P-46 | Resumen de un día | `/jornadas/[fecha]` | M/D | `jornada.ver` | O +V +C |
 | P-47 | Cierre del día | `/jornadas/[fecha]/cierre` | D | `jornada.cerrar` | O V C M F |
 | P-50 | Lista de compras | `/lista-compra` | M | `lista_compra.ver` | O +C +F |
 | P-55 | Anotar una compra suelta | `/compras/nueva` | M | `compras.registrar` | C +F |
@@ -107,7 +105,6 @@ Enfoque: **M** = celular primero; **D** = PC primero (usable en celular); **M/D*
 | P-70 | Preparación del día | `/preparacion/[fecha]` | M | `preparacion.ver` | O |
 | P-71 | Preparar el pedido de un cliente | `/preparacion/[fecha]/entrega/[id]` | M | `preparacion.ver` (cargar: `preparacion.registrar`) | O |
 | P-72 | Preparar por producto | `/preparacion/[fecha]/producto/[id]` | M | `preparacion.registrar` | O |
-| P-75 | Repartos | `/repartos` | D | `repartos.ver` | O |
 | P-76 | Armar reparto | `/repartos/[id]` | D | `repartos.gestionar` | O |
 | P-77 | Mi reparto | `/repartos/mios` | M | `repartos.ver_propios` | O |
 | P-78 | Confirmar entrega | `/repartos/mios/entrega/[id]` | M | `entregas.confirmar` | O |
@@ -124,7 +121,7 @@ Enfoque: **M** = celular primero; **D** = PC primero (usable en celular); **M/D*
 | P-95 | Configuración del negocio | `/configuracion` | D | `configuracion.ver` | M |
 | P-96 | Usuarios | `/usuarios` | D | `usuarios.administrar` | P |
 
-Las vistas de impresión se describen en 09.
+Las vistas de impresión se describen en 09. Las direcciones viejas `/pedidos`, `/jornadas/[fecha]` y `/repartos` llevan al tablero, al paso a paso y al viaje de entrega.
 
 ---
 
@@ -244,11 +241,11 @@ Datos (plegados en "✏️ Editar los datos del cliente"), **Dónde se le entreg
 
 Tarjetas separadas en "Con deuda" y "Al día", con una franja del color del semáforo, lugar en el mercado, cómo se le paga, cuántos productos vende y "Se le debe $X" con el % de uso del límite.
 
-**＋ Nuevo proveedor** (tres preguntas): nombre y dónde está en el mercado; cómo se le paga (En el momento / A cuenta, con hasta cuánto se le puede deber y el plazo: a la semana, 15 o 30 días); el teléfono. Contacto, CBU, CUIT y demás en "Más datos".
+**＋ Nuevo proveedor** (cuatro preguntas): nombre y dónde está en el mercado; cómo se le paga (En el momento / A cuenta, con hasta cuánto se le puede deber y el plazo: a la semana, 15 o 30 días); el teléfono; **cómo se le transfiere** (alias, a nombre de quién está la cuenta y CBU o CVU, RN-108b). Contacto, CUIT y demás en "Más datos".
 
 #### P-21 Ficha de proveedor
 
-Productos y precios (cada uno se cambia desde "✏️ Cambiar"; "Otro producto" para agregar), la cuenta (P-61), notas; los datos, plegados.
+**🏦 Para transferirle** (alias, CBU y titular, cada uno con 📋 Copiar; si faltan, "Cargarlos →"), productos y precios (cada uno se cambia desde "✏️ Cambiar"; "Otro producto" para agregar), la cuenta (P-61), notas; los datos, plegados.
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -312,9 +309,9 @@ La cargan siempre las mismas dos personas; es visual y en recuadros:
 
 Se guarda todo junto o nada: **nunca queda un pedido vacío**. Antes de guardar, marca en rojo lo que falta con la explicación. Al terminar: "Pedido guardado", **＋ Cargar otro pedido**, **Ver en el tablero** o **Cambiar algo**. Al cambiar un pedido que ya está en la lista de compras, lo que se saca queda cancelado con el motivo y la lista se marca para actualizar.
 
-#### P-40 Lista de pedidos y P-42 Detalle de pedido
+#### P-42 Detalle de pedido
 
-La lista muestra los pedidos de un día (para moverlos es más cómodo el tablero). El detalle tiene las líneas con su precio estimado y origen, **✏️ Cambiar productos**, **Ver en el tablero** y:
+Se abre desde la tarjeta ("Ver el pedido completo"). Tiene las líneas con su precio estimado y origen, **✏️ Cambiar productos**, **Ver en el tablero** y:
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -322,9 +319,9 @@ La lista muestra los pedidos de un día (para moverlos es más cómodo el tabler
 | Pasar a otro día | `pedidos.editar` | 04 §5.b | Si ya está en la lista de compras, primero hay que sacarlo desde el tablero. |
 | Duplicar | `pedidos.crear` | RN-033 | — |
 
-#### P-45 Otros días, P-46 Resumen de un día y P-47 Cierre del día
+#### P-45 Otros días y P-47 Cierre del día
 
-"Otros días" lista las jornadas con su estado y sus pedidos. El resumen de un día muestra pedidos, compra, preparación y reparto con su avance. El **cierre** tiene dos partes (04 §5.h): **Falta resolver** (entregas sin confirmar, pedidos sin terminar, remitos sin hacer, cada uno con su botón) y **Para revisar** (lo no comprado, márgenes negativos); después, el resumen del día (vendido, costo, ganancia, sobrantes, resultado, deuda) y **Cerrar el día** (`jornada.cerrar`), que lo deja en solo lectura con el resumen guardado. **Reabrir** pide motivo (`jornada.reabrir`, RN-041).
+"Otros días" lista los días con pedidos y su estado; cada uno abre su tablero. El **cierre** tiene dos partes (04 §5.h): **Falta resolver** (entregas sin confirmar, pedidos sin terminar, remitos sin hacer, cada uno con su botón) y **Para revisar** (lo no comprado, márgenes negativos); después, el resumen del día (vendido, costo, ganancia, sobrantes, resultado, deuda) y **Cerrar el día** (`jornada.cerrar`), que lo deja en solo lectura con el resumen guardado. **Reabrir** pide motivo (`jornada.reabrir`, RN-041).
 
 ---
 
@@ -351,7 +348,7 @@ Para lo que no está en la lista o para anotar varias cosas de un puesto de una 
 
 #### P-56 Compras anotadas y P-57 Detalle de compra
 
-Lista con total, pagado, pendiente y estado de pago. El detalle muestra las líneas, qué pagos la cancelan y el vencimiento.
+Lista con total, pagado, pendiente y estado de pago. El detalle muestra las líneas, qué pagos la cancelan, el vencimiento y, si falta pagar, **💵 Pagué en efectivo** / **🏦 Pagué por transferencia** (RN-097b).
 
 | Acción | Permiso | Reglas | Resultado |
 |---|---|---|---|
@@ -365,8 +362,8 @@ Lista con total, pagado, pendiente y estado de pago. El detalle muestra las lín
 Convención de 06 §10: pagado verde, pendiente ámbar, vencido rojo con reloj, saldo a favor con la leyenda "a favor"; siempre con texto.
 
 - **P-60 Deudas con proveedores:** una fila por proveedor con límite, deuda, disponible, % de uso, semáforo, vencido, próximo vencimiento y último pago; totales al pie; filtros "con deuda", "vencidos", "en rojo". Por fila: Pagar, Cuenta, Estado de cuenta (DOC-05).
-- **P-61 Cuenta del proveedor:** movimientos con saldo acumulado, compras pendientes con su vencimiento, pagos. Botones: **Registrar pago**, **Ajuste o deuda anterior**, **Estado de cuenta**.
-- **P-62 Registrar pago:** importe, medio, referencia opcional; imputación automática (de la compra más vieja a la más nueva) o elegida a mano, con la vista previa de qué compras cancela (RN-096, RN-097). Lo que sobra queda a favor (RN-098).
+- **P-61 Cuenta del proveedor:** la tarjeta **🏦 Para transferirle**; las compras sin pagar con su vencimiento y, en cada una, **💵 Pagué en efectivo** y **🏦 Pagué por transferencia**, que pagan lo que falta de esa compra con un toque (pide confirmar el importe, RN-097b); movimientos con saldo acumulado y pagos. Botones: **Otro pago (una parte o varias compras)**, **Ajuste o deuda anterior**, **Estado de cuenta**.
+- **P-62 Otro pago:** para pagar una parte o varias compras juntas, con la tarjeta para transferir arriba. Importe, medio, referencia opcional; imputación automática (de la compra más vieja a la más nueva) o elegida a mano, con la vista previa de qué compras cancela (RN-096, RN-097). Lo que sobra queda a favor (RN-098).
 - **P-63 Ajuste o deuda anterior:** débito o crédito con motivo y compra relacionada (RN-102); la deuda anterior al sistema, en una o varias boletas.
 - **P-64 Detalle de pago:** qué compras cancela; **Reimputar** y **Anular** con motivo (RN-100).
 
@@ -409,15 +406,17 @@ Un producto para todos los clientes: cuánto le toca a cada uno, con la misma ca
 
 Las entregas que faltan llevar, el mejor orden y el GPS:
 
+- **🚚 En camino:** las entregas que ya salieron, en el orden del reparto, cada una con **✅ Entregar**, que abre la confirmación (quién recibió, diferencias) y vuelve al viaje. Es el camino corto para quien reparte desde el celular; el mismo botón está en cada parada de "Armar reparto".
+
 - **De dónde se sale:** el depósito o el mercado (marcado con el GPS, buscando la dirección o con un enlace de Google Maps) o "donde estoy ahora".
 - **Calcular el viaje:** empezar por una parada o por la más cómoda, y volver o no. El orden es el de menos kilómetros (exacto hasta 8 paradas; con más, el vecino más cercano mejorado). Cada tramo con kilómetros y minutos aproximados. Las paradas sin ubicación van al final con un aviso.
 - Ajuste a mano con ↑ ↓; por parada **Ir** (Google Maps), **Waze** y 📞; "Abrir todo el viaje en Google Maps".
 - **Armar el reparto con este orden** o **Guardar este orden**.
 - La búsqueda de direcciones usa OpenStreetMap desde el servidor, solo al tocar "Buscar".
 
-#### P-75 Repartos y P-76 Armar reparto
+#### P-76 Armar reparto
 
-Repartos del día con sus paradas y estado. En "Armar reparto": las entregas sin reparto a un lado y las paradas ordenadas al otro, la tarjeta "Recorrido y GPS", **🖨️ Hoja de ruta** (DOC-04), **Hacer los remitos que faltan**, **Salir** (exige los remitos al día, RN-122) y **Anular** (sin entregas confirmadas, con motivo).
+Se abre desde "Repartos armados" del viaje de entrega: las entregas sin reparto a un lado y las paradas ordenadas al otro, la tarjeta "Recorrido y GPS", **🖨️ Hoja de ruta** (DOC-04), **Hacer los remitos que faltan**, **Salir** (exige los remitos al día, RN-122) y **Anular** (sin entregas confirmadas, con motivo).
 
 #### P-77 Mi reparto y P-78 Confirmar entrega (celular)
 
@@ -447,7 +446,7 @@ Entregas del día con su estado, reparto, diferencias, facturación y remitos. *
 
 ### 5.13 Balance, reportes y actividad
 
-- **P-91 Balance:** vendido, ganancia y %, comprado, pagado, deuda con proveedores y lo entregado sin facturar; gráficos de ventas y compras, ganancia por período, deuda en el tiempo, clientes y productos que más vendieron, por día, semana o mes, cada uno con su tabla. Cada importe respeta los permisos de precios.
+- **P-91 Balance:** una frase-resumen del período; tarjetas de colores con dibujo (vendido, ganancia y %, comprado, pagado, deuda con proveedores y lo entregado sin facturar), con ▲/▼ contra el período anterior del mismo largo cuando lo hay; **¿Cuánto queda de lo que se vende?** (de cada $100 vendidos, cuánto pagó la mercadería y cuánto quedó de ganancia, en una barra); gráficos de ventas y compras, ganancia por período, deuda en el tiempo, clientes (con medallas) y productos (con su dibujo) que más vendieron, por día, semana o mes, cada uno con su tabla. Cada importe respeta los permisos de precios.
 - **P-93 Movimientos:** ventas, compras, pagos y ajustes del período, del más nuevo al más viejo, con totales por tipo; cada fila lleva a su documento.
 - **P-90 Reportes:** ventas y margen por cliente y por producto, compras por proveedor y por producto, días cerrados, deuda por antigüedad, faltantes y diferencias.
 - **P-94 Actividad y notas:** lo que hizo cada persona en palabras ("María mandó a la lista de compras el pedido PED-000012") y las notas, por día; una tarjeta por persona arriba; filtros por persona y "solo notas". La 🔔 cuenta las notas sin leer.

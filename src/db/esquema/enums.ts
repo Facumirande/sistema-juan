@@ -43,16 +43,6 @@ export const accionAuditoria = pgEnum("accion_auditoria", [
   "EXPORTACION",
 ]);
 
-/** Acciones de auditoría que exigen motivo (03 §4.6). */
-export const ACCIONES_CON_MOTIVO = [
-  "ANULAR",
-  "CANCELAR",
-  "OVERRIDE_PRECIO",
-  "EXCESO_LIMITE",
-  "CORRECCION_ENTREGA",
-  "REAPERTURA_JORNADA",
-] as const;
-
 // 03 §3.4 y §3.5 — catálogo, clientes y compras.
 
 export const unidadMedida = pgEnum("unidad_medida", ["KG", "UNIDAD", "ATADO", "MAPLE", "BANDEJA", "DOCENA", "PAQUETE", "LITRO"]);

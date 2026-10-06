@@ -599,29 +599,6 @@ export async function listarPresentacionesDeCompra(
   );
 }
 
-/** Presentaciones de venta activas de productos activos, para cargar pedidos ("Tomate · Cajón 18 kg"). */
-export async function listarPresentacionesDeVenta(
-  db: BaseDatos,
-  authUserId: string,
-): Promise<{ productoId: string; producto: string; unidadBase: UnidadBase; presentacionId: string; presentacion: string; esUnidadBase: boolean; factor: string }[]> {
-  return ejecutarComoUsuario(db, authUserId, "productos.ver", async (tx) =>
-    tx
-      .select({
-        productoId: producto.id,
-        producto: producto.nombre,
-        unidadBase: producto.unidadBase,
-        presentacionId: presentacion.id,
-        presentacion: presentacion.nombre,
-        esUnidadBase: presentacion.esUnidadBase,
-        factor: presentacion.factorABase,
-      })
-      .from(presentacion)
-      .innerJoin(producto, eq(producto.id, presentacion.productoId))
-      .where(and(eq(producto.activo, true), eq(presentacion.activo, true), eq(presentacion.usableEnVenta, true)))
-      .orderBy(asc(producto.nombre), asc(presentacion.factorABase)),
-  );
-}
-
 /** Para el ejemplo del alta guiada: el recargo general y el de cada categoría (el que se usaría si el producto no tiene uno). */
 export async function recargosParaAlta(db: BaseDatos, authUserId: string): Promise<{ global: string; porCategoria: Record<string, string | null>; codigos: string[] }> {
   return ejecutarComoUsuario(db, authUserId, "productos.ver", async (tx) => {

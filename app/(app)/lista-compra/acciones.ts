@@ -33,13 +33,6 @@ export async function cambiarCantidadAccion(_estado: EstadoAccion, datos: FormDa
   });
 }
 
-export async function cambiarProveedorAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    await cambiarLineaLista(db, authUserId, { itemId: campo(datos, "itemId"), ofertaId: campo(datos, "ofertaId") });
-    return { ok: true, mensaje: "Proveedor cambiado." };
-  });
-}
-
 export async function noConseguidoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const quitar = campo(datos, "quitar") === "true";

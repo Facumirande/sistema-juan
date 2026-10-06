@@ -16,7 +16,7 @@ import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/c
 import { id, numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
 import { configuracionEmpresa, entregaBloqueada, unico, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto } from "./comun";
-import { documentosAlDia, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ResultadoEmision } from "./documentos";
+import { documentosAlDia, documentosAlDiaDe, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ResultadoEmision } from "./documentos";
 
 // Preparación de la mercadería (04 §5.e): RN-111 a RN-119. Ninguna función de este archivo lee
 // precios, costos ni importes (RN-119).
@@ -284,6 +284,7 @@ export async function obtenerPreparacion(
           )
           .orderBy(asc(entregaItem.linea))
       : [];
+    const alDia = await documentosAlDiaDe(tx, filas);
     const entregas: EntregaEnPreparacion[] = [];
     for (const f of filas) {
       const propias = items.filter((i) => i.entregaId === f.id);
@@ -301,7 +302,7 @@ export async function obtenerPreparacion(
         faltantes: propias.filter((i) => !i.esSustitucion && dec(i.preparada ?? i.propuesta ?? i.pedida).lt(i.pedida) && evaluarPreparado(i.pedida, i.preparada ?? i.propuesta ?? i.pedida, empresa.toleranciaPesoPct).menor).length,
         sustituciones: propias.filter((i) => i.esSustitucion).length,
         bultos: f.bultos,
-        documentosPendientes: f.estado === "PREPARADA" && !(await documentosAlDia(tx, f.id, f.version)),
+        documentosPendientes: f.estado === "PREPARADA" && !alDia.has(f.id),
         detalle: propias.map((i) => ({
           producto: i.producto,
           cantidad: formatearCantidad(i.esSustitucion ? (i.preparada ?? i.pedida) : i.pedida, i.unidad as UnidadMedida),

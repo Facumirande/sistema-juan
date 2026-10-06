@@ -1,6 +1,6 @@
 # 03 — Modelo de datos
 
-**Propósito:** definir todas las tablas, campos, tipos, estados, relaciones, restricciones, índices y vistas del sistema. **Es la fuente de verdad de nombres y campos para todo el equipo**: los demás documentos usan exactamente estos nombres. Cubre "base de datos" y "entidades y relaciones" de R16 y da soporte de datos a R4 a R14.
+**Propósito:** definir todas las tablas, campos, tipos, estados, relaciones, restricciones e índices del sistema. **Es la fuente de verdad de nombres y campos**: los demás documentos usan exactamente estos nombres.
 
 **Contenido**
 
@@ -12,7 +12,7 @@
 6. [Proveedores y precios de compra](#6-proveedores-y-precios-de-compra)
 7. [Clientes y reglas de precio de venta](#7-clientes-y-reglas-de-precio-de-venta)
 8. [Jornada y pedidos](#8-jornada-y-pedidos)
-9. [Lista de compra](#9-lista-de-compra)
+9. [Lista de compras](#9-lista-de-compras)
 10. [Compras y cuentas corrientes de proveedores](#10-compras-y-cuentas-corrientes-de-proveedores)
 11. [Repartos, entregas y documentos](#11-repartos-entregas-y-documentos)
 12. [Ventas y facturación](#12-ventas-y-facturación)
@@ -141,7 +141,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 
 ## 3. Enumeraciones
 
-### 3.1 Estados (canónicos del contrato)
+### 3.1 Estados (canónicos, `PARAMETROS-DEL-PROYECTO.md` §6)
 
 | Enum | Valores | Usado en | Notas |
 |---|---|---|---|
@@ -202,7 +202,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 
 | Enum | Valores |
 |---|---|
-| `tipo_documento` | `DOC_01` Lista de compra, `DOC_02` Lista de entrega (sin precios), `DOC_03` Lista contable (remito valorizado), `DOC_04` Hoja de ruta de reparto, `DOC_05` Estado de cuenta de proveedor, `DOC_06` Lista general de precios de compra, `DOC_07` Hoja de preparación por cliente (sin precios), `DOC_08` Comprobante interno de venta (definido en 09-documentos-imprimibles.md). |
+| `tipo_documento` | `DOC_01` Lista de compras, `DOC_02` Lista de entrega (sin precios), `DOC_03` Lista contable (remito valorizado), `DOC_04` Hoja de ruta de reparto, `DOC_05` Estado de cuenta de proveedor, `DOC_06` Lista general de precios de compra, `DOC_07` Hoja de preparación por cliente (sin precios), `DOC_08` Comprobante interno de venta (definido en 09-documentos-imprimibles.md). |
 | `evento_documento` | `EMISION` (nueva versión), `REIMPRESION` (misma versión, otra copia) |
 | `tipo_comprobante` | `INTERNO` (no fiscal) |
 | `tipo_secuencia` | `PEDIDO`, `LISTA_COMPRA`, `COMPRA`, `PAGO_PROVEEDOR`, `REPARTO`, `ENTREGA`, `FACTURA`, `COBRO_CLIENTE`, `AJUSTE_STOCK` |
@@ -512,14 +512,14 @@ Agrupa productos (ej. "Hortalizas de hoja", "Tubérculos", "Cítricos") y define
 |---|---|---|---|---|
 | + campos comunes | | | | |
 | nombre | text | No | — | `unique (empresa_id, lower(nombre))`. |
-| grupo | grupo_producto | No | `'VERDURA'` | FRUTA, VERDURA u OTRO (R14). |
+| grupo | grupo_producto | No | `'VERDURA'` | FRUTA, VERDURA u OTRO. |
 | recargo_default | numeric(7,3) | Sí | — | Nivel 6 de la precedencia. `> -100`. |
 | orden | int | No | `0` | Orden en listas (recorrido del mercado y del depósito). |
 | activo | boolean | No | `true` | |
 
 ### 5.2 producto
 
-Ficha central del producto (R14). Todo cálculo interno se hace en `unidad_base`.
+Ficha central del producto. Todo cálculo interno se hace en `unidad_base`.
 
 | Campo | Tipo | Nulo | Default | Descripción / regla |
 |---|---|---|---|---|
@@ -534,7 +534,7 @@ Ficha central del producto (R14). Todo cálculo interno se hace en `unidad_base`
 | alicuota_iva | numeric(7,3) | No | `0.000` | Se sugiere desde `empresa.alicuota_iva_default`. |
 | proveedor_preferido_id | uuid | Sí | — | FK `proveedor`. Base de la estrategia PREFERIDO y del proveedor sugerido. |
 | presentacion_venta_default_id | uuid | Sí | — | FK `presentacion` (del mismo producto, `usable_en_venta`). Se propone al cargar pedidos. |
-| presentacion_compra_default_id | uuid | Sí | — | FK `presentacion` (del mismo producto, `usable_en_compra`). Se usa en la lista de compra si el proveedor sugerido no tiene oferta. |
+| presentacion_compra_default_id | uuid | Sí | — | FK `presentacion` (del mismo producto, `usable_en_compra`). Se usa en la lista de compras si el proveedor sugerido no tiene oferta. |
 | observaciones | text | Sí | — | Ej. "Para hospitales, pedir bien firme". |
 | imagen_path | text | Sí | — | Miniatura opcional. |
 | activo | boolean | No | `true` | |
@@ -582,21 +582,24 @@ Ejemplos:
 | telefono | text | Sí | — | Habitualmente WhatsApp. |
 | email | text | Sí | — | |
 | contacto_nombre | text | Sí | — | |
-| ubicacion_mercado | text | Sí | — | Ej. "Nave 2, puesto 14". Se muestra en la lista de compra. |
+| ubicacion_mercado | text | Sí | — | Ej. "Nave 2, puesto 14". Se muestra en la lista de compras. |
 | direccion | text | Sí | — | |
-| datos_bancarios | text | Sí | — | CBU/alias o cuenta para transferencias. |
+| datos_bancarios | text | Sí | — | Sin uso (reemplazado por los tres campos siguientes). |
+| alias_transferencia | text | Sí | — | Alias para transferirle, en minúsculas; 6 a 20 letras, números, puntos o guiones (check). |
+| cbu | text | Sí | — | CBU o CVU de 22 dígitos (check); al guardar se verifican sus dígitos verificadores. |
+| titular_cuenta | text | Sí | — | A nombre de quién está la cuenta, para comprobarlo antes de transferir. |
 | limite_credito | numeric(14,2) | Sí | — | Máximo que se le puede deber. **Nulo = sin límite.** `>= 0`. Cambios auditados. |
 | plazo_pago_dias | int | Sí | — | Días para calcular `compra.fecha_vencimiento`. Nulo = sin plazo. `>= 0`. |
 | condicion_pago_habitual | condicion_pago | No | `'CREDITO'` | Valor propuesto al registrar una compra. |
 | observaciones | text | Sí | — | |
-| saldo_actual | numeric(14,2) | No | `0` | **Caché opcional** del saldo neto (suma del libro), actualizado en la misma transacción que cada movimiento y conciliado por el control nocturno. La fuente de verdad es siempre `movimiento_cuenta_proveedor`. |
+| saldo_actual | numeric(14,2) | No | `0` | Copia del saldo neto (suma del libro), actualizada en la misma transacción que cada movimiento. La fuente de verdad es siempre `movimiento_cuenta_proveedor`. |
 | activo | boolean | No | `true` | Un proveedor con saldo distinto de cero puede desactivarse, pero se advierte; se le puede seguir pagando. |
 
 El crédito disponible y el semáforo **no se guardan**: se calculan en el código (sección 17).
 
 ### 6.2 proveedor_producto
 
-Oferta vigente: qué producto vende un proveedor, en qué presentación y a qué precio. Es la base de la **lista general de productos para compra** (R7, DOC-06) y del comparador (R6).
+Oferta vigente: qué producto vende un proveedor, en qué presentación y a qué precio. Es la base de la **lista general de productos para compra** (DOC-06) y de la comparación de precios.
 
 | Campo | Tipo | Nulo | Default | Descripción / regla |
 |---|---|---|---|---|
@@ -614,7 +617,7 @@ Oferta vigente: qué producto vende un proveedor, en qué presentación y a qué
 | observaciones | text | Sí | — | Ej. "Calidad primera, cajón bien lleno". |
 | activo | boolean | No | `true` | |
 
-Información para actualizar el precio (R7) que muestra la lista general, calculada en el código (sección 17): precio vigente, precio anterior y variación %, costo por unidad base, fecha de actualización y días transcurridos, quién lo actualizó, si es el preferido, si es el más barato, y la marca "desactualizado".
+Información para actualizar el precio que muestra la lista general, calculada en el código (sección 17): precio vigente, precio anterior y variación %, costo por unidad base, fecha de actualización y días transcurridos, quién lo actualizó, si es el preferido, si es el más barato, y la marca "desactualizado".
 
 ### 6.3 historial_precio_compra
 
@@ -776,7 +779,7 @@ erDiagram
 
 ### 8.1 jornada
 
-Fecha operativa (= fecha de entrega). Agrupa pedidos, lista de compra, compras, preparación, repartos y entregas del día. Se crea automáticamente la primera vez que se carga un pedido para esa fecha. No se anula ni se borra.
+Fecha operativa (= fecha de entrega). Agrupa pedidos, lista de compras, compras, preparación, repartos y entregas del día. Se crea automáticamente la primera vez que se carga un pedido para esa fecha. No se anula ni se borra.
 
 | Campo | Tipo | Nulo | Default | Descripción / regla |
 |---|---|---|---|---|
@@ -804,7 +807,7 @@ Fecha operativa (= fecha de entrega). Agrupa pedidos, lista de compra, compras, 
 | canal | canal_pedido | Sí | — | TELEFONO, WHATSAPP, EMAIL, PRESENCIAL. |
 | referencia_cliente | text | Sí | — | Orden de compra del cliente. Obligatoria si `cliente.requiere_orden_compra`. |
 | estado | estado_pedido | No | `'BORRADOR'` | Ver 04-procesos-y-flujos.md. |
-| es_tardio | boolean | No | `false` | Cargado después de `empresa.hora_corte_pedidos` o con la lista de compra ya generada. |
+| es_tardio | boolean | No | `false` | Cargado después de `empresa.hora_corte_pedidos` o con la lista de compras ya generada. |
 | entrega_desde, entrega_hasta | time | Sí | — | Franja especial para este pedido (si no, la del punto de entrega). En el tablero es el "plazo" de la tarjeta: vencido, pronto (faltan 2 h o menos) o a tiempo. |
 | prioridad | prioridad_pedido | No | `'NORMAL'` | Agregado (tablero). |
 | responsable_id | uuid | Sí | — | Agregado: quién se encarga (FK `usuario` de la misma empresa). Nulo = quien lo cargó. |
@@ -848,9 +851,9 @@ Cada línea guarda lo que pidió el cliente y el **precio estimado** (se recalcu
 
 ---
 
-## 9. Lista de compra
+## 9. Lista de compras
 
-Diagrama del dominio **compras y proveedores** (lista de compra, compras y cuentas corrientes):
+Diagrama del dominio **compras y proveedores** (lista de compras, compras y cuentas corrientes):
 
 ```mermaid
 erDiagram
@@ -977,14 +980,14 @@ Una línea por producto: cuánto se necesita, cuánto ya se compró, cuánto com
 | motivo_ajuste | text | Sí | — | Obligatorio si `ajuste_manual`. |
 | proveedor_sugerido_id | uuid | Sí | — | FK `proveedor` (según estrategia y crédito disponible; 04-procesos-y-flujos.md). |
 | proveedor_producto_sugerido_id | uuid | Sí | — | FK `proveedor_producto` usada para sugerir. |
-| asignacion_manual | boolean | No | `false` | Propuesto en 04: el comprador eligió el proveedor a mano; se respeta al regenerar. |
+| asignacion_manual | boolean | No | `false` | El puesto sugerido se eligió a mano (`cambiarLineaLista` con otra oferta); se respeta al volver a calcular la lista. Hoy ninguna pantalla lo cambia. |
 | precio_sugerido | numeric(14,4) | Sí | — | Precio de la presentación al generar (snapshot, para comparar estimado vs real). |
 | costo_estimado | numeric(14,2) | Sí | — | `cantidad_presentaciones × precio_sugerido`. Nulo si no hay oferta (alerta SIN_PROVEEDOR). |
 | estado | estado_lista_compra_item | No | `'PENDIENTE'` | PENDIENTE (nada comprado), PARCIAL (`0 < comprado_base < necesidad_neta_base`), COMPRADO (`comprado_base >= necesidad_neta_base`), NO_CONSEGUIDO (marcado a mano, con motivo; se revierte si luego se completa la compra). |
 | motivo_no_conseguido | text | Sí | — | Obligatorio si NO_CONSEGUIDO. |
 | sin_pedido | boolean | No | `false` | Producto comprado sin necesidad en los pedidos (necesidad 0: todo es sobrante previsto). |
 | alertas | text[] | No | `'{}'` | SIN_PROVEEDOR, CREDITO_INSUFICIENTE, PRECIO_DESACTUALIZADO. |
-| comprador_asignado_id | uuid | Sí | — | FK `usuario`, para repartir la lista entre dos compradores (en 04 aparece como `comprador_asignado`). |
+| comprador_asignado_id | uuid | Sí | — | FK `usuario`. Sin uso. |
 | necesidad_modificada | boolean | No | `false` | Alerta: la necesidad cambió después de comprar o de un ajuste manual. |
 | justificacion | text | Sí | — | Explicación de diferencias al cerrar la jornada (ej. "cerrada al cierre de jornada"). |
 | observaciones | text | Sí | — | Resumen de observaciones de los pedidos ("2 clientes piden bien maduro"). |
@@ -1128,7 +1131,7 @@ Movimientos que genera cada operación:
 | Deuda anterior al sistema | Compra `tipo = SALDO_INICIAL` y su movimiento SALDO_INICIAL +N (con `fecha_origen`); una sola carga por proveedor (una compra por boleta pendiente) |
 | Saldo a favor anterior al sistema | AJUSTE_CREDITO −N con motivo "saldo a favor al …" |
 
-**Saldo neto** del proveedor = **suma de `importe`** (= cargos − pagos, contrato H). `saldo_pendiente` (= crédito utilizado) = `max(saldo neto, 0)`; `saldo_a_favor` = `max(−saldo neto, 0)`. Detalle del circuito en 06-creditos-y-pagos.md.
+**Saldo neto** del proveedor = **suma de `importe`** (= cargos − pagos, `PARAMETROS-DEL-PROYECTO.md` §8). `saldo_pendiente` (= crédito utilizado) = `max(saldo neto, 0)`; `saldo_a_favor` = `max(−saldo neto, 0)`. Detalle del circuito en 06-creditos-y-pagos.md.
 
 ---
 
@@ -1657,7 +1660,7 @@ alter table regla_precio add constraint sin_superposicion_recargo
 | 8 | `factura_entrega`: la entrega es del mismo cliente que la factura, está ENTREGADA y tiene documentos emitidos de `entrega_version`. | Dominio + trigger. |
 | 9 | Transiciones de estado válidas (pedido, entrega, jornada, reparto, lista_compra_item). | Dominio (`transicionPermitida`); trigger opcional como red de seguridad. |
 | 10 | `entrega.importe_*` y `costo_total` = suma de sus líneas. | Recalculado por trigger `SECURITY DEFINER` al cambiar cantidades (así el rol operativo actualiza cantidades sin leer precios). |
-| 11 | Saldo neto del proveedor = suma de su libro = Σ pendiente de partidas deudoras − Σ no imputado de partidas acreedoras; `proveedor.saldo_actual` coincide con la suma del libro. | Control nocturno (tarea programada) y pruebas automáticas. |
+| 11 | Saldo neto del proveedor = suma de su libro = Σ pendiente de partidas deudoras − Σ no imputado de partidas acreedoras; `proveedor.saldo_actual` coincide con la suma del libro. | Pruebas automáticas. |
 
 ### 15.7 Inmutabilidad y no borrado
 
@@ -1681,7 +1684,7 @@ Las reglas de negocio completas (quién puede, en qué estados) están en 07-reg
 |---|---|
 | compra | `estado = ANULADA` + campos de anulación; movimiento `ANULACION_COMPRA` por −total que compensa el cargo; imputaciones activas de esa compra → `activa = false` (el dinero queda como saldo a favor y se reimputa FIFO si la empresa lo tiene activado); `lista_compra_item.comprado_base` y `estado`, y el costo real de la jornada, recalculados. Compra CONTADO: si el proveedor devolvió el dinero, también se anula el pago automático (06-creditos-y-pagos.md). |
 | pago_proveedor | `estado = ANULADO`; movimiento `ANULACION_PAGO` por +monto; imputaciones del pago → `activa = false` (las compras vuelven a PENDIENTE o PARCIAL). |
-| pedido (cancelación) | `estado = CANCELADO` + motivo; sus líneas dejan de sumar en la necesidad del día; la lista de compra queda marcada para regenerar. |
+| pedido (cancelación) | `estado = CANCELADO` + motivo; sus líneas dejan de sumar en la necesidad del día; la lista de compras queda marcada para regenerar. |
 | entrega | Requiere SIN_FACTURAR. `estado = ANULADA`; sus `documento_emitido` → ANULADO; los `pedido_item` quedan libres para otra entrega. |
 | reparto | `estado = ANULADO`; sus entregas quedan con `reparto_id` nulo. |
 | factura | `estado = ANULADA`; `factura_entrega.activa = false`; entregas → SIN_FACTURAR. |
@@ -1745,7 +1748,7 @@ No hay vistas en la base: lo que el diseño original resolvía con vistas (`v_of
 | Precio pagado por presentación, factor, costo por unidad base | `compra_item.precio_unitario`, `factor_a_base`, `costo_base` | Al registrar la compra | Es un hecho: lo que se pagó no cambia aunque cambie el precio de lista. Base del costo real y de la deuda. |
 | Precio de lista en el momento de sugerir | `lista_compra_item.precio_sugerido` | Al generar la lista | Comparar estimado vs real (cuánto se desvió la compra). |
 | Precio estimado de venta, costo y regla usados | `pedido_item.precio_estimado`, `costo_estimado`, `recargo_estimado`, `origen_regla_estimada` | Al cargar o recalcular | Informar al cliente y explicar de dónde salió el precio. Todavía puede cambiar. |
-| **Precio de venta congelado** y su explicación | `entrega_item.costo_unitario`, `recargo_aplicado`, `origen_regla`, `regla_precio_id`, `precio_unitario`, `alicuota_iva` | Al emitir los documentos de la entrega | La lista contable (DOC-03) debe coincidir para siempre con lo entregado; cambios de precios posteriores no alteran documentos emitidos (contrato G). |
+| **Precio de venta congelado** y su explicación | `entrega_item.costo_unitario`, `recargo_aplicado`, `origen_regla`, `regla_precio_id`, `precio_unitario`, `alicuota_iva` | Al emitir los documentos de la entrega | La lista contable (DOC-03) debe coincidir para siempre con lo entregado; cambios de precios posteriores no alteran documentos emitidos (`PARAMETROS-DEL-PROYECTO.md` §7). |
 | Nombre del producto y unidad | `entrega_item.producto_nombre`, `unidad_base`, `factor_a_base` | Al crear la línea | El remito no cambia si se renombra el producto o se reemplaza una presentación. |
 | Datos del cliente y del lugar de entrega | `entrega.cliente_nombre`, `cliente_razon_social`, `cliente_identificacion_fiscal`, `punto_entrega_nombre`, `direccion_entrega` | Al emitir documentos | Un remito es un documento: debe mostrar los datos vigentes cuando se emitió. |
 | Datos fiscales del cliente | `factura.cliente_*` | Al emitir el comprobante | Requisito contable/fiscal. |
@@ -1763,7 +1766,7 @@ Jornada del **jueves 24/09/2026**: 2 proveedores, 3 productos, 2 clientes. Para 
 
 ```mermaid
 flowchart LR
-    P1["PED-000101<br/>Hospital Central"] --> LC["LC-000024 v1<br/>lista de compra"]
+    P1["PED-000101<br/>Hospital Central"] --> LC["LC-000024 v1<br/>lista de compras"]
     P2["PED-000102<br/>Restaurante La Esquina"] --> LC
     LC --> C1["COM-000201<br/>Don Carlos, CREDITO"]
     LC --> C2["COM-000202<br/>Los Hermanos, MIXTA"]
@@ -1848,7 +1851,7 @@ Costo estimado con estrategia PREFERIDO (todavía no hay compras): tomate $1.200
 
 `total_estimado` = **$41.280**.
 
-### 19.3 Lista de compra — `lista_compra` LC-000024 versión 1 y `lista_compra_item`
+### 19.3 Lista de compras — `lista_compra` LC-000024 versión 1 y `lista_compra_item`
 
 Generada el miércoles a las 22:00. Los pedidos pasan a EN_COMPRA y la jornada a COMPRANDO.
 

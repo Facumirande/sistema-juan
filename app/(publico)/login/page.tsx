@@ -16,10 +16,11 @@ export const metadata: Metadata = { title: "Entrar · Sistema Juan" };
 export default async function PaginaIngreso({ searchParams }: PageProps<"/login">) {
   await connection();
   const conectado = configuracionSupabase() !== null;
-  // Primer uso: todavía no hay negocio ni usuarios, se va a crear el primero.
-  if (conectado && process.env.DATABASE_URL && (await configuracionInicialPendiente(obtenerBaseDatos()))) {
-    redirect("/configuracion-inicial");
-  }
+  // Primer uso: todavía no hay negocio ni usuarios, se va a crear el primero. Si la base no
+  // responde, se muestra el aviso en vez de una página de error.
+  const primerUso = conectado && process.env.DATABASE_URL ? await configuracionInicialPendiente(obtenerBaseDatos()).catch(() => null) : false;
+  if (primerUso) redirect("/configuracion-inicial");
+  const sinBase = primerUso === null;
   const conGoogle = conectado && (await googleHabilitado());
   const { error } = await searchParams;
 
@@ -32,6 +33,11 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/login"
       {!conectado && (
         <p role="status" className="rounded-lg border border-borde bg-superficie px-3 py-2 text-texto-suave">
           Este entorno todavía no tiene la conexión a Supabase configurada (archivo <code>.env.local</code>).
+        </p>
+      )}
+      {sinBase && (
+        <p role="alert" className="rounded-lg border border-error px-3 py-2 text-error">
+          El sistema no está disponible en este momento (no responde la base de datos). Probá de nuevo en unos minutos; si sigue igual, avisale a Facundo.
         </p>
       )}
       {error === "google" && (

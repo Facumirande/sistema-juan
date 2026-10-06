@@ -12,7 +12,7 @@ import { margenSobreVenta } from "@/dominio/precios/venta";
 import { umbralesSemaforo } from "@/modulos/compras/cuenta";
 import { compradoPorProducto } from "@/modulos/compras/lista-compra";
 import { jornadaDeFecha, numeroEntrega, unico } from "@/modulos/entregas/comun";
-import { documentosAlDia } from "@/modulos/entregas/documentos";
+import { documentosAlDiaDe } from "@/modulos/entregas/documentos";
 import { numeroPedido } from "@/modulos/pedidos/pedidos";
 import { costosReales } from "@/modulos/precios-venta/calculo";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
@@ -123,9 +123,10 @@ export async function estadoDelCierre(db: BaseDatos, authUserId: string, fecha: 
       .from(entrega)
       .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
       .where(and(eq(entrega.jornadaId, j.id), ne(entrega.estado, "ANULADA")));
+    const alDia = await documentosAlDiaDe(tx, entregas);
     for (const e of entregas) {
       if (e.estado !== "ENTREGADA") bloqueos.push({ texto: `${numeroEntrega(e.numero)} de ${e.cliente} todavía no está confirmada.`, ruta: `/entregas/${e.id}` });
-      else if (!(await documentosAlDia(tx, e.id, e.version))) bloqueos.push({ texto: `${numeroEntrega(e.numero)} de ${e.cliente}: faltan emitir los documentos de su última versión.`, ruta: `/entregas/${e.id}` });
+      else if (!alDia.has(e.id)) bloqueos.push({ texto: `${numeroEntrega(e.numero)} de ${e.cliente}: faltan emitir los documentos de su última versión.`, ruta: `/entregas/${e.id}` });
     }
     const pedidos = await tx
       .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, cliente: cliente.nombre })

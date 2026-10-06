@@ -1,12 +1,9 @@
 "use server";
 
-import { redirect } from "next/navigation";
-
 import {
   actualizarReparto,
   agregarAlReparto,
   anularReparto,
-  crearReparto,
   emitirDocumentosDelReparto,
   moverParada,
   proponerOrden,
@@ -17,22 +14,7 @@ import {
 import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
-// Acciones de P-75, P-76 y P-77. Los permisos los verifica cada caso de uso.
-
-export async function crearRepartoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  let id = "";
-  const r = await ejecutarAccion(async ({ db, authUserId }) => {
-    id = await crearReparto(db, authUserId, {
-      fecha: campo(datos, "fecha"),
-      repartidorId: campo(datos, "repartidorId"),
-      vehiculo: campo(datos, "vehiculo"),
-      salida: campo(datos, "salida"),
-    });
-    return { ok: true, mensaje: null };
-  });
-  if (r.ok) redirect(`/repartos/${id}`);
-  return r;
-}
+// Acciones de P-76 y P-77. Los permisos los verifica cada caso de uso.
 
 export async function actualizarRepartoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {

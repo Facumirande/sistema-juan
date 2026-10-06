@@ -42,8 +42,8 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
           </Link>
         )}
         {p.entregas.length > 0 && (
-          <Link href={`/repartos?fecha=${fecha}`} className={clasesBoton("secundario")}>
-            🚚 Viaje de entrega
+          <Link href={`/viaje?fecha=${fecha}`} className={clasesBoton("secundario")}>
+            🧭 Viaje de entrega
           </Link>
         )}
       </Encabezado>

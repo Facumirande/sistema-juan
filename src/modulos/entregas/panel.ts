@@ -1,13 +1,12 @@
 import { and, count, eq, ne, sql } from "drizzle-orm";
 
 import { compra, documentoEmitido, entrega, jornada, listaCompra, listaCompraItem, pedido, reparto } from "@/db/esquema";
-import type { BaseDatos, Transaccion } from "@/db/tipos";
+import type { Transaccion } from "@/db/tipos";
 import type { FechaISO } from "@/dominio/fechas/fechas";
-import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 
 import { jornadaDeFecha } from "./comun";
 
-// P-46 Panel de la jornada: en qué paso está el día y cuánto falta en cada etapa.
+// Cuánto falta en cada etapa de un día (lo usa el paso a paso del tablero).
 
 export interface PanelJornada {
   fecha: FechaISO;
@@ -26,10 +25,6 @@ export interface PanelJornada {
 }
 
 const porEstado = (filas: { estado: string; n: number }[]) => Object.fromEntries(filas.map((f) => [f.estado, Number(f.n)]));
-
-export async function panelDeJornada(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<PanelJornada> {
-  return ejecutarComoUsuario(db, authUserId, "jornada.ver", (tx) => panelEnTransaccion(tx, fecha));
-}
 
 export async function panelEnTransaccion(tx: Transaccion, fecha: FechaISO): Promise<PanelJornada> {
   const j = await jornadaDeFecha(tx, fecha);

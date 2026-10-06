@@ -19,7 +19,12 @@ export const proveedor = pgTable(
     contactoNombre: text("contacto_nombre"),
     ubicacionMercado: text("ubicacion_mercado"),
     direccion: text("direccion"),
+    /** Sin uso: reemplazado por alias, CBU y titular. */
     datosBancarios: text("datos_bancarios"),
+    /** Para transferirle sin equivocarse (05/10/2026). */
+    aliasTransferencia: text("alias_transferencia"),
+    cbu: text("cbu"),
+    titularCuenta: text("titular_cuenta"),
     /** Nulo = sin límite. */
     limiteCredito: monto("limite_credito"),
     plazoPagoDias: integer("plazo_pago_dias"),
@@ -36,6 +41,8 @@ export const proveedor = pgTable(
     check("proveedor_nombre_no_vacio", sql`char_length(trim(${t.nombre})) > 0`),
     check("proveedor_limite_credito", sql`${t.limiteCredito} >= 0`),
     check("proveedor_plazo_pago", sql`${t.plazoPagoDias} >= 0`),
+    check("proveedor_cbu", sql`${t.cbu} ~ '^[0-9]{22}$'`),
+    check("proveedor_alias", sql`${t.aliasTransferencia} ~ '^[a-z0-9.-]{6,20}$'`),
   ],
 );
 

@@ -70,6 +70,9 @@ export interface CuentaCorriente {
     limiteCredito: string | null;
     plazoPagoDias: number | null;
     activo: boolean;
+    aliasTransferencia: string | null;
+    cbu: string | null;
+    titularCuenta: string | null;
   };
   hoy: FechaISO;
   indicadores: IndicadoresCredito;
@@ -177,6 +180,9 @@ export async function cuentaCorriente(db: BaseDatos, authUserId: string, proveed
         limiteCredito: p.limiteCredito,
         plazoPagoDias: p.plazoPagoDias,
         activo: p.activo,
+        aliasTransferencia: p.aliasTransferencia,
+        cbu: p.cbu,
+        titularCuenta: p.titularCuenta,
       },
       hoy,
       indicadores: indicadoresCredito(total?.saldo ?? "0", p.limiteCredito, await umbralesSemaforo(tx)),

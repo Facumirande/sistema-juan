@@ -10,7 +10,7 @@ import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
 import { configuracionEmpresa, numeroEntrega } from "@/modulos/entregas/comun";
-import { documentosAlDia } from "@/modulos/entregas/documentos";
+import { documentosAlDia, documentosAlDiaDe } from "@/modulos/entregas/documentos";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 
@@ -168,10 +168,11 @@ export async function pendientesDeFacturar(
         ),
       )
       .orderBy(asc(cliente.nombre), asc(jornada.fecha), asc(entrega.numero));
+    const alDia = await documentosAlDiaDe(tx, filas);
     const grupos = new Map<string, ClientePorFacturar>();
     for (const f of filas) {
       const g = grupos.get(f.clienteId) ?? { clienteId: f.clienteId, cliente: f.cliente, periodicidad: f.periodicidad, sinIdentificacionFiscal: !f.cuit, entregas: [], total: "0" };
-      g.entregas.push({ id: f.id, numero: numeroEntrega(f.numero), version: f.version, fecha: f.fecha, punto: f.punto, total: f.total, documentosAlDia: await documentosAlDia(tx, f.id, f.version) });
+      g.entregas.push({ id: f.id, numero: numeroEntrega(f.numero), version: f.version, fecha: f.fecha, punto: f.punto, total: f.total, documentosAlDia: alDia.has(f.id) });
       g.total = dec(g.total).plus(f.total).toFixed(2);
       grupos.set(f.clienteId, g);
     }

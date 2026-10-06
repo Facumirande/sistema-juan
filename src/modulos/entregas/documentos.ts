@@ -250,6 +250,18 @@ export async function documentosAlDia(tx: Transaccion, entregaId: string, versio
   return Boolean(d);
 }
 
+/** Lo mismo que `documentosAlDia` para varias entregas en una sola consulta: los ids que lo están. */
+export async function documentosAlDiaDe(tx: Transaccion, entregas: readonly { id: string; version: number }[]): Promise<Set<string>> {
+  const conVersion = entregas.filter((e) => e.version > 0);
+  if (conVersion.length === 0) return new Set();
+  const filas = await tx
+    .select({ entregaId: documentoEmitido.entregaId, version: documentoEmitido.version })
+    .from(documentoEmitido)
+    .where(and(inArray(documentoEmitido.entregaId, conVersion.map((e) => e.id)), eq(documentoEmitido.tipo, "DOC_02"), eq(documentoEmitido.evento, "EMISION")));
+  const emitidas = new Set(filas.map((f) => `${f.entregaId}:${f.version}`));
+  return new Set(conVersion.filter((e) => emitidas.has(`${e.id}:${e.version}`)).map((e) => e.id));
+}
+
 /**
  * Emite DOC-02 y DOC-03 de la versión vigente (09 §4.2). La primera emisión congela los precios
  * (RN-089, RN-121); una línea que se agrega después se congela en su primera emisión. Si falta un

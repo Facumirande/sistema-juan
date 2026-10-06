@@ -9,7 +9,7 @@ import { campo, type EstadoAccion } from "@/ui/estado-accion";
 export async function cerrarJornadaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await cerrarJornada(db, authUserId, campo(datos, "fecha"));
-    return { ok: true, mensaje: "Jornada cerrada. El resumen quedó guardado." };
+    return { ok: true, mensaje: "Día cerrado. El resumen quedó guardado." };
   });
 }
 
@@ -23,6 +23,6 @@ export async function justificarPendientesAccion(_estado: EstadoAccion, datos: F
 export async function reabrirJornadaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await reabrirJornada(db, authUserId, { fecha: campo(datos, "fecha"), motivo: campo(datos, "motivo") });
-    return { ok: true, mensaje: "Jornada reabierta." };
+    return { ok: true, mensaje: "Día reabierto: ya se pueden hacer cambios." };
   });
 }

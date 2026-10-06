@@ -1,6 +1,6 @@
 # 09 · Documentos imprimibles
 
-> **Propósito:** definir cada documento que el sistema imprime: para qué sirve, quién lo puede sacar, de dónde salen sus datos, qué contiene y en qué orden, cómo se numera y versiona, y cómo se garantiza que los documentos sin precios nunca lleven precios. Cubre R5, R7, R10, R11 y R12.
+> **Propósito:** definir cada documento que el sistema imprime: para qué sirve, quién lo puede sacar, de dónde salen sus datos, qué contiene y en qué orden, cómo se numera y versiona, y cómo se garantiza que los documentos sin precios nunca lleven precios.
 
 ## Contenido
 
@@ -10,7 +10,7 @@
 4. [Emisión, versiones y registro](#4-emisión-versiones-y-registro)
 5. [Elementos comunes de diseño](#5-elementos-comunes-de-diseño)
 6. [Detalle de cada documento](#6-detalle-de-cada-documento)
-   - [DOC-01 Lista de compra](#doc-01-lista-de-compra)
+   - [DOC-01 Lista de compras](#doc-01-lista-de-compras)
    - [DOC-02 Lista de entrega (sin precios)](#doc-02-lista-de-entrega-sin-precios)
    - [DOC-03 Lista contable (remito valorizado)](#doc-03-lista-contable-remito-valorizado)
    - [DOC-04 Hoja de ruta de reparto](#doc-04-hoja-de-ruta-de-reparto)
@@ -21,7 +21,7 @@
 7. [Implementación técnica](#7-implementación-técnica)
 8. [Casos de prueba de documentos](#8-casos-de-prueba-de-documentos)
 
-Documentos relacionados: `01-tipo-de-aplicacion-y-arquitectura.md` (vistas de impresión), `02-usuarios-roles-y-permisos.md` (permisos `documentos.*`, ocultamiento de precios), `03-modelo-de-datos.md` (`documento_emitido`, vistas `v_op_*`, snapshots), `04-procesos-y-flujos.md` (cuándo se emite cada documento), `06-creditos-y-pagos.md` §11 (contenido de DOC-05), `08-pantallas-y-acciones.md` (desde qué pantalla se imprime cada uno).
+Documentos relacionados: `01-tipo-de-aplicacion-y-arquitectura.md` (vistas de impresión), `02-usuarios-roles-y-permisos.md` (permisos `documentos.*`, ocultamiento de precios), `03-modelo-de-datos.md` (`documento_emitido`, consultas sin precios, snapshots), `04-procesos-y-flujos.md` (cuándo se emite cada documento), `06-creditos-y-pagos.md` §11 (contenido de DOC-05), `08-pantallas-y-acciones.md` (desde qué pantalla se imprime cada uno).
 
 Los ejemplos usan el escenario de `04-procesos-y-flujos.md` §2 (jornada del jueves 24/09/2026). Números de entrega del ejemplo: ENT-000411 Hospital San Martín, ENT-000412 Restaurante La Esquina, ENT-000413 Verdulería Don Pepe; reparto REP-000088. Direcciones y teléfonos son ficticios.
 
@@ -45,7 +45,7 @@ Los ejemplos usan el escenario de `04-procesos-y-flujos.md` §2 (jornada del jue
 
 | ID | Documento | Para qué sirve | Quién lo usa | Entidad | Desde qué pantalla | Fase |
 |---|---|---|---|---|---|---|
-| DOC-01 | Lista de compra | Llevar al mercado qué comprar, cuánto, a quién y (opcional) a qué precio; anotar lo comprado. | COMPRADOR, ADMIN | `lista_compra` | P-50 | MVP |
+| DOC-01 | Lista de compras | Llevar al mercado qué comprar, cuánto, a quién y (opcional) a qué precio; anotar lo comprado. | COMPRADOR, ADMIN | `lista_compra` | P-50 | MVP |
 | DOC-02 | Lista de entrega (sin precios) | Acompañar la mercadería; el cliente firma lo que recibe. | PREPARADOR, REPARTIDOR, cliente | `entrega` | P-71, P-76, P-77, P-80 | MVP |
 | DOC-03 | Lista contable (remito valorizado) | Informar al cliente y a contaduría qué se entregó, a qué precio y el total. | ADMINISTRATIVO, ADMIN, cliente (contaduría) | `entrega` | P-80, P-87 | MVP |
 | DOC-04 | Hoja de ruta de reparto | Orden de las paradas con dirección, horario, contacto, instrucciones y bultos. | REPARTIDOR | `reparto` | P-76, P-77 | MVP |
@@ -54,7 +54,7 @@ Los ejemplos usan el escenario de `04-procesos-y-flujos.md` §2 (jornada del jue
 | DOC-07 | Hoja de preparación por cliente (sin precios) | Armar la mercadería de cada cliente y anotar el peso real. | PREPARADOR | `jornada` | P-70 | MVP |
 | DOC-08 | Comprobante interno de venta | Registrar la venta de una o varias entregas en un comprobante no fiscal (04 §5.g.2). | ADMINISTRATIVO, ADMIN, cliente | `factura` | P-86, P-87 | MVP |
 
-DOC-08 se agrega al catálogo del contrato de diseño (DOC-01 a DOC-07) porque `04-procesos-y-flujos.md` §5.g.2 y RN-140 piden un comprobante interno imprimible; el enum `tipo_documento` de `03-modelo-de-datos.md` ya preveía agregar `DOC_08` en adelante desde este documento.
+DOC-08 es el comprobante interno de venta que piden `04-procesos-y-flujos.md` §5.g.2 y RN-140.
 
 Los **reportes** (P-90) también se pueden imprimir con la misma infraestructura, pero no son documentos: no se numeran ni se registran en `documento_emitido`.
 
@@ -200,18 +200,18 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 
 ## 6. Detalle de cada documento
 
-### DOC-01 Lista de compra
+### DOC-01 Lista de compras
 
 | Campo | Definición |
 |---|---|
 | Cuándo | Después de generar o regenerar la lista (04 §5.c, paso 9); se reimprime a demanda. |
-| Fuente | `lista_compra`, `lista_compra_item`, `proveedor` (nombre y `ubicacion_mercado`), `producto`, `presentacion`; `v_saldo_proveedor` solo con `proveedores.ver_credito`. |
+| Fuente | `lista_compra`, `lista_compra_item`, `proveedor` (nombre y `ubicacion_mercado`), `producto`, `presentacion`; la deuda de cada puesto solo con `proveedores.ver_credito`. |
 | Agrupación | Por proveedor sugerido (plan de compra), en el orden de `ubicacion_mercado`; dentro, por orden de categoría y nombre. Al final, "Sin proveedor" (alerta `SIN_PROVEEDOR`). Variantes: **por producto** y **solo líneas de un comprador** (`comprador_asignado_id`). |
 | Filtro por defecto | Líneas `PENDIENTE` y `PARCIAL`; opción "incluir compradas". |
 
 **Contenido**
 
-1. Encabezado: "LISTA DE COMPRA", `LC-` número y versión, jornada, fecha y hora de generación y quién la generó, comprador (si se filtró). Si la lista está desactualizada al imprimir: franja "DESACTUALIZADA: los pedidos cambiaron después de esta versión" (RN-052).
+1. Encabezado: "LISTA DE COMPRAS", `LC-` número y versión, jornada, fecha y hora de generación y quién la generó, comprador (si se filtró). Si la lista está desactualizada al imprimir: franja "DESACTUALIZADA: los pedidos cambiaron después de esta versión" (RN-052).
 2. Por cada proveedor: nombre, ubicación en el mercado, teléfono; con `proveedores.ver_credito`: semáforo actual, disponible hoy → después de este plan.
 3. Líneas: casilla ☐ · producto (y observaciones de los pedidos: "2 clientes piden bien maduro") · a comprar (cantidad de presentaciones y presentación) · equivalente en unidad base · necesidad · ya comprado · sobrante previsto · alertas en texto · con `precios.ver_costos`: precio sugerido y costo estimado · columnas vacías **Precio pagado** y **Comprado** para anotar.
 4. Subtotal por proveedor y total general (solo con `precios.ver_costos`).
@@ -220,7 +220,7 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 **Ejemplo** (versión 1, con precios; datos de 04 §5.c.3):
 
 ```text
-LISTA DE COMPRA                         LC-000024 · versión 1 · Jornada jueves 24/09/2026
+LISTA DE COMPRAS                         LC-000024 · versión 1 · Jornada jueves 24/09/2026
 Generada 23/09/2026 20:00 por Juan
 
 A · HNOS. GARCÍA — Puesto 14 · 11 5555-0101     VERDE 3,0 % → 51,6 % · disp. $485.000 → $242.000
@@ -364,7 +364,7 @@ Documento sin valores. Devolver al finalizar el reparto con los duplicados firma
 | Campo | Definición |
 |---|---|
 | Cuándo | A demanda, para un período (por defecto, el mes en curso). |
-| Fuente | `movimiento_cuenta_proveedor` (saldo inicial y movimientos), `v_compra_estado_pago`, `pago_proveedor` e `imputacion_pago_proveedor`, `v_saldo_proveedor`. |
+| Fuente | `movimiento_cuenta_proveedor` (saldo inicial y movimientos), estado de pago de cada compra, `pago_proveedor` e `imputacion_pago_proveedor`, y el saldo del proveedor (`cuentaCorriente`). |
 | Contenido | Las cinco secciones de `06-creditos-y-pagos.md` §11. Se reconstruye siempre desde el libro: emitirlo dos veces para el mismo período da el mismo resultado. |
 
 **Contenido**
@@ -423,7 +423,7 @@ Saldo según nuestros registros al 16/09/2026. Por favor, informe cualquier dife
 | Campo | Definición |
 |---|---|
 | Cuándo | A demanda desde P-25, normalmente la noche anterior para recorrer el mercado. |
-| Fuente | `v_oferta_vigente` (y `v_saldo_proveedor` con `proveedores.ver_credito`). |
+| Fuente | `listaGeneralPreciosCompra` (y la deuda de cada puesto con `proveedores.ver_credito`). |
 | Agrupación | **Por proveedor** (por defecto, en el orden de `ubicacion_mercado`, 05 §2.1) o **por producto** (comparativa, mejor oferta marcada). Respeta los filtros de P-25. |
 
 **Contenido**

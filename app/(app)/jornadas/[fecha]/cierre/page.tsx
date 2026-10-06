@@ -15,7 +15,7 @@ import { Aviso, Campo, Encabezado, Tabla, Tarjeta } from "@/ui/formularios";
 
 import { cerrarJornadaAccion, justificarPendientesAccion, reabrirJornadaAccion } from "../../acciones";
 
-export const metadata: Metadata = { title: "Cierre de jornada · Sistema Juan" };
+export const metadata: Metadata = { title: "Cierre del día · Sistema Juan" };
 
 const pct = (v: string | null) => (v ? ` (${formatearNumero(v, { decimales: 2 })} %)` : "");
 
@@ -46,7 +46,7 @@ export default async function CierreDeJornada({ params }: PageProps<"/jornadas/[
     <section className="flex max-w-4xl flex-col gap-6">
       <Encabezado
         titulo={`Cierre del ${fechaConDia(fecha)}`}
-        volver={{ ruta: `/jornadas/${fecha}`, texto: "Jornada" }}
+        volver={{ ruta: `/inicio?fecha=${fecha}&vista=pasos`, texto: "Paso a paso" }}
         descripcion={cerrada ? `Cerrada${e.cerrada?.en ? ` el ${formatearFechaHora(e.cerrada.en, sesion.zonaHoraria)}` : ""}${r.cerradaPor ? ` por ${r.cerradaPor}` : ""}.` : `Jornada ${ESTADOS_JORNADA[e.estado]?.toLowerCase()}.`}
       />
 
@@ -122,9 +122,9 @@ export default async function CierreDeJornada({ params }: PageProps<"/jornadas/[
 
       {!cerrada && (
         <>
-          {!["PREPARANDO", "REPARTIENDO"].includes(e.estado) && <Aviso>La jornada todavía no se preparó ni se repartió.</Aviso>}
+          {!["PREPARANDO", "REPARTIENDO"].includes(e.estado) && <Aviso>Este día todavía no se preparó ni se repartió.</Aviso>}
           {e.bloqueos.length === 0 && ["PREPARANDO", "REPARTIENDO"].includes(e.estado) && (
-            <FormularioAccion accion={cerrarJornadaAccion} boton="Cerrar jornada" confirmar="¿Cerrar la jornada? Queda de solo lectura con este resumen.">
+            <FormularioAccion accion={cerrarJornadaAccion} boton="🔒 Cerrar el día" confirmar="¿Cerrar el día? Queda guardado este resumen y ya no se puede cambiar nada (se puede reabrir con un motivo).">
               {oculto}
             </FormularioAccion>
           )}
@@ -132,7 +132,7 @@ export default async function CierreDeJornada({ params }: PageProps<"/jornadas/[
       )}
       {cerrada && sesion.permisos.includes("jornada.reabrir") && (
         <details className="rounded-lg border border-borde bg-superficie p-4">
-          <summary className="cursor-pointer font-semibold">Reabrir la jornada</summary>
+          <summary className="cursor-pointer font-semibold">Reabrir el día</summary>
           <FormularioAccion accion={reabrirJornadaAccion} boton="Reabrir" variante="secundario">
             {oculto}
             <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. corregir una entrega" />

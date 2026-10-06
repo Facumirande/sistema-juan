@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 
-import { anularPago, registrarAjuste, registrarPago, reimputarPago, type MedioPago, type ModoImputacion } from "@/modulos/compras/pagos";
+import { formatearMoneda } from "@/dominio/dinero/formato";
+import { anularPago, pagarDeuda, registrarAjuste, registrarPago, reimputarPago, type MedioPago, type ModoImputacion } from "@/modulos/compras/pagos";
 import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
@@ -36,6 +37,19 @@ export async function registrarPagoAccion(_estado: EstadoAccion, datos: FormData
   });
   if (resultado.ok) redirect(`/cuentas-proveedores/pagos/${id}?registrado=1`);
   return resultado;
+}
+
+/** "Pagué esta compra": un toque, por todo lo que falta de esa compra. */
+export async function pagarDeudaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    const r = await pagarDeuda(db, authUserId, {
+      proveedorId: campo(datos, "proveedorId"),
+      clave: campo(datos, "clave"),
+      medio: campo(datos, "medio") as "EFECTIVO" | "TRANSFERENCIA",
+      claveIdempotencia: campo(datos, "claveIdempotencia") || null,
+    });
+    return { ok: true, mensaje: `Listo: ${r.deuda} pagada (${formatearMoneda(r.pagado)}, ${r.numero}).` };
+  });
 }
 
 export async function anularPagoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {

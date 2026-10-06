@@ -8,9 +8,9 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { ESTADOS_JORNADA, fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 
-export const metadata: Metadata = { title: "Jornadas · Sistema Juan" };
+export const metadata: Metadata = { title: "Otros días · Sistema Juan" };
 
-/** P-45 Jornadas: cada día de entrega con sus pedidos. Se crean solas al cargar el primer pedido (RN-035). */
+/** P-45 Otros días: cada día de entrega con sus pedidos. Se crean solos al cargar el primer pedido (RN-035). */
 export default async function PaginaJornadas() {
   const sesion = await sesionParaPantalla("jornada.ver");
   const { jornadas, sugerida } = await listarJornadas(obtenerBaseDatos(), sesion.authUserId);
@@ -18,13 +18,13 @@ export default async function PaginaJornadas() {
 
   return (
     <section className="flex max-w-3xl flex-col gap-6">
-      <Encabezado titulo="Jornadas" descripcion="Todos los días de entrega, con sus pedidos y en qué etapa están. Tocá un día para ver su detalle.">
-        <Link href={`/pedidos?fecha=${sugerida}`} className={clasesBoton("principal")}>
+      <Encabezado titulo="Otros días" volver={{ ruta: "/inicio", texto: "Tablero" }} descripcion="Todos los días de entrega con sus pedidos y en qué etapa están. Tocá un día para abrir su tablero.">
+        <Link href={`/inicio?fecha=${sugerida}`} className={clasesBoton("principal")}>
           Pedidos de mañana
         </Link>
       </Encabezado>
       {jornadas.length === 0 ? (
-        <p className="text-texto-suave">Todavía no hay jornadas: se crean solas al cargar el primer pedido de cada día.</p>
+        <p className="text-texto-suave">Todavía no hay días con pedidos: aparecen solos al cargar el primer pedido de cada día.</p>
       ) : (
         <Tabla>
           <thead>
@@ -39,7 +39,7 @@ export default async function PaginaJornadas() {
             {jornadas.map((j) => (
               <tr key={j.id}>
                 <td>
-                  <Link href={`/jornadas/${j.fecha}`} className="font-medium capitalize underline-offset-4 hover:underline">
+                  <Link href={`/inicio?fecha=${j.fecha}`} className="font-medium capitalize underline-offset-4 hover:underline">
                     {fechaConDia(j.fecha)}
                   </Link>
                 </td>

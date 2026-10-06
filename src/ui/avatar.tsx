@@ -22,14 +22,3 @@ export function Avatar({ persona, tamano = "medio", className = "" }: { persona:
     </span>
   );
 }
-
-/** Varias personas superpuestas (la primera arriba). */
-export function Avatares({ personas, tamano = "chico" }: { personas: PersonaAvatar[]; tamano?: keyof typeof TAMANOS }) {
-  return (
-    <span className="flex -space-x-1.5">
-      {personas.map((p, i) => (
-        <Avatar key={`${p.nombre}-${i}`} persona={p} tamano={tamano} />
-      ))}
-    </span>
-  );
-}

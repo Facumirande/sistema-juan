@@ -20,7 +20,9 @@ function datosProveedor(datos: FormData) {
     contactoNombre: campo(datos, "contactoNombre"),
     ubicacionMercado: campo(datos, "ubicacionMercado"),
     direccion: campo(datos, "direccion"),
-    datosBancarios: campo(datos, "datosBancarios"),
+    aliasTransferencia: campo(datos, "aliasTransferencia"),
+    cbu: campo(datos, "cbu"),
+    titularCuenta: campo(datos, "titularCuenta"),
     condicionPagoHabitual: (campo(datos, "condicionPagoHabitual") || "CREDITO") as CondicionPago,
     observaciones: campo(datos, "observaciones"),
     // Los campos de crédito solo vienen si la pantalla los mostró (proveedores.editar_limite).

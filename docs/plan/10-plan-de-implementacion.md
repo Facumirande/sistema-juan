@@ -10,7 +10,7 @@
 4. [Pruebas](#4-pruebas)
 5. [Carga de los datos reales](#5-carga-de-los-datos-reales)
 6. [Decisiones tomadas](#6-decisiones-tomadas)
-7. [Ideas para más adelante](#7-ideas-para-más-adelante)
+7. [Pendientes e ideas](#7-pendientes-e-ideas)
 
 ---
 
@@ -57,7 +57,7 @@ Cada una se da por terminada con sus pruebas automáticas en verde y los número
 | I5 · Cuentas con proveedores | Pagos con imputación automática o elegida, saldo a favor, ajustes, anulaciones, vencimientos (DOC-05). | Los 12 pasos de 06 §12 dan los mismos saldos e imputaciones. |
 | I6 · Preparación y entregas | Preparación por cliente con reparto de faltantes, peso real, reemplazos, remitos sin precios y con precios congelados (DOC-02, DOC-03), repartos, confirmación en el celular (DOC-04, DOC-07). | Faltante de lechuga 48/22/14; la verdulería pasa a $222.770 en la versión 2; ningún documento sin precios lee precios. |
 | I7 · Facturación y cierre | Comprobante interno no fiscal (DOC-08) automático o por período, exportación al contador (Excel o CSV), cierre del día con resumen, reportes básicos, balance con gráficos. | Resumen del 24/09: vendido $806.370, margen $174.780, resultado $153.320, deuda $680.550. |
-| Interfaz de uso diario | Tablero de pedidos (Pedidos → Lista de compras → Comprado → Preparando → En camino → Entregados), el día paso a paso, carga visual de pedidos, lista de compras para el mercado con "✓ Lo compré", preparación por cliente con "Está todo" o "Falta algo" y el motivo, viaje de entrega con GPS, notas y actividad. | Recorridas en el navegador con datos de ejemplo, en celular y computadora. |
+| Interfaz de uso diario | Tablero de pedidos (Pedidos → Lista de compras → Comprado → Preparando → En camino → Entregados), el día paso a paso, carga visual de pedidos, lista de compras para el mercado con "✓ Lo compré", preparación por cliente con "Está todo" o "Falta algo" y el motivo, viaje de entrega con GPS, notas y actividad, pagar cada compra en un toque con los datos para transferir a la vista, balance con tarjetas de colores y comparación con el período anterior. | Recorridas en el navegador con datos de ejemplo, en celular y computadora. |
 
 Los pedidos no se confirman a mano: se cargan completos y, al mandarlos a la lista de compras o al empezar a preparar, los que quedaron sin terminar pero tienen productos se completan solos.
 
@@ -130,7 +130,11 @@ Todas cerradas; cualquiera se revisa si el uso real lo pide. El detalle está en
 
 ---
 
-## 7. Ideas para más adelante
+## 7. Pendientes e ideas
+
+**Pendiente (pedido del usuario, 05/10/2026): facturación legal.** La factura válida es la electrónica de ARCA con CAE; hoy el sistema emite un comprobante interno. Para conectarlo con ARCA falta saber si el negocio es monotributista (Factura C, compatible con precios sin IVA) o responsable inscripto (A/B con IVA, cambia D-04), su CUIT con clave fiscal nivel 3, un punto de venta para web service y el certificado digital (la solicitud la prepara el sistema). Se prueba primero en el entorno de homologación de ARCA.
+
+**Ideas** (no pedidas; solo si el uso real las justifica):
 
 No fueron pedidas; se hacen solo si el uso real las justifica.
 
@@ -138,4 +142,4 @@ No fueron pedidas; se hacen solo si el uso real las justifica.
 - Sobrantes y mermas que se descuenten de la compra siguiente.
 - Cuenta corriente y cobranzas de clientes.
 - Pedidos habituales ("todos los lunes lo mismo").
-- Facturación fiscal electrónica con ARCA, si algún día hace falta.
+

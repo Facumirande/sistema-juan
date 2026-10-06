@@ -47,7 +47,7 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
     <section className="flex max-w-4xl flex-col gap-6">
       <Encabezado
         titulo={r.numero}
-        volver={{ ruta: `/repartos?fecha=${r.fecha}`, texto: "Repartos" }}
+        volver={{ ruta: `/viaje?fecha=${r.fecha}`, texto: "Viaje de entrega" }}
         descripcion={[fechaConDia(r.fecha), r.repartidor, r.vehiculo, r.salida ? `salió ${hora(r.salida)}` : r.salidaPrevista && `sale ${hora(r.salidaPrevista)}`, r.regreso && `volvió ${hora(r.regreso)}`]
           .filter(Boolean)
           .join(" · ")}
@@ -106,6 +106,11 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
                     {!p.documentosAlDia && p.estado !== "ENTREGADA" && <b className="text-error"> · sin documentos</b>}
                   </p>
                 </div>
+                {p.estado === "EN_REPARTO" && sesion.permisos.includes("entregas.confirmar") && (
+                  <Link href={`/repartos/mios/entrega/${p.id}?volver=${encodeURIComponent(`/repartos/${r.id}`)}`} className={clasesBoton("principal")}>
+                    ✅ Entregar
+                  </Link>
+                )}
                 {puedeGestionar && planificado && (
                   <div className="flex gap-1">
                     <FormularioAccion accion={moverParadaAccion} boton="↑" variante="secundario" enLinea>

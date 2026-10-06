@@ -11,8 +11,8 @@ import { anularCompra, obtenerCompra, registrarCompra } from "@/modulos/compras/
 import { saldoNeto } from "@/modulos/compras/cuenta";
 import { cuentaCorriente, listarCuentasProveedores } from "@/modulos/compras/cuenta-corriente";
 import { partidasAcreedoras, partidasDeudoras } from "@/modulos/compras/imputaciones";
-import { anularPago, obtenerPago, registrarAjuste, registrarPago, reimputarPago } from "@/modulos/compras/pagos";
-import { guardarProveedor } from "@/modulos/proveedores/proveedores";
+import { anularPago, obtenerPago, pagarDeuda, registrarAjuste, registrarPago, reimputarPago } from "@/modulos/compras/pagos";
+import { guardarProveedor, obtenerProveedor } from "@/modulos/proveedores/proveedores";
 
 import { crearBaseDePrueba, crearEmpresaDePrueba, crearUsuarioDePrueba, type BaseDePrueba } from "./base-de-prueba";
 
@@ -250,5 +250,43 @@ describe("reimputación, ajustes y anulaciones (06 §4.5, §5, §6)", () => {
     await expect(pagar(garcia, "1000", { fecha: manana })).rejects.toThrow(/futura/);
     const comprador = await crearUsuarioDePrueba(base.db, empresaId, "Pedro", ["COMPRADOR"]);
     await expect(registrarPago(base.db, comprador, { proveedorId: garcia, fecha: hoy, monto: "1000", medio: "EFECTIVO" })).rejects.toThrow();
+  });
+});
+
+describe("pagar una compra con un toque y los datos para transferir (05/10/2026)", () => {
+  it("\"Pagué esta compra\" paga justo lo que falta de esa compra, y un segundo toque no paga de más", async () => {
+    const prov = await guardarProveedor(base.db, admin, { nombre: "Verdulería del Puesto 9", condicionPagoHabitual: "CREDITO" });
+    const vieja = (await comprar(prov, "CREDITO", 20000)).compraId;
+    const nueva = (await comprar(prov, "MIXTA", 50000, { pagadoEnElActo: "10000", medioPago: "EFECTIVO" })).compraId;
+    // Se paga la más nueva (no la más vieja, como haría el FIFO): $40.000, lo que le faltaba.
+    const r = await pagarDeuda(base.db, administrativo, { proveedorId: prov, clave: `C:${nueva}`, medio: "TRANSFERENCIA" });
+    expect(r.pagado).toBe("40000");
+    expect(await estado(nueva)).toEqual(["PAGADA", "50000.00"]);
+    expect(await estado(vieja)).toEqual(["PENDIENTE", "0.00"]);
+    expect(await saldo(prov)).toBe("20000.00");
+    await expect(pagarDeuda(base.db, administrativo, { proveedorId: prov, clave: `C:${nueva}`, medio: "EFECTIVO" })).rejects.toThrow(/ya está pagada/);
+    // Mismo toque repetido (misma clave): devuelve el mismo pago, no paga dos veces.
+    const clave = "8a3c3a8e-2f5e-4f0b-9c1d-1d2e3f4a5b6c";
+    const a = await pagarDeuda(base.db, administrativo, { proveedorId: prov, clave: `C:${vieja}`, medio: "EFECTIVO", claveIdempotencia: clave });
+    const b = await pagarDeuda(base.db, administrativo, { proveedorId: prov, clave: `C:${vieja}`, medio: "EFECTIVO", claveIdempotencia: clave });
+    expect(b.pagoId).toBe(a.pagoId);
+    expect(a.pagado).toBe("20000");
+    expect(await saldo(prov)).toBe("0.00");
+    await invariante(prov);
+  });
+
+  it("alias, CBU y titular se guardan normalizados; uno mal escrito no se guarda", async () => {
+    const prov = await guardarProveedor(base.db, admin, {
+      nombre: "Puesto con alias",
+      condicionPagoHabitual: "CREDITO",
+      aliasTransferencia: " Garcia.Hnos.Mercado ",
+      cbu: "2850590 9 4009041813520 1",
+      titularCuenta: "García Juan Carlos",
+    });
+    const f = await obtenerProveedor(base.db, admin, prov);
+    expect([f.aliasTransferencia, f.cbu, f.titularCuenta]).toEqual(["garcia.hnos.mercado", "2850590940090418135201", "García Juan Carlos"]);
+    expect((await cuentaCorriente(base.db, admin, prov, { desde: hoy, hasta: hoy })).proveedor.aliasTransferencia).toBe("garcia.hnos.mercado");
+    await expect(guardarProveedor(base.db, admin, { nombre: "Otro puesto", condicionPagoHabitual: "CREDITO", cbu: "2850590940090418135202" })).rejects.toThrow(/CBU o CVU no es válido/);
+    await expect(guardarProveedor(base.db, admin, { nombre: "Otro puesto", condicionPagoHabitual: "CREDITO", aliasTransferencia: "con espacios no" })).rejects.toThrow(/alias/);
   });
 });
