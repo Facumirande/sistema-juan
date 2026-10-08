@@ -9,6 +9,7 @@ import {
   porQueNoSeMueve,
   columnaDePedido,
   columnaDeTarjeta,
+  columnaParaEmpezar,
   estadoDelPlazo,
   ordenarTarjetas,
   prioridadMasAlta,
@@ -37,6 +38,15 @@ describe("tablero de pedidos", () => {
     expect(columnaDeTarjeta("CONFIRMADO", false, true)).toBe("preparando");
     expect(columnaDeTarjeta("EN_COMPRA", true, true)).toBe("preparando");
     expect(columnaDeTarjeta("EN_REPARTO", false, true)).toBe("en_camino");
+  });
+
+  it("en el celular el tablero arranca en la primera columna con pedidos", () => {
+    const con = (cuantas: number[]) => COLUMNAS.map((c, i) => ({ clave: c.clave, tarjetas: Array.from({ length: cuantas[i] ?? 0 }) }));
+    expect(columnaParaEmpezar(con([0, 0, 0, 0, 0, 0]))).toBe("pedidos");
+    expect(columnaParaEmpezar(con([2, 0, 3, 0, 0, 0]))).toBe("pedidos");
+    expect(columnaParaEmpezar(con([0, 0, 3, 1, 0, 0]))).toBe("comprados");
+    expect(columnaParaEmpezar(con([0, 0, 0, 0, 0, 4]))).toBe("entregados");
+    expect(columnaParaEmpezar([])).toBe("pedidos");
   });
 
   it("primero la prioridad alta, después lo que tiene que llegar antes, después el más viejo", () => {

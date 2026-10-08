@@ -95,7 +95,7 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
   // El fondo con la imagen va en las dos vistas del día (tablero y paso a paso).
   const sobre = dia !== null;
   const aviso = sobre
-    ? "flex min-h-11 items-center gap-2 rounded-full bg-white/95 px-4 text-sm font-semibold text-[#172b4d] shadow-sm hover:bg-white"
+    ? "flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-white/95 px-4 text-sm font-semibold text-[#172b4d] shadow-sm hover:bg-white"
     : "flex min-h-11 items-center gap-2 rounded-full border border-borde bg-superficie px-4 text-sm font-semibold";
   const unaNota = bandeja.sinLeer.length === 1 ? bandeja.sinLeer[0]! : null;
 
@@ -104,11 +104,14 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
       // El tablero ocupa justo la pantalla (la página no se desplaza); el paso a paso, lo que necesite.
       className={
         sobre
-          ? `-m-4 flex flex-col gap-3 p-3 [background:var(--tablero-fondo)] sm:px-4 ${enTablero ? "h-[calc(100dvh-3.5rem)] overflow-hidden" : "min-h-[calc(100dvh-3.5rem)]"}`
+          ? // En el tablero, este recuadro es el contenedor "tablero": su ancho (no el de la ventana) decide
+            // si se ve como en la computadora o como en el celular.
+            `-m-4 flex flex-col gap-2 p-3 [background:var(--tablero-fondo)] sm:gap-3 sm:px-4 ${enTablero ? "@container/tablero h-[calc(100dvh-3.5rem)] overflow-hidden" : "min-h-[calc(100dvh-3.5rem)]"}`
           : "flex max-w-3xl flex-col gap-5"
       }
     >
-      <header className={`flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 ${sobre ? "text-white" : ""}`}>
+      {/* En el celular, el tablero no lleva este encabezado: el día y las opciones van adentro, en un renglón. */}
+      <header className={`shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 ${enTablero ? "hidden @[34rem]/tablero:flex" : "flex"} ${sobre ? "text-white" : ""}`}>
         <div>
           <h1 className="text-xl leading-tight font-semibold sm:text-3xl">{dia ? (enTablero ? `Pedidos · ${tituloDelDia(dia.fecha, dia.hoy)}` : tituloDelDia(dia.fecha, dia.hoy)) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
           {dia && (
@@ -152,10 +155,11 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
         </div>
       </header>
 
-      {dia && <SelectorDeDia dias={dia.dias} fecha={dia.fecha} hoy={dia.hoy} enlace={(f) => `/inicio?fecha=${f}${vista === "pasos" ? "&vista=pasos" : ""}`} sobreFondo={sobre} />}
+      {/* En el tablero, los días van adentro (en el celular comparten el renglón con las opciones). */}
+      {dia && !enTablero && <SelectorDeDia dias={dia.dias} fecha={dia.fecha} hoy={dia.hoy} enlace={(f) => `/inicio?fecha=${f}&vista=pasos`} sobreFondo={sobre} />}
 
       {(pedidosDeAcceso > 0 || vencidas.length > 0 || porVencer.length > 0 || bandeja.sinLeer.length > 0) && (
-        <div className="flex flex-wrap gap-2" aria-label="Avisos">
+        <div className={enTablero ? "sin-barra -mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 whitespace-nowrap @[34rem]/tablero:flex-wrap @[34rem]/tablero:whitespace-normal" : "flex flex-wrap gap-2"} aria-label="Avisos">
           {unaNota ? (
             unaNota.entidad.tipo === "USUARIO" ? (
               <Link href="/actividad?ver=notas" className={aviso}>
@@ -201,6 +205,10 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           base={base}
           puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar"), tildar: puede("lista_compra.editar"), salir: puede("repartos.gestionar") && dia.panel.estado !== "CERRADA", preparar: puede("preparacion.registrar"), entregar: puede("entregas.confirmar"), cerrar: puede("jornada.cerrar") }}
           cerrado={dia.panel.estado === "CERRADA"}
+          dias={dia.dias}
+          hoy={dia.hoy}
+          titulo={tituloDelDia(dia.fecha, dia.hoy)}
+          otras={{ pasos: `/inicio?fecha=${dia.fecha}&vista=pasos`, balance: puede("reportes.ver") ? `/balance?dia=${dia.fecha}` : null }}
           enlaces={{
             // El acceso a la pantalla de cada etapa, chico, arriba de la columna (abajo va solo el botón verde de cada tarjeta).
             en_lista: { href: `/lista-compra?fecha=${dia.fecha}`, texto: "Lista" },

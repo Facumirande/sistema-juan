@@ -88,8 +88,12 @@ const TAMANOS = {
    * columna es más ancha (`@[18rem]`, por consulta de contenedor) la letra y la casilla crecen.
    */
   tarjeta: { texto: "text-base @[13rem]:text-lg @[18rem]:text-xl", casilla: "size-8 text-lg @[18rem]:size-10 @[18rem]:text-2xl", cruz: "size-7 text-sm", cantidad: "text-base", cantidadDebajo: true, fila: "items-start gap-1.5 py-1 @[18rem]:gap-2", sangria: "ml-9" },
-  /** En la tarjeta abierta y en la pantalla de preparación. */
-  amplio: { texto: "text-2xl", casilla: "size-12 text-3xl", cruz: "size-11 text-xl", cantidad: "text-xl", cantidadDebajo: false, fila: "items-center gap-3 rounded-xl bg-black/[0.04] px-2 py-2 dark:bg-white/[0.06]", sangria: "ml-[3.75rem]" },
+  /**
+   * En la tarjeta abierta y en la pantalla de preparación. Donde el lugar es angosto (el celular),
+   * el nombre se queda con su renglón y la cantidad y la ✕ bajan al de abajo, a la derecha: el
+   * nombre nunca queda aplastado letra por letra.
+   */
+  amplio: { texto: "text-xl sm:text-2xl", casilla: "size-12 text-3xl", cruz: "size-11 text-xl", cantidad: "text-xl", cantidadDebajo: false, fila: "flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-black/[0.04] px-2 py-2 dark:bg-white/[0.06]", sangria: "ml-[3.75rem]" },
 } as const;
 
 const TONOS = {
@@ -186,7 +190,7 @@ export function Checklist<P extends ProductoDeChecklist>({ productos, modo, alTi
                 nombre={`${p.reemplazo ? "🔁 " : ""}${p.nombre}`}
                 grupo={p.grupo}
                 fluido={t.cantidadDebajo}
-                className={`flex-1 ${t.cantidadDebajo ? "" : apagado}`}
+                className={`flex-1 ${t.cantidadDebajo ? "" : `basis-40 ${apagado}`}`}
                 claseDelNombre={apagado}
                 debajo={
                   t.cantidadDebajo ? (
@@ -197,7 +201,7 @@ export function Checklist<P extends ProductoDeChecklist>({ productos, modo, alTi
                   ) : undefined
                 }
               />
-              {!t.cantidadDebajo && <span className={`shrink-0 font-bold tabular-nums ${t.cantidad} ${noHay ? "line-through opacity-60" : ""}`}>{p.cantidad}</span>}
+              {!t.cantidadDebajo && <span className={`ml-auto shrink-0 font-bold tabular-nums ${t.cantidad} ${noHay ? "line-through opacity-60" : ""}`}>{p.cantidad}</span>}
               {!t.cantidadDebajo && cruz}
             </div>
             {p.aviso && <span className={`mt-0.5 block w-fit rounded-md bg-white/85 px-2 text-sm font-semibold text-[#8a3a00] dark:bg-black/40 dark:text-[#fedec8] ${modo === "ver" ? "" : t.sangria}`}>⚠ {p.aviso}</span>}

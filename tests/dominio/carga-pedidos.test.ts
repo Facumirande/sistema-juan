@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { textoParaPersona } from "@/dominio/errores";
 import {
+  agregadosPrimero,
   cantidadPermitida,
   cantidadesRapidas,
   coincideBusqueda,
@@ -70,6 +71,18 @@ describe("carga visual de pedidos", () => {
     expect(coincideBusqueda("Tomate redondo", "redondo tom")).toBe(true);
     expect(coincideBusqueda("Tomate redondo", "perita")).toBe(false);
     expect(coincideBusqueda("Papa", "")).toBe(true);
+  });
+
+  it("los productos ya agregados al pedido van primero, en el orden en que se agregaron", () => {
+    const productos = [{ id: "banana" }, { id: "cebolla" }, { id: "lechuga" }, { id: "papa" }, { id: "tomate" }];
+    const ids = (agregados: string[]) => agregadosPrimero(productos, agregados).map((p) => p.id);
+    expect(ids([])).toEqual(["banana", "cebolla", "lechuga", "papa", "tomate"]);
+    expect(ids(["papa"])).toEqual(["papa", "banana", "cebolla", "lechuga", "tomate"]);
+    // El que se agrega después queda detrás de los ya agregados; los demás siguen como venían.
+    expect(ids(["papa", "banana", "tomate"])).toEqual(["papa", "banana", "tomate", "cebolla", "lechuga"]);
+    // Lo agregado que no está en esta parte de la lista (o no coincide con la búsqueda) no cuenta.
+    expect(ids(["zapallo", "lechuga"])).toEqual(["lechuga", "banana", "cebolla", "papa", "tomate"]);
+    expect(productos.map((p) => p.id)).toEqual(["banana", "cebolla", "lechuga", "papa", "tomate"]);
   });
 
   it("junta las líneas repetidas", () => {

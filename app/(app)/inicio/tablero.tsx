@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition, type PointerEvent as EventoPuntero } from "react";
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
-import { COLUMNAS_ARRASTRABLES, PASO_SIGUIENTE, accionAlMover, porQueNoSeMueve, resumenDeSeleccion, type ClaveColumna } from "@/dominio/pedidos/tablero";
+import { COLUMNAS_ARRASTRABLES, PASO_SIGUIENTE, accionAlMover, columnaParaEmpezar, porQueNoSeMueve, resumenDeSeleccion, type ClaveColumna } from "@/dominio/pedidos/tablero";
 import type { PersonaVisible } from "@/modulos/colaboracion/personas";
 import type { ColumnaDelTablero, ProductoDeTarjeta, TarjetaPedido } from "@/modulos/pedidos/tablero";
 import { Avatar } from "@/ui/avatar";
 import { Checklist, conTildeDeCompra, motivoParaNoTildar, type Tilde } from "@/ui/checklist";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
+import { Hoja } from "@/ui/hoja";
+import { SelectorDeDia, type DiaParaElegir } from "@/ui/selector-de-dia";
 
 import { salenAhoraAccion } from "../repartos/acciones";
 import {
@@ -31,6 +33,13 @@ import {
 // salen a entregar (se termina de preparar, se hace el remito y sale el reparto). En "Lista de compras" se
 // tilda en la misma tarjeta lo que ya se compró y lo que no se consiguió. En "Elegir pedidos" se
 // marcan varias (o todas) para mandarlas juntas a la lista de compras o a entregar.
+//
+// En el celular (08/10/2026, inspirado en Trello): se ve una columna por vez, casi a todo el ancho,
+// con la siguiente asomando; se pasa de una a otra deslizando el dedo (se acomoda sola) o tocando
+// el indicador de arriba, que muestra las seis etapas con cuántos pedidos tiene cada una. El día va
+// en un renglón y lo secundario (filtros, elegir varios, Excel, paso a paso) en una hoja que sube
+// desde abajo. Qué disposición se usa lo decide el ancho de la pantalla del tablero (el contenedor
+// `tablero` que pone la página), no el de la ventana.
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
 type CambioALaVista = { tipo: "mover"; id: string; hacia: ClaveColumna } | { tipo: "tildar"; listaItemId: string; valor: Tilde } | { tipo: "separar"; entregaItemId: string; separado: boolean };
@@ -49,6 +58,13 @@ interface Props {
   cerrado: boolean;
   /** Destino de cada columna para ir a la pantalla de esa etapa. */
   enlaces: Partial<Record<ClaveColumna, { href: string; texto: string }>>;
+  /** Los días para elegir (el selector va adentro del tablero: en el celular comparte renglón con las opciones). */
+  dias: readonly DiaParaElegir[];
+  hoy: string;
+  /** "Mañana, viernes 09/10". */
+  titulo: string;
+  /** A dónde llevan, desde la hoja de opciones del celular, el paso a paso y el balance del día. */
+  otras: { pasos: string; balance: string | null };
 }
 
 /** El color de cada columna, el mismo de su paso en "Paso a paso" (clases de `globals.css`). */
@@ -60,6 +76,17 @@ const COLOR_COLUMNA: Record<ClaveColumna, string> = {
   en_camino: "color-verde",
   entregados: "color-rosa",
 };
+
+/** En el indicador del celular: el nombre corto de cada columna y su dibujo. */
+const EN_CORTO: Record<ClaveColumna, { titulo: string; dibujo: string }> = {
+  pedidos: { titulo: "Pedidos", dibujo: "📝" },
+  en_lista: { titulo: "Lista", dibujo: "🛒" },
+  comprados: { titulo: "Comprado", dibujo: "🧺" },
+  preparando: { titulo: "Preparando", dibujo: "📦" },
+  en_camino: { titulo: "En camino", dibujo: "🚚" },
+  entregados: { titulo: "Entregados", dibujo: "✅" },
+};
+const GUARDADA = (fecha: string) => `tablero-columna:${fecha}`;
 
 const PRODUCTOS_A_LA_VISTA = 4;
 /** Cuánto hay que mantener el dedo apretado para levantar una tarjeta (si se mueve antes, es un deslizamiento). */
@@ -177,7 +204,9 @@ function Tarjeta({
       alSeparar={alSeparar}
       tono="columna"
       limite={conTildes || t.columna === "preparando" ? undefined : PRODUCTOS_A_LA_VISTA}
-      className={conTildes || t.columna === "preparando" ? "max-h-[32rem] overflow-y-auto overscroll-contain [scrollbar-width:thin]" : ""}
+      // Con columnas angostas (computadora) una lista larga se desplaza adentro de la tarjeta; en el
+      // celular no: ahí se desplaza la columna entera, que es lo cómodo con el dedo.
+      className={conTildes || t.columna === "preparando" ? "[scrollbar-width:thin] @[34rem]/tablero:max-h-[32rem] @[34rem]/tablero:overflow-y-auto @[34rem]/tablero:overscroll-contain" : ""}
       etiqueta={`Lo que lleva ${t.cliente}${alTildar ? ": tildá lo que ya se compró" : alSeparar ? ": tildá lo que ya separaste" : ""}`}
     />
   );
@@ -313,7 +342,7 @@ interface Agarre {
   reloj: ReturnType<typeof setTimeout> | null;
 }
 
-export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, yo, base, puede, cerrado, enlaces }: Props) {
+export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, yo, base, puede, cerrado, enlaces, dias, hoy, titulo, otras }: Props) {
   const [eligiendo, setEligiendo] = useState(false);
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
   const [filtroPersona, setFiltroPersona] = useState<string | null>(null);
@@ -326,6 +355,9 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
   const [ultimo, setUltimo] = useState<{ accion: Accion; datos: Record<string, string | string[]>; opciones: { aLaVista?: CambioALaVista; despues?: () => void } } | null>(null);
   const [pendiente, empezar] = useTransition();
   const [verCancelados, setVerCancelados] = useState(false);
+  // En el celular: la columna que se está viendo y la hoja de opciones.
+  const [activa, setActiva] = useState<ClaveColumna>(() => columnaParaEmpezar(columnasGuardadas));
+  const [conOpciones, setConOpciones] = useState(false);
   const [columnas, mostrarCambio] = useOptimistic(columnasGuardadas, conElCambio);
 
   const agarre = useRef<Agarre | null>(null);
@@ -558,38 +590,123 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
     if (arrastrando && a && fantasma.current) fantasma.current.style.transform = `translate3d(${a.x - a.dx}px, ${a.y - a.dy}px, 0)`;
   }, [arrastrando]);
 
+  // ——— En el celular: una columna por vez ———
+  /** Lleva el tablero a una columna (al centro de la pantalla). Solo hace algo si las columnas van de costado. */
+  const irAColumna = (clave: ClaveColumna, suave = true) => {
+    const tablero = caja.current;
+    const columna = tablero?.querySelector<HTMLElement>(`[data-columna="${clave}"]`);
+    if (!tablero || !columna || tablero.scrollWidth <= tablero.clientWidth + 1) return;
+    tablero.scrollTo({ left: columna.offsetLeft - (tablero.clientWidth - columna.offsetWidth) / 2, behavior: suave ? "smooth" : "instant" });
+  };
+  // Al abrir un día va a la columna donde se lo dejó o, la primera vez, a la primera con pedidos.
+  useLayoutEffect(() => {
+    let guardada: string | null = null;
+    try {
+      guardada = window.sessionStorage.getItem(GUARDADA(fecha));
+    } catch {
+      // Sin almacenamiento: arranca en la primera columna con pedidos.
+    }
+    const clave = columnasGuardadas.some((c) => c.clave === guardada) ? (guardada as ClaveColumna) : columnaParaEmpezar(columnasGuardadas);
+    irAColumna(clave, false);
+    // El indicador se pone al día apenas se dibuja (si el tablero no se movió, no llega ningún aviso de deslizamiento).
+    const cuadroInicial = requestAnimationFrame(() => setActiva(clave));
+    return () => cancelAnimationFrame(cuadroInicial);
+    // Solo al cambiar de día: mientras se trabaja, el tablero se queda donde lo dejó la persona.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha]);
+  // Mientras se desliza, el indicador sigue a la columna que queda al centro (y se recuerda para ese día).
+  useEffect(() => {
+    const tablero = caja.current;
+    if (!tablero) return;
+    let pedido: number | null = null;
+    const medir = () => {
+      pedido = null;
+      if (tablero.scrollWidth <= tablero.clientWidth + 1) return;
+      const centro = tablero.scrollLeft + tablero.clientWidth / 2;
+      let cual: ClaveColumna | null = null;
+      let cerca = Infinity;
+      for (const columna of tablero.querySelectorAll<HTMLElement>("[data-columna]")) {
+        const distancia = Math.abs(columna.offsetLeft + columna.offsetWidth / 2 - centro);
+        if (distancia < cerca) {
+          cerca = distancia;
+          cual = columna.dataset.columna as ClaveColumna;
+        }
+      }
+      if (!cual) return;
+      setActiva(cual);
+      try {
+        window.sessionStorage.setItem(GUARDADA(fecha), cual);
+      } catch {
+        // Sin almacenamiento no se recuerda: no pasa nada.
+      }
+    };
+    const alDeslizar = () => {
+      if (pedido === null) pedido = requestAnimationFrame(medir);
+    };
+    tablero.addEventListener("scroll", alDeslizar, { passive: true });
+    return () => {
+      tablero.removeEventListener("scroll", alDeslizar);
+      if (pedido !== null) cancelAnimationFrame(pedido);
+    };
+  }, [fecha]);
+
   const enElAire = arrastrando ? (todas.find((t) => t.id === arrastrando.id) ?? null) : null;
-  const chip = (activo: boolean) => `min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold ${activo ? "bg-white text-[#172b4d]" : "bg-white/20 text-white hover:bg-white/30"}`;
+  const filtrando = filtroPersona !== null || soloUrgentes;
+  const paraLaLista = pendientesDeCompra.length - vacios.length;
+  /** Los filtros (quién se encarga y urgentes): sobre el fondo del tablero o adentro de la hoja de opciones. */
+  const filtros = (sobreFondo: boolean) => {
+    const chip = (activo: boolean) =>
+      `flex min-h-10 shrink-0 items-center gap-2 rounded-full text-sm font-semibold ${
+        sobreFondo ? (activo ? "bg-white text-[#172b4d]" : "bg-white/20 text-white hover:bg-white/30") : activo ? "bg-marca text-marca-texto" : "border-2 border-borde bg-superficie"
+      }`;
+    return (
+      <>
+        <button type="button" onClick={() => setFiltroPersona(null)} aria-pressed={filtroPersona === null} className={`${chip(filtroPersona === null)} px-4`}>
+          Todos
+        </button>
+        {personas.map((p) => (
+          <button key={p.id} type="button" onClick={() => setFiltroPersona(filtroPersona === p.id ? null : p.id)} aria-pressed={filtroPersona === p.id} title={`Solo los de ${p.nombre}`} className={`${chip(filtroPersona === p.id)} py-0.5 pr-4 pl-1`}>
+            <Avatar persona={p} tamano="chico" />
+            {p.id === yo ? "Míos" : p.nombre.split(" ")[0]}
+          </button>
+        ))}
+        <button type="button" onClick={() => setSoloUrgentes(!soloUrgentes)} aria-pressed={soloUrgentes} className={`${chip(soloUrgentes)} px-4`}>
+          🔴 Urgentes
+        </button>
+      </>
+    );
+  };
+  const opcion = "flex min-h-14 items-center gap-3 rounded-xl border-2 border-borde bg-superficie px-4 text-left text-lg font-semibold active:bg-fondo";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="sin-barra -mx-1 flex shrink-0 items-center gap-2 overflow-x-auto px-1 lg:overflow-visible" role="toolbar" aria-label="Filtros y selección">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 @[34rem]/tablero:gap-3">
+      {/* El día. En el celular comparte el renglón con el botón de las opciones. */}
+      <div className="flex shrink-0 items-center gap-2">
+        <h1 className="sr-only @[34rem]/tablero:hidden">Pedidos · {titulo}</h1>
+        <div className="min-w-0 flex-1">
+          <SelectorDeDia dias={dias} fecha={fecha} hoy={hoy} enlace={(f) => `/inicio?fecha=${f}`} sobreFondo compacto />
+        </div>
+        <button
+          type="button"
+          onClick={() => setConOpciones(true)}
+          aria-haspopup="dialog"
+          aria-label={filtrando ? "Opciones del tablero (hay un filtro puesto)" : "Opciones del tablero"}
+          className="relative mb-1 flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/20 text-2xl leading-none font-black text-white hover:bg-white/30 @[34rem]/tablero:hidden"
+        >
+          <span aria-hidden>⋯</span>
+          {filtrando && <span aria-hidden className="absolute -top-1 -right-1 size-3.5 rounded-full bg-[var(--pronto-fondo)] ring-2 ring-white" />}
+        </button>
+      </div>
+
+      <div className="sin-barra -mx-1 hidden shrink-0 items-center gap-2 overflow-x-auto px-1 @[34rem]/tablero:flex lg:overflow-visible" role="toolbar" aria-label="Filtros y selección">
         <div className="flex shrink-0 items-center gap-2 lg:flex-1 lg:shrink lg:flex-wrap">
           <span className="shrink-0 text-sm font-medium text-white/90">Ver:</span>
-          <button type="button" onClick={() => setFiltroPersona(null)} aria-pressed={filtroPersona === null} className={chip(filtroPersona === null)}>
-            Todos
-          </button>
-          {personas.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setFiltroPersona(filtroPersona === p.id ? null : p.id)}
-              aria-pressed={filtroPersona === p.id}
-              title={`Solo los de ${p.nombre}`}
-              className={`flex min-h-10 shrink-0 items-center gap-2 rounded-full py-0.5 pr-4 pl-1 text-sm font-semibold ${filtroPersona === p.id ? "bg-white text-[#172b4d]" : "bg-white/20 text-white hover:bg-white/30"}`}
-            >
-              <Avatar persona={p} tamano="chico" />
-              {p.id === yo ? "Míos" : p.nombre.split(" ")[0]}
-            </button>
-          ))}
-          <button type="button" onClick={() => setSoloUrgentes(!soloUrgentes)} aria-pressed={soloUrgentes} className={chip(soloUrgentes)}>
-            🔴 Urgentes
-          </button>
+          {filtros(true)}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {puede.armar && pendientesDeCompra.length > vacios.length && !eligiendo && (
+          {puede.armar && paraLaLista > 0 && !eligiendo && (
             <button type="button" onClick={elegirFaltantes} className="min-h-10 rounded-lg bg-white px-4 text-sm font-semibold text-[#172b4d] hover:bg-white/90">
-              🛒 Elegir todos los pedidos para la lista ({pendientesDeCompra.length - vacios.length})
+              🛒 Elegir todos los pedidos para la lista ({paraLaLista})
             </button>
           )}
           <button
@@ -608,34 +725,64 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
 
       {/* Mientras el servidor guarda no se traba nada: se puede seguir con otras tarjetas. */}
       {pendiente && (
-        <p role="status" className="pointer-events-none fixed right-4 bottom-4 z-40 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white shadow-lg max-sm:bottom-20">
+        <p role="status" className="pointer-events-none fixed bottom-5 left-4 z-40 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white shadow-lg @[34rem]/tablero:right-4 @[34rem]/tablero:left-auto">
           ⏳ Guardando…
         </p>
       )}
       {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} confirmar={pendiente ? null : confirmarUltimo} />}
 
-      <nav aria-label="Ir a una columna" className="sin-barra -mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 md:hidden">
-        {columnas.map((col) => (
-          <button
-            key={col.clave}
-            type="button"
-            onClick={() => document.getElementById(`lista-${col.clave}`)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}
-            className={`${COLOR_COLUMNA[col.clave]} flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-[var(--col)] px-4 text-sm font-bold text-[var(--col-texto)]`}
-          >
-            {col.titulo} <span className="rounded-full bg-black/15 px-2 text-xs">{col.tarjetas.filter(pasaFiltro).length}</span>
-          </button>
-        ))}
+      {/* En el celular: las seis etapas de un vistazo, cada una con su color y cuántos pedidos tiene.
+          La que se está viendo va abierta, con su nombre; tocar otra lleva el tablero hasta ella, y
+          una tarjeta que se está arrastrando se puede soltar encima. */}
+      <nav aria-label="Etapas del día" className="flex shrink-0 items-stretch gap-1.5 @[34rem]/tablero:hidden">
+        {columnas.map((col) => {
+          const cuantos = col.tarjetas.filter(pasaFiltro).length;
+          const esLaActiva = col.clave === activa;
+          const destino = arrastrando !== null && arrastrando.desde !== col.clave;
+          const aceptaSoltar = destino && accionAlMover(arrastrando.desde, col.clave) !== null;
+          const encima = destino && sobre === col.clave;
+          return (
+            <button
+              key={col.clave}
+              type="button"
+              data-columna={col.clave}
+              onClick={() => irAColumna(col.clave)}
+              aria-current={esLaActiva ? "true" : undefined}
+              aria-label={`${col.titulo}: ${cuantos === 1 ? "1 pedido" : `${cuantos} pedidos`}`}
+              className={`${COLOR_COLUMNA[col.clave]} flex h-12 min-w-0 items-center justify-center rounded-xl bg-[var(--col)] font-extrabold text-[var(--col-texto)] outline-offset-2 transition-[flex-grow,opacity,transform] duration-200 ${
+                esLaActiva ? "flex-[1_1_0%] gap-1.5 px-1.5 shadow-md ring-2 ring-white" : `w-9 flex-none flex-col leading-none ${cuantos === 0 && !destino ? "opacity-60" : "opacity-95"}`
+              } ${encima ? (aceptaSoltar ? "scale-110 outline-4 outline-white" : "outline-4 outline-[var(--vence-fondo)]") : aceptaSoltar ? "outline-2 outline-white/80 outline-dashed" : ""}`}
+            >
+              {esLaActiva ? (
+                <>
+                  <span className="truncate text-base">{EN_CORTO[col.clave].titulo}</span>
+                  <span className="rounded-full bg-black/20 px-2 text-sm leading-6">{cuantos}</span>
+                </>
+              ) : (
+                <>
+                  <span aria-hidden className="text-base">
+                    {EN_CORTO[col.clave].dibujo}
+                  </span>
+                  <span className="mt-0.5 text-sm">{cuantos}</span>
+                </>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
       {/* El tablero ocupa el alto que queda de la pantalla: la página no se desplaza, se desplaza
           adentro de cada columna. Con lugar, las seis columnas van en una fila; con menos ancho, en
-          dos filas de tres (cada fila toma el alto que necesita, hasta repartirse el que hay); y en el
-          celular van de costado y se deslizan con el dedo. El ancho que
-          cuenta es el del tablero, no el de la ventana (consultas de contenedor). */}
-      <div className="@container flex min-h-0 flex-1 flex-col gap-2" aria-busy={pendiente}>
+          dos filas de tres (cada fila toma el alto que necesita, hasta repartirse el que hay). En el
+          celular van de costado, una por pantalla y con la de al lado asomando: se deslizan con el
+          dedo y se acomodan solas al soltar (de a una por vez). El ancho que cuenta es el del
+          tablero, no el de la ventana (consultas de contenedor). */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2" aria-busy={pendiente}>
         <div
           ref={caja}
-          className={`flex min-h-0 flex-1 items-start gap-3 overflow-x-auto pb-1 ${arrastrando ? "" : "snap-x snap-mandatory"} @[34rem]:grid @[34rem]:snap-none @[34rem]:grid-cols-3 @[34rem]:grid-rows-[repeat(2,minmax(10rem,auto))] @[34rem]:content-start @[34rem]:gap-2 @[34rem]:overflow-x-hidden @[34rem]:overflow-y-auto @[64rem]:grid-cols-6 @[64rem]:grid-rows-1 @[64rem]:overflow-visible`}
+          className={`relative -mx-3 flex min-h-0 flex-1 items-start gap-2 overflow-x-auto overscroll-x-contain px-[1.375rem] pb-1 [scrollbar-width:none] ${
+            arrastrando ? "" : "snap-x snap-mandatory"
+          } @[34rem]/tablero:mx-0 @[34rem]/tablero:grid @[34rem]/tablero:snap-none @[34rem]/tablero:grid-cols-3 @[34rem]/tablero:grid-rows-[repeat(2,minmax(10rem,auto))] @[34rem]/tablero:content-start @[34rem]/tablero:overflow-x-hidden @[34rem]/tablero:overflow-y-auto @[34rem]/tablero:px-0 @[34rem]/tablero:[scrollbar-width:thin] @[64rem]/tablero:grid-cols-6 @[64rem]/tablero:grid-rows-1 @[64rem]/tablero:overflow-visible`}
         >
         {columnas.map((col) => {
           const visibles = col.tarjetas.filter(pasaFiltro);
@@ -654,7 +801,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
               id={`lista-${col.clave}`}
               data-columna={col.clave}
               aria-labelledby={`col-${col.clave}`}
-              className={`${COLOR_COLUMNA[col.clave]} @container flex max-h-full min-h-0 w-[86%] max-w-[22rem] shrink-0 snap-start flex-col rounded-2xl bg-[var(--col)] text-[var(--col-texto)] shadow-lg outline-offset-2 transition-transform @[34rem]:w-auto @[34rem]:max-w-none @[34rem]:min-w-0 ${
+              className={`${COLOR_COLUMNA[col.clave]} @container flex max-h-full min-h-0 w-full max-w-[26rem] shrink-0 snap-center snap-always flex-col rounded-2xl bg-[var(--col)] text-[var(--col-texto)] shadow-lg outline-offset-2 transition-transform @[34rem]/tablero:w-auto @[34rem]/tablero:max-w-none @[34rem]/tablero:min-w-0 ${
                 encima ? (aceptaSoltar ? "scale-[1.02] outline-4 outline-white" : "outline-4 outline-[var(--vence-fondo)]") : aceptaSoltar ? "outline-2 outline-white/80 outline-dashed" : ""
               }`}
             >
@@ -677,7 +824,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                 </div>
                 <p className="text-sm leading-snug font-medium opacity-95 @[18rem]:text-base">{col.ayuda}</p>
               </header>
-              <ol className="flex min-h-2 flex-col gap-2 overflow-y-auto px-1.5 py-1 [scrollbar-width:thin] @[18rem]:gap-3 @[18rem]:px-3">
+              <ol className="flex min-h-2 flex-col gap-2 overflow-y-auto overscroll-y-contain px-1.5 py-1 [scrollbar-width:thin] @[18rem]:gap-3 @[18rem]:px-3">
                 {encima && (
                   <li aria-hidden className={`flex min-h-16 items-center justify-center rounded-xl border-2 border-dashed px-3 text-center font-semibold ${aceptaSoltar ? "border-current/60 bg-white/35" : "border-[var(--vence-fondo)] bg-white/70 text-[var(--vence-fondo)]"}`}>
                     {aceptaSoltar ? "Soltá acá" : "Acá no se puede soltar"}
@@ -709,8 +856,11 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                   </li>
                 ))}
                 {visibles.length === 0 && !encima && <li className="px-1 py-3 font-medium opacity-80">{col.tarjetas.length ? "Nada con este filtro." : col.clave === "en_camino" && puede.salir ? "Acá va lo que sale a entregar." : "Sin pedidos."}</li>}
+                {/* En el celular, lugar para que el botón flotante de Nuevo pedido no tape el botón de la última tarjeta. */}
+                {visibles.length > 0 && puede.crear && !eligiendo && <li aria-hidden className="h-16 shrink-0 @[34rem]/tablero:hidden" />}
               </ol>
               <footer className="flex flex-col gap-1 px-2 pt-1.5 pb-2 empty:pb-1 @[18rem]:px-3">
+
                 {col.clave === "entregados" && todoEntregado && (cerrado ? (
                   <p className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black/15 text-base font-bold">🔒 Día cerrado: está todo entregado</p>
                 ) : (
@@ -758,10 +908,11 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         </div>
       )}
 
-      {puede.crear && !eligiendo && !arrastrando && (
+      {/* En el celular, Nuevo pedido flota abajo a la derecha, a mano del pulgar (con el menú guardado no hay otro a la vista). */}
+      {puede.crear && !eligiendo && !arrastrando && !conOpciones && (
         <Link
           href={`/pedidos/nuevo?fecha=${fecha}`}
-          className="fixed right-4 bottom-5 z-40 flex min-h-14 items-center gap-2 rounded-full bg-white px-5 text-lg font-semibold text-[#172b4d] shadow-xl ring-1 ring-black/10 sm:hidden"
+          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex min-h-14 items-center gap-2 rounded-full bg-white px-5 text-lg font-bold text-[#172b4d] shadow-xl ring-1 ring-black/10 @[34rem]/tablero:hidden"
         >
           <span aria-hidden className="text-2xl leading-none">
             ＋
@@ -770,11 +921,10 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         </Link>
       )}
 
-      {eligiendo && elegidas.size > 0 && (
-        <div className="sticky bottom-3 z-30 mx-auto flex w-full max-w-5xl flex-wrap items-center gap-3 rounded-2xl bg-tarjeta p-4 text-tarjeta-texto shadow-lg ring-1 ring-black/10">
-          <span className="text-lg font-semibold">
-            {elegidas.size} {elegidas.size === 1 ? "elegido" : "elegidos"}
-          </span>
+      {/* Lo elegido. En el celular la barra está desde que se empieza a elegir (para poder terminar). */}
+      {eligiendo && (
+        <div className={`sticky bottom-3 z-30 mx-auto flex w-full max-w-5xl shrink-0 flex-wrap items-center gap-2 rounded-2xl bg-tarjeta p-3 text-tarjeta-texto shadow-lg ring-1 ring-black/10 @[34rem]/tablero:gap-3 @[34rem]/tablero:p-4 ${elegidas.size === 0 ? "@[34rem]/tablero:hidden" : ""}`}>
+          <span className="text-lg font-semibold">{elegidas.size === 0 ? "Tocá los pedidos para elegirlos" : `${elegidas.size} ${elegidas.size === 1 ? "elegido" : "elegidos"}`}</span>
           <span className="flex-1" />
           {puede.armar && resumen.paraLista > 0 && (
             <button type="button" disabled={pendiente} onClick={() => ejecutar(armarListaConElegidosAccion, { pedido: [...elegidas] }, { despues: terminar })} className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60">
@@ -801,8 +951,9 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
               Sacar de la lista ({resumen.paraSacar})
             </button>
           )}
-          {puede.editar && (
-            <>
+          {puede.editar && elegidas.size > 0 && (
+            // La prioridad y quién se encarga, para varios juntos: en el celular se cambian en cada tarjeta.
+            <div className="hidden items-center gap-3 @[34rem]/tablero:flex">
               <label className="flex items-center gap-2">
                 Prioridad
                 <select
@@ -840,12 +991,62 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                   <option value="">Nadie</option>
                 </select>
               </label>
-            </>
+            </div>
           )}
-          <button type="button" onClick={terminar} className="min-h-12 rounded-xl px-4 text-tarjeta-suave hover:bg-black/5">
-            Cancelar
+          <button type="button" onClick={terminar} className="min-h-12 rounded-xl px-4 font-semibold text-tarjeta-suave hover:bg-black/5">
+            {elegidas.size === 0 ? "Terminar" : "Cancelar"}
           </button>
         </div>
+      )}
+
+      {conOpciones && (
+        <Hoja titulo={`Pedidos · ${titulo}`} cerrar={() => setConOpciones(false)}>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Cómo ver el día">
+            <span aria-current="page" className="flex min-h-12 items-center justify-center rounded-xl bg-marca font-bold text-marca-texto">
+              ▦ Tablero
+            </span>
+            <Link href={otras.pasos} className="flex min-h-12 items-center justify-center rounded-xl border-2 border-borde font-bold">
+              ☰ Paso a paso
+            </Link>
+          </div>
+          <div className="flex flex-col gap-2">
+            <p className="font-semibold">Ver los pedidos de</p>
+            <div className="flex flex-wrap gap-2">{filtros(false)}</div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {puede.armar && paraLaLista > 0 && !eligiendo && (
+              <button
+                type="button"
+                onClick={() => {
+                  elegirFaltantes();
+                  setConOpciones(false);
+                }}
+                className={opcion}
+              >
+                <span aria-hidden>🛒</span> Elegir todos los pedidos para la lista ({paraLaLista})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (eligiendo) terminar();
+                else setEligiendo(true);
+                setConOpciones(false);
+              }}
+              className={opcion}
+            >
+              <span aria-hidden>☑</span> {eligiendo ? "Terminar de elegir" : "Elegir varios pedidos"}
+            </button>
+            <Link href={`/pedidos/importar?fecha=${fecha}`} className={opcion}>
+              <span aria-hidden>📊</span> Pedidos en Excel
+            </Link>
+            {otras.balance && (
+              <Link href={otras.balance} className={opcion}>
+                <span aria-hidden>💰</span> Balance del día
+              </Link>
+            )}
+          </div>
+        </Hoja>
       )}
     </div>
   );

@@ -337,6 +337,35 @@ body {
   }
 }
 
+/* La hoja de opciones del celular (src/ui/hoja.tsx) sube desde abajo, sobre un fondo que se oscurece. */
+@keyframes subir-hoja {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes aparecer-fondo {
+  from {
+    opacity: 0;
+  }
+}
+.hoja-panel {
+  animation: subir-hoja 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hoja-fondo {
+  animation: aparecer-fondo 200ms ease-out;
+}
+/* El fondo de una hoja o del menú no se hunde al tocarlo (es para cerrar, no un botón a la vista). */
+button.hoja-fondo:active {
+  transform: none;
+  filter: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hoja-panel,
+  .hoja-fondo {
+    animation: none;
+  }
+}
+
 /* Todo lo que se toca responde al instante: se hunde apenas al apretarlo. */
 button:not(:disabled):active,
 a[class*="rounded"]:active,

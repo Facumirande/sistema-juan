@@ -61,14 +61,21 @@ function Menu({ grupos, authUserId, permisos }: { grupos: GrupoMenu[]; authUserI
           </div>
         ),
       )}
+      <BotonSalir enMenu />
     </nav>
   );
 }
 
-function BotonSalir() {
+/** "Salir": en la barra de arriba; en el celular, donde la barra es angosta, al final del menú. */
+function BotonSalir({ enMenu = false }: { enMenu?: boolean }) {
   return (
-    <form action="/auth/salir" method="post">
-      <button type="submit" className="min-h-11 rounded-lg border border-borde px-3 font-medium">
+    <form action="/auth/salir" method="post" className={enMenu ? "sm:hidden" : "hidden sm:block"}>
+      <button type="submit" className={enMenu ? "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left font-medium text-texto-suave hover:bg-marca/10" : "min-h-11 rounded-lg border border-borde px-3 font-medium"}>
+        {enMenu && (
+          <span aria-hidden className="w-6 text-center text-lg leading-none">
+            🚪
+          </span>
+        )}
         Salir
       </button>
     </form>

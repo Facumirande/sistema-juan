@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 
 import { ABREVIATURA_UNIDAD, formatearMoneda } from "@/dominio/dinero/formato";
 import { sumarDias } from "@/dominio/fechas/fechas";
 import {
+  agregadosPrimero,
   cantidadPermitida,
   coincideBusqueda,
   leerCantidad,
@@ -25,8 +26,9 @@ import { guardarPedidoVisualAccion, historialDeClienteAccion, marcarFrecuenteAcc
 // Carga visual de pedidos (28/09/2026; compacta desde el 07/10): el cliente y el día van a la misma
 // altura y los productos quedan a la vista en un solo recuadro, sin categorías: arriba los
 // frecuentes del cliente (la única división) y después todos los demás, del más reciente al menos.
-// Cada producto se agrega con su ＋; la cantidad se ajusta con − y + o escribiéndola, y en qué se
-// pide (kg, cajón…) se elige con botones solo si el producto tiene varias formas. A la derecha
+// Cada producto se agrega con su ＋ y pasa adelante: los agregados van quedando primeros, con su
+// cantidad para ajustarla ahí mismo (− y + o escribiéndola); en qué se pide (kg, cajón…) se elige
+// con botones solo si el producto tiene varias formas. A la derecha
 // (abajo en el celular) queda el resumen con la prioridad, el horario y la nota, y el botón para guardar.
 
 interface Entrada {
@@ -174,8 +176,47 @@ function Cantidad({ p, entrada, invalida = false, alCambiar, alQuitar }: { p: Pr
 }
 
 /**
+ * Los recuadros que cambian de lugar (uno recién agregado pasa adelante) se deslizan hasta su lugar
+ * nuevo en vez de saltar, y el que se acaba de agregar queda a la vista. Solo se mueve algo cuando
+ * cambia `pedido` (lo que hay agregado), no al buscar ni al escribir una cantidad. Devuelve la
+ * referencia para el recuadro que los contiene y cómo avisar cuál se acaba de agregar.
+ */
+function useAcomodoSuave(pedido: string) {
+  const caja = useRef<HTMLDivElement>(null);
+  const porMostrar = useRef<string | null>(null);
+  const lugares = useRef(new Map<string, { x: number; y: number }>());
+  const anterior = useRef(pedido);
+  useLayoutEffect(() => {
+    const el = caja.current;
+    if (!el) return;
+    const cambio = anterior.current !== pedido;
+    anterior.current = pedido;
+    const quieto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const nuevos = new Map<string, { x: number; y: number }>();
+    for (const hijo of el.querySelectorAll<HTMLElement>("[data-recuadro]")) {
+      const ahora = { x: hijo.offsetLeft, y: hijo.offsetTop };
+      const antes = lugares.current.get(hijo.dataset.recuadro!);
+      nuevos.set(hijo.dataset.recuadro!, ahora);
+      if (cambio && !quieto && antes && (antes.x !== ahora.x || antes.y !== ahora.y)) {
+        hijo.animate([{ transform: `translate(${antes.x - ahora.x}px, ${antes.y - ahora.y}px)` }, { transform: "none" }], { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+      }
+    }
+    lugares.current = nuevos;
+    // El que se acaba de agregar: si quedó fuera de la vista del recuadro, el recuadro va hasta él.
+    const id = porMostrar.current;
+    porMostrar.current = null;
+    const agregado = cambio && id ? el.querySelector<HTMLElement>(`[data-recuadro="${id}"]`) : null;
+    if (agregado && (agregado.offsetTop < el.scrollTop || agregado.offsetTop + agregado.offsetHeight > el.scrollTop + el.clientHeight)) {
+      el.scrollTo({ top: Math.max(0, agregado.offsetTop - 56), behavior: quieto ? "auto" : "smooth" });
+    }
+  });
+  return [caja, (id: string) => void (porMostrar.current = id)] as const;
+}
+
+/**
  * Un producto para agregar al pedido: su dibujo y su nombre bien visibles (del mismo tamaño) y su
- * ＋. Una vez agregado queda resaltado en el mismo lugar, con su cantidad para ajustarla ahí mismo.
+ * ＋. Una vez agregado queda resaltado, con su cantidad para ajustarla ahí mismo, y pasa adelante
+ * (los agregados van primero).
  */
 function RecuadroProducto({
   p,
@@ -200,6 +241,7 @@ function RecuadroProducto({
         type="button"
         onClick={alAgregar}
         id={`producto-${p.id}`}
+        data-recuadro={p.id}
         title={`Agregar ${p.nombre} al pedido`}
         className="flex min-h-16 items-center gap-2 rounded-xl border-2 border-borde bg-superficie px-2.5 py-2 text-left transition-colors hover:border-marca hover:bg-marca/5"
       >
@@ -217,7 +259,7 @@ function RecuadroProducto({
     );
   }
   return (
-    <div id={`producto-${p.id}`} className={`flex flex-col gap-2 rounded-xl border-2 px-2.5 py-2 ${marcado ? "border-error bg-error/5" : "border-marca bg-marca/10"}`}>
+    <div id={`producto-${p.id}`} data-recuadro={p.id} className={`flex flex-col gap-2 rounded-xl border-2 px-2.5 py-2 ${marcado ? "border-error bg-error/5" : "border-marca bg-marca/10"}`}>
       <div className="flex items-center gap-1">
         <span aria-hidden className="text-lg font-bold text-marca">
           ✓
@@ -287,8 +329,15 @@ export function CargadorDePedido({
   const buscando = buscarProducto.trim() !== "";
   // Una sola lista, sin categorías: primero lo que se pidió hace menos. Sin búsqueda, lo sugerido va arriba y no se repite abajo.
   const porReciente = [...productosVisibles].sort((a, b) => (b.ultimaVez ?? "").localeCompare(a.ultimaVez ?? "") || a.nombre.localeCompare(b.nombre, "es"));
-  const frecuentes = buscando ? [] : habituales;
-  const listados = porReciente.filter((p) => !frecuentes.includes(p));
+  // En las dos partes, lo que ya está en el pedido va primero, en el orden en que se agregó.
+  const enElPedido = entradas.map((e) => e.productoId);
+  const [cajaProductos, mostrarAgregado] = useAcomodoSuave(enElPedido.join());
+  const sugeridos = buscando ? [] : habituales;
+  const frecuentes = agregadosPrimero(sugeridos, enElPedido);
+  const listados = agregadosPrimero(
+    porReciente.filter((p) => !sugeridos.includes(p)),
+    enElPedido,
+  );
   // Los clientes a los que se les cargó un pedido hace menos, primero.
   const recientes = datos.clientes
     .filter((c) => c.ultimo)
@@ -347,6 +396,7 @@ export function CargadorDePedido({
   const agregar = (p: ProductoParaCargar) => {
     const inicial = presentacionInicial(p.presentaciones, p.presentacionDefectoId);
     setEntradas((previas) => [...previas, { clave: nuevaClave(), productoId: p.id, presentacionId: inicial && !inicial.esUnidadBase ? inicial.id : null, cantidad: "1", nota: "" }]);
+    mostrarAgregado(p.id);
     setProblema(null);
   };
   const cambiar = (productoId: string, cambios: Partial<Entrada>) => {
@@ -754,8 +804,9 @@ export function CargadorDePedido({
               </p>
             ) : (
               // Un solo recuadro con todos los productos: arriba, los frecuentes del cliente (la única
-              // división); después, todos los demás, del que se pidió hace menos al que hace más.
-              <div className="barra-visible flex max-h-[34rem] flex-col gap-3 overflow-y-scroll rounded-xl border border-borde p-2">
+              // división); después, todos los demás, del que se pidió hace menos al que hace más. En
+              // cada parte, los que ya se agregaron al pedido van primero.
+              <div ref={cajaProductos} className="barra-visible relative flex max-h-[34rem] flex-col gap-3 overflow-y-scroll rounded-xl border border-borde p-2">
                 {frecuentes.length > 0 && (
                   <>
                     <h3 className="flex flex-wrap items-baseline gap-x-2 px-1 text-lg font-bold">

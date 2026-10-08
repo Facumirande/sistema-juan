@@ -26,7 +26,8 @@ import { ChecklistVivo, type ParaComprar } from "./checklist-vivo";
 // La tarjeta abierta (como en Trello), grande y despejada: primero lo que lleva el pedido, con el
 // mismo checklist de la tarjeta cerrada (se tilda ahí mismo lo comprado o lo separado) y el botón
 // para cambiarlo; después dónde se entrega, las notas entre las personas y el historial. Al
-// costado, el botón verde del paso que sigue y lo demás que se puede hacer.
+// costado, el botón verde del paso que sigue y lo demás que se puede hacer. En el celular, donde
+// todo va en una columna, el botón verde queda fijo abajo: siempre a mano, sin bajar hasta el final.
 
 type Avance = Awaited<ReturnType<typeof avanceDeTarjeta>>;
 
@@ -133,13 +134,13 @@ export function TarjetaAbierta({
   const puedeVolver = Boolean(anterior && permisoParaVolver && puede(permisoParaVolver) && p.estadoJornada !== "CERRADA");
 
   return (
-    <div className="flex flex-col gap-8 p-5 sm:p-8">
-      <header className="flex items-start gap-4 pr-12">
-        <span aria-hidden className="flex size-16 shrink-0 items-center justify-center rounded-full bg-black/5 text-4xl dark:bg-white/10">
+    <div className="flex flex-col gap-6 p-4 sm:gap-8 sm:p-8">
+      <header className="flex items-start gap-3 sm:gap-4 sm:pr-12">
+        <span aria-hidden className="flex size-12 shrink-0 items-center justify-center rounded-full bg-black/5 text-3xl sm:size-16 sm:text-4xl dark:bg-white/10">
           {dibujoDeCliente(p.tipoCliente)}
         </span>
         <div className="min-w-0">
-          <h2 className="text-3xl leading-tight font-semibold">{p.cliente}</h2>
+          <h2 className="text-2xl leading-tight font-semibold sm:text-3xl">{p.cliente}</h2>
           <p className="mt-1 text-base text-tarjeta-suave">
             En <b>{columna?.titulo ?? ESTADOS_PEDIDO[p.estado]}</b> · {p.numero} · se entrega el <b className="text-xl text-tarjeta-texto">{fechaConDia(p.fecha)}</b>
           </p>
@@ -271,10 +272,13 @@ export function TarjetaAbierta({
         <aside className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             {puedeAvanzar && paso && columna && (
-              <BotonAccion accion={moverTarjetaAccion} datos={{ pedido: p.id, desde: columna.clave, hacia: paso.hacia }} className={botonVerde}>
-                {paso.texto}
-                {"\u00a0→"}
-              </BotonAccion>
+              // En pantallas angostas este mismo botón va fijo abajo (al final de la tarjeta).
+              <span className="hidden flex-col lg:flex">
+                <BotonAccion accion={moverTarjetaAccion} datos={{ pedido: p.id, desde: columna.clave, hacia: paso.hacia }} className={botonVerde}>
+                  {paso.texto}
+                  {"\u00a0→"}
+                </BotonAccion>
+              </span>
             )}
             <p className="text-sm font-semibold text-tarjeta-suave">Otras acciones</p>
             {columna?.clave === "preparando" && avance.entregaId && puede("preparacion.ver") && (
@@ -349,6 +353,16 @@ export function TarjetaAbierta({
           )}
         </aside>
       </div>
+
+      {/* En el celular (y en ventanas angostas): el paso que sigue, fijo abajo. */}
+      {puedeAvanzar && paso && columna && (
+        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col border-t border-black/10 bg-modal px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mx-8 sm:-mb-8 sm:px-8 lg:hidden dark:border-white/10">
+          <BotonAccion accion={moverTarjetaAccion} datos={{ pedido: p.id, desde: columna.clave, hacia: paso.hacia }} className={botonVerde}>
+            {paso.texto}
+            {"\u00a0→"}
+          </BotonAccion>
+        </div>
+      )}
     </div>
   );
 }

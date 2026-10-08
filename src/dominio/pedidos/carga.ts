@@ -76,6 +76,16 @@ export function coincideBusqueda(nombre: string, busqueda: string): boolean {
   return palabras.every((p) => n.includes(p));
 }
 
+/**
+ * Los productos para elegir, con los que ya están en el pedido primero y en el orden en que se
+ * agregaron; los demás siguen como venían. Así, al armar el pedido, lo elegido va quedando arriba.
+ */
+export function agregadosPrimero<T extends { id: string }>(productos: readonly T[], agregados: readonly string[]): T[] {
+  const lugar = new Map(agregados.map((id, i) => [id, i]));
+  const elegidos = productos.filter((p) => lugar.has(p.id)).sort((a, b) => lugar.get(a.id)! - lugar.get(b.id)!);
+  return [...elegidos, ...productos.filter((p) => !lugar.has(p.id))];
+}
+
 const clave = (l: Pick<LineaElegida, "productoId" | "presentacionId">) => `${l.productoId}:${l.presentacionId ?? ""}`;
 
 /** Junta las líneas repetidas (mismo producto y presentación) sumando las cantidades y las notas. */

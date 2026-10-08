@@ -37,6 +37,14 @@ export function columnaDeTarjeta(estado: EstadoPedido, todoComprado: boolean, en
   return estado === "EN_COMPRA" && todoComprado ? "comprados" : columnaDePedido(estado);
 }
 
+/**
+ * En el celular el tablero muestra una columna por vez: al abrirlo arranca en la primera que tiene
+ * pedidos (donde está lo que sigue por hacer); sin pedidos, en la primera.
+ */
+export function columnaParaEmpezar(columnas: readonly { clave: ClaveColumna; tarjetas: readonly unknown[] }[]): ClaveColumna {
+  return columnas.find((c) => c.tarjetas.length > 0)?.clave ?? "pedidos";
+}
+
 /** La columna de un pedido; los cancelados no van en ninguna. */
 export function columnaDePedido(estado: EstadoPedido): ClaveColumna | null {
   return COLUMNAS.find((c) => c.estados.includes(estado))?.clave ?? null;

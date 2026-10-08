@@ -229,7 +229,9 @@ export function ListaDeCompras({
               }}
               className={`rounded-2xl border-2 bg-superficie ${arrastrando === r.id ? "border-marca shadow-lg" : r.estado === "PARCIAL" ? "border-amber-500" : "border-borde"} ${listo ? "opacity-70" : ""}`}
             >
-              <div className="flex items-center gap-2 px-2 py-2 sm:gap-3 sm:px-3">
+              {/* En el celular va en tres columnas (mover · el producto · tildar y precio, uno sobre otro);
+                  con más ancho, todo en un renglón. */}
+              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 px-2 py-2 sm:flex sm:gap-3 sm:px-3">
                 {seArrastra && (
                   <button
                     type="button"
@@ -239,13 +241,14 @@ export function ListaDeCompras({
                     onPointerMove={mover}
                     onPointerUp={soltar}
                     onPointerCancel={soltar}
-                    className="flex h-12 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-xl text-texto-suave hover:bg-fondo active:cursor-grabbing print:hidden"
+                    className="row-span-2 flex h-12 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-xl text-texto-suave hover:bg-fondo active:cursor-grabbing print:hidden"
                   >
                     ⠿
                   </button>
                 )}
-                <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-expanded={desplegado} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1 text-left">
-                  <span className="min-w-0 flex-1">
+                <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-expanded={desplegado} className="col-start-2 row-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1 text-left">
+                  {/* El nombre no baja de un ancho cómodo: si no entra con la cantidad al lado, la cantidad pasa abajo. */}
+                  <span className="min-w-0 flex-1 basis-40">
                     <NombreDeProducto nombre={r.producto} grupo={r.grupo} className={`text-xl sm:text-2xl ${listo ? "line-through" : ""}`} />
                     <span className="block text-sm text-texto-suave">
                       {r.estado === "NO_CONSEGUIDO" ? <b className="text-error">No se consiguió</b> : r.compras.length ? <b className="text-marca">🧾 {r.compras.join(" + ")}</b> : (r.equivalencia ?? r.puesto ?? "—")}
@@ -254,7 +257,7 @@ export function ListaDeCompras({
                   </span>
                   <span className={`shrink-0 text-xl font-bold tabular-nums sm:text-2xl ${listo ? "line-through" : ""}`}>{r.total}</span>
                   {r.importe && (
-                    <span className="flex shrink-0 flex-col items-end leading-tight" title={r.importe.real ? "Lo que se anotó al comprarlo" : "Lo que se calcula con el último precio cargado"}>
+                    <span className="ml-auto flex shrink-0 flex-col items-end leading-tight" title={r.importe.real ? "Lo que se anotó al comprarlo" : "Lo que se calcula con el último precio cargado"}>
                       <b className={`text-xl tabular-nums sm:text-2xl ${r.importe.real ? "text-marca" : ""}`}>{r.importe.texto}</b>
                       <span className="text-sm text-texto-suave">{r.importe.real ? "salió" : "se calcula"}</span>
                     </span>
@@ -269,26 +272,26 @@ export function ListaDeCompras({
                     aria-label={`${r.producto}: ya lo compré`}
                     title={r.estado === "COMPRADO" ? "Comprado: tocá para destildar" : "Tildar como comprado"}
                     onClick={() => tildar(r)}
-                    className={`${boton} size-12 text-2xl print:hidden ${r.estado === "COMPRADO" ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca"}`}
+                    className={`${boton} col-start-3 row-start-1 size-12 text-2xl print:hidden ${r.estado === "COMPRADO" ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca"}`}
                   >
                     {r.estado === "COMPRADO" ? "✓" : ""}
                   </button>
                 )}
                 {/* A la derecha y algo separado: dónde se compró y a cuánto, para anotarlo ahí mismo. */}
                 {puede.comprar && r.compra && r.estado !== "NO_CONSEGUIDO" && (
-                  <span className="flex shrink-0 items-center border-l-2 border-dashed border-borde pl-2 print:hidden sm:pl-3">
+                  <span className="col-start-3 row-start-2 flex shrink-0 items-center print:hidden sm:border-l-2 sm:border-dashed sm:border-borde sm:pl-3">
                     <button
                       type="button"
                       onClick={() => setComprando(comprando === r.id ? null : r.id)}
                       aria-expanded={comprando === r.id}
                       title="Anotar en qué puesto se compró y a cuánto"
-                      className={`flex min-h-12 items-center gap-1.5 rounded-xl border-2 px-3 font-bold ${comprando === r.id ? "border-marca bg-marca text-marca-texto" : "border-marca/50 bg-marca/10 text-marca hover:border-marca"}`}
+                      className={`flex min-h-12 min-w-12 items-center justify-center gap-1.5 rounded-xl border-2 font-bold sm:px-3 ${comprando === r.id ? "border-marca bg-marca text-marca-texto" : "border-marca/50 bg-marca/10 text-marca hover:border-marca"}`}
                     >
                       <span aria-hidden className="text-xl leading-none">
                         💲
                       </span>
                       <span className="max-md:sr-only">{r.compras.length ? "Otra compra" : "Precio y puesto"}</span>
-                      <span aria-hidden className={`transition-transform ${comprando === r.id ? "rotate-180" : ""}`}>
+                      <span aria-hidden className={`transition-transform max-sm:hidden ${comprando === r.id ? "rotate-180" : ""}`}>
                         ▾
                       </span>
                     </button>

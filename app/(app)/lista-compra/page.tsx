@@ -142,7 +142,7 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
         <>
           {lista.desactualizada && !cerrado && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-amber-500 bg-superficie p-3">
-              <p className="min-w-0 flex-1 font-medium">⚠ Cambió un pedido después de armar la lista. Actualizala para comprar lo justo (lo ya comprado no se pierde).</p>
+              <p className="min-w-0 flex-1 basis-56 font-medium">⚠ Cambió un pedido después de armar la lista. Actualizala para comprar lo justo (lo ya comprado no se pierde).</p>
               {puede("lista_compra.generar") && (
                 <FormularioAccion accion={generarListaAccion} boton="Actualizar la lista" enLinea>
                   <input type="hidden" name="fecha" value={fecha} />
@@ -153,7 +153,7 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
 
           {faltan.length === 0 && lineas.length > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-[var(--pastel-verde)] p-3 text-[var(--pastel-verde-texto)]">
-              <p className="min-w-0 flex-1 text-lg font-bold">✓ Ya está todo comprado</p>
+              <p className="min-w-0 flex-1 basis-40 text-lg font-bold">✓ Ya está todo comprado</p>
               {puede("preparacion.ver") && !cerrado && (
                 <Link href={`/preparacion/${fecha}`} className={clasesBoton("principal")}>
                   📦 Seguir: preparar los pedidos&nbsp;→
