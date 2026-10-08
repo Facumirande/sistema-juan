@@ -81,6 +81,8 @@ export interface FichaProducto {
   presentaciones: PresentacionDeProducto[];
   /** Se puede cambiar la unidad base: todavía no tiene otras presentaciones ni ofertas (RN-001). */
   unidadBaseEditable: boolean;
+  /** La ganancia propia del producto (%), la de su categoría y la general: se aplica la primera que haya. */
+  ganancia: { propia: string | null; categoria: string | null; general: string };
 }
 
 const MENSAJE_FACTOR = "El factor es cuántas unidades base trae la presentación (ej. 18 para un cajón de 18 kg).";
@@ -203,6 +205,7 @@ export async function obtenerProducto(db: BaseDatos, authUserId: string, id: str
         producto,
         categoria: categoria.nombre,
         grupo: categoria.grupo,
+        recargoCategoria: categoria.recargoDefault,
         proveedorPreferido: proveedor.nombre,
       })
       .from(producto)
@@ -217,8 +220,10 @@ export async function obtenerProducto(db: BaseDatos, authUserId: string, id: str
       .where(eq(presentacion.productoId, id))
       .orderBy(sql`${presentacion.activo} desc`, sql`${presentacion.esUnidadBase} desc`, asc(presentacion.factorABase));
     const enUso = await presentacionesEnUso(tx, id);
+    const [e] = await tx.select({ recargo: empresa.recargoGlobal }).from(empresa);
 
     return {
+      ganancia: { propia: p.producto.recargoDefault, categoria: p.recargoCategoria, general: e?.recargo ?? "0" },
       id: p.producto.id,
       codigo: p.producto.codigo,
       nombre: p.producto.nombre,

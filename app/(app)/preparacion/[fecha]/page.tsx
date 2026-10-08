@@ -6,18 +6,20 @@ import type { ReactNode } from "react";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
 import { formatearCantidad, type UnidadMedida } from "@/dominio/dinero/formato";
-import { sumarDias } from "@/dominio/fechas/fechas";
+import { hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { obtenerPreparacion, type EntregaEnPreparacion } from "@/modulos/entregas/preparacion";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
-import { fechaConDia } from "@/ui/etiquetas";
+import { Checklist, type ProductoDeChecklist } from "@/ui/checklist";
+import { FechaGrande } from "@/ui/fecha-grande";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { FlechaNavegacion } from "@/ui/iconos";
 import { Aviso, Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
+import { ChecklistVivo } from "../../inicio/checklist-vivo";
 import { salenAhoraAccion } from "../../repartos/acciones";
-import { iniciarPreparacionAccion } from "../acciones";
+import { iniciarPreparacionAccion, marcarPreparadaAccion } from "../acciones";
 import { PasosDePreparacion, type PasoDePreparacion } from "../pasos";
 
 export const metadata: Metadata = { title: "Preparación · Sistema Repartos" };
@@ -46,6 +48,8 @@ function TarjetaCliente({ e, fecha, puede }: { e: EntregaEnPreparacion; fecha: s
   const lista = e.estado === "PREPARADA";
   const salio = SALIERON.includes(e.estado);
   const todoSeparado = e.lineas > 0 && e.preparadas === e.lineas;
+  // El mismo checklist de la tarjeta del tablero. Un reemplazo no se tilda acá: se cambia desde el detalle.
+  const productos: ProductoDeChecklist[] = e.detalle.map((x) => ({ nombre: x.producto, cantidad: x.cantidad, grupo: x.grupo, hecha: x.hecha, aviso: x.aviso, reemplazo: x.reemplazo, entregaItemId: x.reemplazo ? null : x.id }));
   return (
     <li className={`flex flex-col gap-3 rounded-2xl border-2 bg-superficie p-4 ${lista ? "border-[var(--listo-fondo)]" : salio ? "border-[var(--pastel-verde)]" : "border-borde"}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -59,25 +63,12 @@ function TarjetaCliente({ e, fecha, puede }: { e: EntregaEnPreparacion; fecha: s
         </div>
         <Etiqueta e={e} />
       </div>
-      {!salio && (
-        <ul className="flex flex-col gap-1 rounded-xl bg-fondo p-3">
-          {e.detalle.map((x, n) => (
-            <li key={n}>
-              <span className="flex items-baseline gap-2">
-                <span aria-label={x.hecha ? "separado" : "por separar"} className={x.hecha ? "font-bold text-marca" : "text-texto-suave"}>
-                  {x.hecha ? "✓" : "⬜"}
-                </span>
-                <span className="min-w-0 flex-1">
-                  {x.reemplazo && "🔁 "}
-                  {x.producto}
-                </span>
-                <b className="shrink-0 tabular-nums">{x.cantidad}</b>
-              </span>
-              {x.aviso && <span className="mt-0.5 ml-6 block w-fit rounded-md bg-[var(--pastel-naranja)] px-2 text-sm font-semibold text-[var(--pastel-naranja-texto)]">⚠ {x.aviso}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+      {!salio &&
+        (puede.registrar ? (
+          <ChecklistVivo productos={productos} modo="separar" fecha={fecha} etiqueta={`Lo que lleva ${e.cliente}: tildá lo que ya separaste`} />
+        ) : (
+          <Checklist productos={productos} modo="visto" tamano="amplio" etiqueta={`Lo que lleva ${e.cliente}`} />
+        ))}
       {e.bultos !== null && <p className="text-sm text-texto-suave">📦 {e.bultos} bultos</p>}
       {e.documentosPendientes && (
         <p className="rounded-lg bg-[var(--pastel-naranja)] px-3 py-2 text-sm font-semibold text-[var(--pastel-naranja-texto)]">
@@ -88,9 +79,14 @@ function TarjetaCliente({ e, fecha, puede }: { e: EntregaEnPreparacion; fecha: s
         </p>
       )}
       <div className="flex flex-wrap gap-2">
+        {!lista && !salio && todoSeparado && puede.registrar && (
+          <BotonAccion accion={marcarPreparadaAccion} datos={{ entregaId: e.id, bultos: "" }} className={`${clasesBoton("principal")} w-full`} titulo="Queda listo para salir y se hace el remito">
+            🧾 Marcar como preparado
+          </BotonAccion>
+        )}
         {!lista && !salio && (
-          <Link href={`/preparacion/${fecha}/entrega/${e.id}`} className={`${clasesBoton("principal")} flex-1`}>
-            {todoSeparado ? "🧾 Marcar como preparado" : e.preparadas > 0 ? "📦 Seguir separando" : "📦 Separar este pedido"}
+          <Link href={`/preparacion/${fecha}/entrega/${e.id}`} className={clasesBoton("secundario")}>
+            ✏️ Anotar lo que falta (o un reemplazo)
           </Link>
         )}
         {lista && puede.salir && (
@@ -135,6 +131,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) notFound();
   const porProducto = parametro((await searchParams).vista) === "producto";
   const p = await obtenerPreparacion(obtenerBaseDatos(), sesion.authUserId, fecha);
+  const hoy = hoyEnEmpresa(new Date(), sesion.zonaHoraria);
   const permiso = (x: Parameters<typeof sesion.permisos.includes>[0]) => sesion.permisos.includes(x);
   const abierta = p.jornada !== null && p.jornada.estado !== "CERRADA";
   const puede = { registrar: permiso("preparacion.registrar") && abierta, salir: permiso("repartos.gestionar") && abierta, remito: permiso("documentos.imprimir_entrega") };
@@ -153,7 +150,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
 
   return (
     <section className="flex max-w-5xl flex-col gap-5">
-      <Encabezado titulo={`Preparación · ${fechaConDia(fecha)}`} descripcion="Lo que hay que separar para cada cliente. Seguí los tres pasos: separar, marcar preparado (el remito se hace solo) y que salga a entregar.">
+      <Encabezado titulo="Preparación" descripcion="Lo que hay que separar para cada cliente.">
         {p.entregas.length > 0 && puede.remito && (
           <Link href={`/preparacion/${fecha}/imprimir${porProducto ? "?vista=producto" : ""}`} className={clasesBoton("secundario")}>
             🖨️ Imprimir para separar
@@ -170,6 +167,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
           </Link>
         )}
       </Encabezado>
+      <FechaGrande fecha={fecha} hoy={hoy} />
       <nav aria-label="Día y forma de ver" className="flex flex-wrap gap-2">
         <Link href={`/preparacion/${sumarDias(fecha, -1)}`} className={clasesBoton("secundario")} aria-label="Día anterior">
           ←
@@ -218,7 +216,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
           </div>
           {p.pedidosSinEntrega > 0 && puede.registrar && (
             <div className="flex flex-col gap-2 rounded-2xl border-2 border-[var(--etiqueta-amarillo)] bg-superficie p-4">
-              <p className="font-semibold">Hay {p.pedidosSinEntrega === 1 ? "1 pedido nuevo" : `${p.pedidosSinEntrega} pedidos nuevos`} que todavía no está acá.</p>
+              <p className="font-semibold">Hay {p.pedidosSinEntrega === 1 ? "1 pedido nuevo que todavía no está acá" : `${p.pedidosSinEntrega} pedidos nuevos que todavía no están acá`}.</p>
               <FormularioAccion accion={iniciarPreparacionAccion} boton="Sumar los pedidos nuevos" enLinea>
                 <input type="hidden" name="fecha" value={fecha} />
               </FormularioAccion>
@@ -229,7 +227,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
           {!porProducto ? (
             <>
               {porSeparar.length > 0 && (
-                <Grupo titulo="1. Por separar" ayuda="Tocá un cliente, tildá lo que está y anotá lo que falta. Con todo tildado, marcalo como preparado.">
+                <Grupo titulo="1. Por separar" ayuda="Tildá ✓ lo separado. Si falta algo, anotalo.">
                   {porSeparar.map((e) => (
                     <TarjetaCliente key={e.id} e={e} fecha={fecha} puede={puede} />
                   ))}
@@ -238,7 +236,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
               {listas.length > 0 && (
                 <Grupo
                   titulo="2. Listos para salir"
-                  ayuda="Preparados y con su remito. Cuando se van a entregar, tocá “🚚 Sale ahora” y pasan a En camino."
+                  ayuda="Ya tienen su remito. Cuando salen, tocá “🚚 Sale ahora”."
                   accion={
                     puede.salir && listas.length > 1 ? (
                       <BotonAccion accion={salenAhoraAccion} datos={{ entrega: listas.map((e) => e.id) }} mostrarExito className={clasesBoton("principal")}>
@@ -253,7 +251,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
                 </Grupo>
               )}
               {salieron.length > 0 && (
-                <Grupo titulo="3. En camino y entregados" ayuda="Ya salieron. Al dejar cada pedido se confirma desde Logística.">
+                <Grupo titulo="3. En camino y entregados" ayuda="Ya salieron.">
                   {salieron.map((e) => (
                     <TarjetaCliente key={e.id} e={e} fecha={fecha} puede={puede} />
                   ))}

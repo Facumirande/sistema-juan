@@ -33,7 +33,7 @@ type Condicion = "CONTADO" | "CREDITO" | "MIXTA";
 
 const COMO_SE_PAGA: readonly { valor: Condicion; texto: string; ayuda: string }[] = [
   { valor: "CONTADO", texto: "💵 Pagué todo", ayuda: "Se paga ahora: no queda deuda." },
-  { valor: "CREDITO", texto: "📒 Queda a cuenta", ayuda: "No se paga nada ahora: se suma a lo que se le debe." },
+  { valor: "CREDITO", texto: "📒 Queda a cuenta", ayuda: "No se paga nada ahora: se suma a lo que le debemos." },
   { valor: "MIXTA", texto: "✂️ Pagué una parte", ayuda: "Se paga una parte y el resto queda a cuenta." },
 ];
 

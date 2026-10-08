@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { jornada, listaCompra, listaCompraItem, presentacion, producto, proveedor, proveedorProducto } from "@/db/esquema";
@@ -34,29 +34,36 @@ const esquema = z
 export async function comprarDeLaLista(db: BaseDatos, authUserId: string, datos: z.input<typeof esquema>): Promise<ResultadoCompra & { producto: string; proveedor: string }> {
   const d = validar(esquema, datos);
   const destino = await ejecutarComoUsuario(db, authUserId, "compras.registrar", async (tx) => {
-    const [item] = await tx
-      .select({ productoId: listaCompraItem.productoId, producto: producto.nombre, fecha: jornada.fecha })
-      .from(listaCompraItem)
-      .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
-      .innerJoin(jornada, eq(jornada.id, listaCompra.jornadaId))
-      .innerJoin(producto, eq(producto.id, listaCompraItem.productoId))
-      .where(eq(listaCompraItem.id, d.itemId));
-    if (!item) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró ese producto en la lista: recargá la página.");
-    if (d.ofertaId) {
-      const [o] = await tx
+    const nada = sql`false`;
+    // El renglón, la oferta elegida (o el envase y el puesto) salen juntos, en una sola ida a la base.
+    const [[item], [o], [pr], [prov]] = await Promise.all([
+      tx
+        .select({ productoId: listaCompraItem.productoId, producto: producto.nombre, fecha: jornada.fecha })
+        .from(listaCompraItem)
+        .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
+        .innerJoin(jornada, eq(jornada.id, listaCompra.jornadaId))
+        .innerJoin(producto, eq(producto.id, listaCompraItem.productoId))
+        .where(eq(listaCompraItem.id, d.itemId)),
+      tx
         .select({ proveedorId: proveedorProducto.proveedorId, presentacionId: proveedorProducto.presentacionId, productoId: proveedorProducto.productoId, proveedor: proveedor.nombre })
         .from(proveedorProducto)
         .innerJoin(proveedor, eq(proveedor.id, proveedorProducto.proveedorId))
-        .where(eq(proveedorProducto.id, d.ofertaId));
+        .where(d.ofertaId ? eq(proveedorProducto.id, d.ofertaId) : nada),
+      tx
+        .select({ id: presentacion.id, productoId: presentacion.productoId })
+        .from(presentacion)
+        .where(!d.ofertaId && d.presentacionId ? eq(presentacion.id, d.presentacionId) : nada),
+      tx
+        .select({ nombre: proveedor.nombre })
+        .from(proveedor)
+        .where(!d.ofertaId && d.proveedorId ? eq(proveedor.id, d.proveedorId) : nada),
+    ]);
+    if (!item) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró ese producto en la lista: recargá la página.");
+    if (d.ofertaId) {
       if (!o || o.productoId !== item.productoId) throw new ErrorDeNegocio("VALIDACION", "Ese puesto no vende este producto: elegí otro.");
       return { ...item, proveedorId: o.proveedorId, presentacionId: o.presentacionId, proveedor: o.proveedor };
     }
-    const [pr] = await tx
-      .select({ id: presentacion.id })
-      .from(presentacion)
-      .where(and(eq(presentacion.id, d.presentacionId!), eq(presentacion.productoId, item.productoId)));
-    if (!pr) throw new ErrorDeNegocio("VALIDACION", `Elegí un envase de ${item.producto}.`);
-    const [prov] = await tx.select({ nombre: proveedor.nombre }).from(proveedor).where(eq(proveedor.id, d.proveedorId!));
+    if (!pr || pr.productoId !== item.productoId) throw new ErrorDeNegocio("VALIDACION", `Elegí un envase de ${item.producto}.`);
     if (!prov) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el puesto.");
     return { ...item, proveedorId: d.proveedorId!, presentacionId: d.presentacionId!, proveedor: prov.nombre };
   });

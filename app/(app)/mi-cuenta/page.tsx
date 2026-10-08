@@ -58,8 +58,8 @@ export default async function PaginaMiCuenta() {
       <div className="rounded-lg border border-borde bg-superficie p-4">
         <h2 className="mb-4 text-lg font-semibold">Cambiar la contraseña</h2>
         <FormularioAccion accion={cambiarMiClave} boton="Cambiar contraseña">
-          <CampoClave etiqueta="Contraseña actual" name="actual" autoComplete="current-password" />
-          <CampoClave etiqueta="Contraseña nueva" name="nueva" autoComplete="new-password" ayuda={`Al menos ${LARGO_MINIMO_CLAVE} caracteres.`} />
+          <CampoClave etiqueta="Contraseña actual" name="actual" autoComplete="current-password" required />
+          <CampoClave etiqueta="Contraseña nueva" name="nueva" autoComplete="new-password" ayuda={`Al menos ${LARGO_MINIMO_CLAVE} caracteres.`} required />
         </FormularioAccion>
       </div>
     </section>

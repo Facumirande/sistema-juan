@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
 
 import { auditar } from "@/db/auditoria";
 import { cliente, documentoEmitido, entrega, entregaItem, jornada, pedido, pedidoItem, presentacion, producto, puntoEntrega, reparto } from "@/db/esquema";
@@ -91,31 +91,33 @@ function enPresentacion(cantidad: string, factor: string | null, nombre: string 
 }
 
 async function encabezado(tx: Transaccion, entregaId: string, emitido: { en: Date; por: string }) {
-  const [f] = await tx
-    .select({
-      numero: entrega.numero,
-      version: entrega.version,
-      fecha: jornada.fecha,
-      clienteNombre: entrega.clienteNombre,
-      puntoNombre: entrega.puntoEntregaNombre,
-      direccion: entrega.direccionEntrega,
-      referencia: entrega.referenciaCliente,
-      recibidoPor: entrega.recibidoPor,
-      recibidoCargo: entrega.recibidoCargo,
-      recibidoEn: entrega.recibidoEn,
-    })
-    .from(entrega)
-    .innerJoin(jornada, eq(jornada.id, entrega.jornadaId))
-    .where(eq(entrega.id, entregaId));
+  const [[f], pedidos, emp] = await Promise.all([
+    tx
+      .select({
+        numero: entrega.numero,
+        version: entrega.version,
+        fecha: jornada.fecha,
+        clienteNombre: entrega.clienteNombre,
+        puntoNombre: entrega.puntoEntregaNombre,
+        direccion: entrega.direccionEntrega,
+        referencia: entrega.referenciaCliente,
+        recibidoPor: entrega.recibidoPor,
+        recibidoCargo: entrega.recibidoCargo,
+        recibidoEn: entrega.recibidoEn,
+      })
+      .from(entrega)
+      .innerJoin(jornada, eq(jornada.id, entrega.jornadaId))
+      .where(eq(entrega.id, entregaId)),
+    tx
+      .selectDistinct({ numero: pedido.numero })
+      .from(entregaItem)
+      .innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
+      .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
+      .where(eq(entregaItem.entregaId, entregaId))
+      .orderBy(asc(pedido.numero)),
+    configuracionEmpresa(tx),
+  ]);
   if (!f) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la entrega.");
-  const pedidos = await tx
-    .selectDistinct({ numero: pedido.numero })
-    .from(entregaItem)
-    .innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
-    .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
-    .where(eq(entregaItem.entregaId, entregaId))
-    .orderBy(asc(pedido.numero));
-  const emp = await configuracionEmpresa(tx);
   return {
     empresa: { nombre: emp.nombre, razonSocial: emp.razonSocial, identificacionFiscal: emp.identificacionFiscal, direccion: emp.direccion, telefono: emp.telefono },
     numero: numeroEntrega(f.numero),
@@ -136,24 +138,26 @@ async function encabezado(tx: Transaccion, entregaId: string, emitido: { en: Dat
  * costo ni importe (RN-124): lo verifica una prueba sobre el contenido guardado.
  */
 export async function contenidoListaEntrega(tx: Transaccion, entregaId: string, emitido: { en: Date; por: string }): Promise<ContenidoListaEntrega> {
-  const cab = await encabezado(tx, entregaId, emitido);
-  const [e] = await tx
-    .select({
-      bultos: entrega.cantidadBultos,
-      observaciones: entrega.observaciones,
-      orden: entrega.ordenEnReparto,
-      reparto: reparto.numero,
-      desde: puntoEntrega.horarioDesde,
-      hasta: puntoEntrega.horarioHasta,
-      contacto: puntoEntrega.contactoNombre,
-      telefono: puntoEntrega.contactoTelefono,
-      instrucciones: puntoEntrega.instruccionesEntrega,
-    })
-    .from(entrega)
-    .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
-    .leftJoin(reparto, eq(reparto.id, entrega.repartoId))
-    .where(eq(entrega.id, entregaId));
-  const items = await lineasOperativas(tx, entregaId);
+  const [cab, [e], items] = await Promise.all([
+    encabezado(tx, entregaId, emitido),
+    tx
+      .select({
+        bultos: entrega.cantidadBultos,
+        observaciones: entrega.observaciones,
+        orden: entrega.ordenEnReparto,
+        reparto: reparto.numero,
+        desde: puntoEntrega.horarioDesde,
+        hasta: puntoEntrega.horarioHasta,
+        contacto: puntoEntrega.contactoNombre,
+        telefono: puntoEntrega.contactoTelefono,
+        instrucciones: puntoEntrega.instruccionesEntrega,
+      })
+      .from(entrega)
+      .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
+      .leftJoin(reparto, eq(reparto.id, entrega.repartoId))
+      .where(eq(entrega.id, entregaId)),
+    lineasOperativas(tx, entregaId),
+  ]);
   return {
     tipo: "DOC_02",
     ...cab,
@@ -207,13 +211,15 @@ export async function lineasOperativas(tx: Transaccion, entregaId: string) {
 }
 
 async function contenidoListaContable(tx: Transaccion, entregaId: string, emitido: { en: Date; por: string }): Promise<ContenidoListaContable> {
-  const cab = await encabezado(tx, entregaId, emitido);
-  const [e] = await tx.select().from(entrega).where(eq(entrega.id, entregaId));
-  const operativas = await lineasOperativas(tx, entregaId);
-  const precios = await tx
-    .select({ id: entregaItem.id, precio: entregaItem.precioUnitario, importe: entregaItem.importe, alicuota: entregaItem.alicuotaIva })
-    .from(entregaItem)
-    .where(eq(entregaItem.entregaId, entregaId));
+  const [cab, [e], operativas, precios] = await Promise.all([
+    encabezado(tx, entregaId, emitido),
+    tx.select().from(entrega).where(eq(entrega.id, entregaId)),
+    lineasOperativas(tx, entregaId),
+    tx
+      .select({ id: entregaItem.id, precio: entregaItem.precioUnitario, importe: entregaItem.importe, alicuota: entregaItem.alicuotaIva })
+      .from(entregaItem)
+      .where(eq(entregaItem.entregaId, entregaId)),
+  ]);
   return {
     tipo: "DOC_03",
     ...cab,
@@ -262,6 +268,16 @@ export async function documentosAlDiaDe(tx: Transaccion, entregas: readonly { id
   return new Set(conVersion.filter((e) => emitidas.has(`${e.id}:${e.version}`)).map((e) => e.id));
 }
 
+/** De las entregas que cumplen `donde`, las que ya tienen hecho el remito de su versión vigente (una sola consulta). */
+export async function entregasConRemito(tx: Transaccion, donde: SQL | undefined): Promise<Set<string>> {
+  const filas = await tx
+    .select({ id: entrega.id })
+    .from(documentoEmitido)
+    .innerJoin(entrega, and(eq(entrega.id, documentoEmitido.entregaId), eq(entrega.version, documentoEmitido.version)))
+    .where(and(donde, eq(documentoEmitido.tipo, "DOC_02"), eq(documentoEmitido.evento, "EMISION")));
+  return new Set(filas.map((f) => f.id));
+}
+
 /**
  * Emite DOC-02 y DOC-03 de la versión vigente (09 §4.2). La primera emisión congela los precios
  * (RN-089, RN-121); una línea que se agrega después se congela en su primera emisión. Si falta un
@@ -271,19 +287,29 @@ export async function emitirDocumentosEntrega(tx: Transaccion, c: ContextoUsuari
   const e = await entregaBloqueada(tx, entregaId);
   if (!["PREPARADA", "EN_REPARTO", "ENTREGADA"].includes(e.estado)) throw new ErrorDeNegocio("VALIDACION", "Los documentos se emiten cuando la entrega está preparada.");
   if (e.estadoFacturacion === "FACTURADA") throw new ErrorDeNegocio("DOCUMENTO_EMITIDO", "La entrega ya está facturada: para corregirla, anulá antes el comprobante (RN-138).");
-  const [j] = await tx.select().from(jornada).where(eq(jornada.id, e.jornadaId));
-  exigirJornadaAbierta(j);
   const version = Math.max(e.version, 1);
-  if (await documentosAlDia(tx, entregaId, version)) return { resultado: "YA_EMITIDOS", version };
+  // Lo que hace falta leer sale junto (una ida a la base).
+  const [[j], alDia, items, empresa, [datos]] = await Promise.all([
+    tx.select().from(jornada).where(eq(jornada.id, e.jornadaId)),
+    documentosAlDia(tx, entregaId, version),
+    tx
+      .select({ item: entregaItem, precioManual: pedidoItem.precioManual, motivoManual: pedidoItem.motivoPrecioManual, alicuota: producto.alicuotaIva })
+      .from(entregaItem)
+      .innerJoin(producto, eq(producto.id, entregaItem.productoId))
+      .leftJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
+      .where(eq(entregaItem.entregaId, entregaId))
+      .orderBy(asc(entregaItem.linea)),
+    configuracionEmpresa(tx),
+    tx
+      .select({ cliente, punto: puntoEntrega })
+      .from(cliente)
+      .innerJoin(puntoEntrega, eq(puntoEntrega.id, e.puntoEntregaId))
+      .where(eq(cliente.id, e.clienteId)),
+  ]);
+  exigirJornadaAbierta(j);
+  if (alDia) return { resultado: "YA_EMITIDOS", version };
 
   // Precios: los ya congelados no se tocan; el resto se calcula ahora (o se usa el precio manual del pedido).
-  const items = await tx
-    .select({ item: entregaItem, precioManual: pedidoItem.precioManual, motivoManual: pedidoItem.motivoPrecioManual, alicuota: producto.alicuotaIva })
-    .from(entregaItem)
-    .innerJoin(producto, eq(producto.id, entregaItem.productoId))
-    .leftJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
-    .where(eq(entregaItem.entregaId, entregaId))
-    .orderBy(asc(entregaItem.linea));
   const aCongelar = items.filter((i) => i.item.precioUnitario === null && i.precioManual === null);
   const calculados = await calcularPrecios(tx, { clienteId: e.clienteId, fecha: j!.fecha, lineas: aCongelar.map((i) => ({ productoId: i.item.productoId, presentacionId: null })) });
   const nuevo = new Map(aCongelar.map((i, n) => [i.item.id, calculados[n]!]));
@@ -294,16 +320,21 @@ export async function emitirDocumentosEntrega(tx: Transaccion, c: ContextoUsuari
   const negativos = aCongelar.filter((i) => nuevo.get(i.item.id)!.alertas.includes("MARGEN_NEGATIVO"));
   if (negativos.length > 0 && !opciones.confirmaMargenNegativo) return { resultado: "MARGEN_NEGATIVO", productos: [...new Set(negativos.map((i) => i.item.productoNombre))] };
 
-  for (const i of items) {
+  // Cada línea con su importe y, si es su primera emisión, con el precio y el costo congelados.
+  const lineas = items.map((i) => {
     const precio = precioDe(i);
     const cantidad = cantidadDocumento(i.item);
     const cambios: Partial<typeof entregaItem.$inferInsert> = { importe: aNumeric(precio ? importeLinea(cantidad, precio) : 0, 2), actualizadoPor: c.usuarioId };
+    let costo = i.item.costoUnitario;
+    let alicuota = i.item.alicuotaIva;
     if (i.item.precioUnitario === null) {
       const r = nuevo.get(i.item.id);
+      costo = r?.costoUnitario ? aNumeric(r.costoUnitario, 4) : null;
+      alicuota = i.alicuota;
       Object.assign(cambios, {
         precioUnitario: precio,
-        alicuotaIva: i.alicuota,
-        costoUnitario: r?.costoUnitario ? aNumeric(r.costoUnitario, 4) : null,
+        alicuotaIva: alicuota,
+        costoUnitario: costo,
         origenCosto: r?.origenCosto ?? null,
         recargoAplicado: r ? ((r.recargoAplicado ?? r.recargoEquivalente) ? aNumeric((r.recargoAplicado ?? r.recargoEquivalente)!, 3) : null) : null,
         origenRegla: r?.origen ?? (i.precioManual !== null ? "MANUAL" : null),
@@ -313,74 +344,71 @@ export async function emitirDocumentosEntrega(tx: Transaccion, c: ContextoUsuari
         alertas: r?.alertas ?? [],
       });
     }
-    await tx.update(entregaItem).set(cambios).where(eq(entregaItem.id, i.item.id));
-  }
-
-  const valorizadas = await tx
-    .select({ entregada: entregaItem.cantidadEntregada, preparada: entregaItem.cantidadPreparada, precio: entregaItem.precioUnitario, costo: entregaItem.costoUnitario, alicuota: entregaItem.alicuotaIva })
-    .from(entregaItem)
-    .where(eq(entregaItem.entregaId, entregaId));
-  const empresa = await configuracionEmpresa(tx);
+    return { id: i.item.id, cambios, valorizada: { entregada: i.item.cantidadEntregada, preparada: i.item.cantidadPreparada, precio, costo, alicuota } };
+  });
   const t = totalesEntrega(
-    valorizadas
-      .filter((v) => v.precio !== null)
-      .map((v) => ({ cantidad: v.entregada ?? v.preparada ?? "0", precioUnitario: v.precio!, costoUnitario: v.costo, alicuotaIva: v.alicuota ?? "0" })),
+    lineas
+      .filter((l) => l.valorizada.precio !== null)
+      .map(({ valorizada: v }) => ({ cantidad: v.entregada ?? v.preparada ?? "0", precioUnitario: v.precio!, costoUnitario: v.costo, alicuotaIva: v.alicuota ?? "0" })),
     empresa.preciosIncluyenIva,
   );
-  const [datos] = await tx
-    .select({ cliente, punto: puntoEntrega })
-    .from(cliente)
-    .innerJoin(puntoEntrega, eq(puntoEntrega.id, e.puntoEntregaId))
-    .where(eq(cliente.id, e.clienteId));
-  await tx
-    .update(entrega)
-    .set({
-      version,
-      preciosCongeladosEn: e.preciosCongeladosEn ?? sql`now()`,
-      importeNeto: aNumeric(t.neto, 2),
-      importeIva: aNumeric(t.iva, 2),
-      importeTotal: aNumeric(t.total, 2),
-      costoTotal: aNumeric(t.costo, 2),
-      clienteNombre: datos!.cliente.nombre,
-      clienteRazonSocial: datos!.cliente.razonSocial,
-      clienteIdentificacionFiscal: datos!.cliente.identificacionFiscal,
-      puntoEntregaNombre: datos!.punto.nombre,
-      direccionEntrega: [datos!.punto.direccion, datos!.punto.localidad].filter(Boolean).join(", "),
-      actualizadoPor: c.usuarioId,
-    })
-    .where(eq(entrega.id, entregaId));
+  // Las líneas y la entrega se guardan juntas (una ida).
+  await Promise.all([
+    ...lineas.map((l) => tx.update(entregaItem).set(l.cambios).where(eq(entregaItem.id, l.id))),
+    tx
+      .update(entrega)
+      .set({
+        version,
+        preciosCongeladosEn: e.preciosCongeladosEn ?? sql`now()`,
+        importeNeto: aNumeric(t.neto, 2),
+        importeIva: aNumeric(t.iva, 2),
+        importeTotal: aNumeric(t.total, 2),
+        costoTotal: aNumeric(t.costo, 2),
+        clienteNombre: datos!.cliente.nombre,
+        clienteRazonSocial: datos!.cliente.razonSocial,
+        clienteIdentificacionFiscal: datos!.cliente.identificacionFiscal,
+        puntoEntregaNombre: datos!.punto.nombre,
+        direccionEntrega: [datos!.punto.direccion, datos!.punto.localidad].filter(Boolean).join(", "),
+        actualizadoPor: c.usuarioId,
+      })
+      .where(eq(entrega.id, entregaId)),
+  ]);
 
   const emitido = { en: new Date(), por: c.nombre };
   const visible = `${numeroEntrega(e.numero)} v${version}`;
-  for (const contenido of [await contenidoListaEntrega(tx, entregaId, emitido), await contenidoListaContable(tx, entregaId, emitido)]) {
-    await tx.insert(documentoEmitido).values({
+  // Con todo guardado se arma el contenido de los dos documentos (una ida) y se guardan (otra).
+  const contenidos = await Promise.all([contenidoListaEntrega(tx, entregaId, emitido), contenidoListaContable(tx, entregaId, emitido)]);
+  await Promise.all([
+    ...contenidos.map((contenido) =>
+      tx.insert(documentoEmitido).values({
+        empresaId: c.empresaId,
+        tipo: contenido.tipo,
+        entidad: "entrega",
+        entidadId: entregaId,
+        entregaId,
+        version,
+        evento: "EMISION",
+        numeroVisible: visible,
+        emitidoPor: c.usuarioId,
+        contenido,
+        creadoPor: c.usuarioId,
+        actualizadoPor: c.usuarioId,
+      }),
+    ),
+    tx
+      .update(documentoEmitido)
+      .set({ estado: "REEMPLAZADO", actualizadoPor: c.usuarioId })
+      .where(and(eq(documentoEmitido.entregaId, entregaId), inArray(documentoEmitido.tipo, ["DOC_02", "DOC_03"]), eq(documentoEmitido.estado, "VIGENTE"), lt(documentoEmitido.version, version))),
+    auditar(tx, {
       empresaId: c.empresaId,
-      tipo: contenido.tipo,
+      usuarioId: c.usuarioId,
+      accion: "EMISION_DOCUMENTO",
       entidad: "entrega",
       entidadId: entregaId,
-      entregaId,
-      version,
-      evento: "EMISION",
-      numeroVisible: visible,
-      emitidoPor: c.usuarioId,
-      contenido,
-      creadoPor: c.usuarioId,
-      actualizadoPor: c.usuarioId,
-    });
-  }
-  await tx
-    .update(documentoEmitido)
-    .set({ estado: "REEMPLAZADO", actualizadoPor: c.usuarioId })
-    .where(and(eq(documentoEmitido.entregaId, entregaId), inArray(documentoEmitido.tipo, ["DOC_02", "DOC_03"]), eq(documentoEmitido.estado, "VIGENTE"), lt(documentoEmitido.version, version)));
-  await auditar(tx, {
-    empresaId: c.empresaId,
-    usuarioId: c.usuarioId,
-    accion: "EMISION_DOCUMENTO",
-    entidad: "entrega",
-    entidadId: entregaId,
-    resumen: `Lista de entrega y lista contable ${visible}.`,
-    datosDespues: { total: aNumeric(t.total, 2) },
-  });
+      resumen: `Lista de entrega y lista contable ${visible}.`,
+      datosDespues: { total: aNumeric(t.total, 2) },
+    }),
+  ]);
   return { resultado: "EMITIDOS", version };
 }
 

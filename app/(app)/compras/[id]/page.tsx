@@ -52,7 +52,7 @@ export default async function PaginaCompra({ params, searchParams }: PageProps<"
           <p className="font-semibold">Compra registrada.</p>
           {cuenta && (
             <p className="flex flex-wrap items-center gap-2">
-              Ahora se le debe a {c.proveedor} {formatearMoneda(cuenta.indicadores.saldoPendiente)}
+              Ahora le debemos a {c.proveedor} {formatearMoneda(cuenta.indicadores.saldoPendiente)}
               <SemaforoCredito semaforo={cuenta.indicadores.semaforo} usoPct={cuenta.indicadores.usoPct?.toString()} />
             </p>
           )}
@@ -159,7 +159,7 @@ export default async function PaginaCompra({ params, searchParams }: PageProps<"
           </p>
           <FormularioAccion accion={anularCompraAccion} boton="Anular" variante="peligro" confirmar="¿Anular esta compra?">
             <input type="hidden" name="compraId" value={c.id} />
-            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. se cargó un precio mal" />
+            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. se cargó un precio mal" required />
             {c.condicion !== "CREDITO" && (
               <Casilla
                 etiqueta="El proveedor devolvió la plata"

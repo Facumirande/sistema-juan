@@ -11,11 +11,11 @@ import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
-export const metadata: Metadata = { title: "Deudas con proveedores · Sistema Repartos" };
+export const metadata: Metadata = { title: "A pagar · Sistema Repartos" };
 
 const FILTROS = { deuda: "Con deuda", vencidos: "Vencidos", rojo: "Rojo y excedido", todos: "Todos" } as const;
 
-/** P-60 Deudas con proveedores: cuánto se le debe a cada uno, qué está vencido y cuánto crédito queda. */
+/** P-60 A pagar: lo retirado de cada proveedor que todavía no se pagó, qué está vencido y cuánto crédito queda. */
 export default async function PaginaCuentasProveedores({ searchParams }: PageProps<"/cuentas-proveedores">) {
   const sesion = await sesionParaPantalla("pagos.ver");
   const pedido = parametro((await searchParams).ver);
@@ -38,10 +38,10 @@ export default async function PaginaCuentasProveedores({ searchParams }: PagePro
   return (
     <section className="flex max-w-5xl flex-col gap-6">
       <Encabezado
-        titulo="Deudas con proveedores"
+        titulo="A pagar"
         descripcion={
           <>
-            Se les debe {formatearMoneda(deudaTotal)}
+            Lo que se retiró de los proveedores y todavía no se pagó: {formatearMoneda(deudaTotal)}
             {vencida.gt(0) && <span className="text-error"> · vencido {formatearMoneda(vencida)}</span>}
             {porVencer.gt(0) && ` · vence en los próximos días ${formatearMoneda(porVencer)}`}. El color muestra cuánto del límite de crédito se usa con cada uno (verde tranquilo, amarillo cerca, rojo al límite). Tocá “Pagar” para anotar un pago.
           </>
@@ -61,7 +61,7 @@ export default async function PaginaCuentasProveedores({ searchParams }: PagePro
           <thead>
             <tr>
               <th>Proveedor</th>
-              <th className="text-right">Se le debe</th>
+              <th className="text-right">Le debemos</th>
               <th className="text-right">Disponible</th>
               <th>Estado</th>
               <th>Vencido / próximo</th>

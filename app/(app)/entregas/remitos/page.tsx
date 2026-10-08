@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { formatearFechaHora, sumarDias } from "@/dominio/fechas/fechas";
+import { formatearFechaHora, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { remitosDelDia, type RemitoDelDia } from "@/modulos/entregas/entregas";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { fechaConDia } from "@/ui/etiquetas";
+import { FechaGrande } from "@/ui/fecha-grande";
 import { Encabezado, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
@@ -103,9 +103,10 @@ export default async function Remitos({ searchParams }: PageProps<"/entregas/rem
   return (
     <section className="flex max-w-5xl flex-col gap-5">
       <Encabezado
-        titulo={`Remitos · ${fechaConDia(fecha)}`}
+        titulo="Remitos"
         descripcion="El remito es la lista de entrega que firma el cliente (sin precios). Se hace solo al marcar preparado cada pedido. Imprimilos de a uno o todos juntos, en el orden del reparto."
       />
+      <FechaGrande fecha={fecha} hoy={hoyEnEmpresa(new Date(), sesion.zonaHoraria)} />
       <nav aria-label="Día" className="flex flex-wrap gap-2">
         <Link href={`/entregas/remitos?fecha=${sumarDias(fecha, -1)}`} className={clasesBoton("secundario")} aria-label="Día anterior">
           ←

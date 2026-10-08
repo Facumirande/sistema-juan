@@ -1,12 +1,12 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { usuario } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
-import { colorDePersona, esColorDeAvatar } from "@/dominio/colaboracion/personas";
-import { coloresDelNegocio } from "./colores";
+import { asignarColores, colorDePersona, esColorDeAvatar } from "@/dominio/colaboracion/personas";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { textoObligatorio, validar } from "@/modulos/validacion";
+import { olvidarSesiones } from "@/modulos/seguridad/memoria-sesion";
 
 // Las personas del negocio como se ven en las tarjetas, las notas y la actividad: nombre y color.
 
@@ -28,11 +28,19 @@ export const soloVisible = (p: PersonaVisible): PersonaVisible => ({ id: p.id, n
 
 /** Todas las personas con cuenta en el negocio (también las desactivadas, para mostrar lo que hicieron). */
 export async function personasDelNegocio(tx: Transaccion): Promise<(PersonaVisible & { activa: boolean })[]> {
+  // Una sola consulta: los colores se reparten con estas mismas filas, de la cuenta más antigua a
+  // la más nueva (el mismo orden que usa `coloresDelNegocio`).
   const filas = await tx
-    .select({ id: usuario.id, nombre: usuario.nombre, preferencias: usuario.preferencias, activo: usuario.activo })
+    .select({
+      id: usuario.id,
+      nombre: usuario.nombre,
+      preferencias: usuario.preferencias,
+      activo: usuario.activo,
+      antiguedad: sql<number>`row_number() over (order by ${usuario.creadoEn}, ${usuario.id})`,
+    })
     .from(usuario)
     .orderBy(asc(usuario.nombre));
-  const colores = await coloresDelNegocio(tx);
+  const colores = asignarColores([...filas].sort((a, b) => Number(a.antiguedad) - Number(b.antiguedad)).map((u) => ({ id: u.id, elegido: u.preferencias?.color })));
   return filas.map((u) => ({ ...personaVisible(u, colores), activa: u.activo }));
 }
 
@@ -50,6 +58,8 @@ const esquemaPerfil = z.object({
 
 /** "Mi cuenta": cómo te ven los demás (nombre y color del avatar). */
 export async function cambiarMiPerfil(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaPerfil>): Promise<void> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   const d = validar(esquemaPerfil, datos);
   await ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     const [u] = await tx.select({ preferencias: usuario.preferencias }).from(usuario).where(eq(usuario.id, c.usuarioId));

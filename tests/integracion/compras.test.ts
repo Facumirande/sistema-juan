@@ -273,7 +273,7 @@ describe("compras en el mercado (04 §5.d, 06 §3 y §9)", () => {
 
   it("un precio muy distinto al vigente pide confirmación (RN-058); la misma compra no se duplica", async () => {
     const brusca = comprar("B", "CREDITO", [["tomate", "Cajón 18 kg", "1", "30.000"]]);
-    expect(await mensajeDeError(brusca)).toMatch(/cambian mucho.*Confirmar/);
+    expect(await mensajeDeError(brusca)).toMatch(/cambian? mucho.*Confirmar/);
     const clave = randomUUID();
     const primera = await comprar("B", "CREDITO", [["lechuga", "Jaula 12 u", "1", "9.600"]], { claveIdempotencia: clave });
     const segunda = await comprar("B", "CREDITO", [["lechuga", "Jaula 12 u", "1", "9.600"]], { claveIdempotencia: clave });

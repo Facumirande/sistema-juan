@@ -6,7 +6,6 @@ import {
   anularReparto,
   emitirDocumentosDelReparto,
   mandarEnCamino,
-  moverParada,
   proponerOrden,
   quitarDelReparto,
   regresarDeReparto,
@@ -41,13 +40,6 @@ export async function agregarParadaAccion(_estado: EstadoAccion, datos: FormData
 export async function quitarParadaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await quitarDelReparto(db, authUserId, { repartoId: campo(datos, "repartoId"), entregaId: campo(datos, "entregaId") });
-    return { ok: true, mensaje: null };
-  });
-}
-
-export async function moverParadaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    await moverParada(db, authUserId, { repartoId: campo(datos, "repartoId"), entregaId: campo(datos, "entregaId"), hacia: campo(datos, "hacia") === "arriba" ? "arriba" : "abajo" });
     return { ok: true, mensaje: null };
   });
 }

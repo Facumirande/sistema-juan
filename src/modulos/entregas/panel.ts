@@ -1,10 +1,11 @@
-import { and, count, eq, ne, sql } from "drizzle-orm";
+import { and, count, eq, inArray, ne, sql } from "drizzle-orm";
 
 import { compra, documentoEmitido, entrega, jornada, listaCompra, listaCompraItem, pedido, reparto } from "@/db/esquema";
 import type { Transaccion } from "@/db/tipos";
+import { ErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 
-import { jornadaDeFecha } from "./comun";
+import { PATRON_FECHA } from "./comun";
 
 // Cuánto falta en cada etapa de un día (lo usa el paso a paso del tablero).
 
@@ -27,7 +28,38 @@ export interface PanelJornada {
 const porEstado = (filas: { estado: string; n: number }[]) => Object.fromEntries(filas.map((f) => [f.estado, Number(f.n)]));
 
 export async function panelEnTransaccion(tx: Transaccion, fecha: FechaISO): Promise<PanelJornada> {
-  const j = await jornadaDeFecha(tx, fecha);
+  if (!PATRON_FECHA.test(fecha)) throw new ErrorDeNegocio("VALIDACION", "Elegí el día de entrega.");
+  // El día se busca por su fecha dentro de cada consulta: así todas las cuentas salen juntas, en una
+  // sola ida a la base, sin tener que averiguar antes cuál es el día.
+  const delDia = () => tx.select({ id: jornada.id }).from(jornada).where(eq(jornada.fecha, fecha));
+  const vigentes = and(inArray(entrega.jornadaId, delDia()), ne(entrega.estado, "ANULADA"));
+  const [[j], pedidos, [l], [c], entregas, [docs], repartos] = await Promise.all([
+    tx
+      .select({ estado: jornada.estado, compra: jornada.compraIniciadaEn, preparacion: jornada.preparacionIniciadaEn, reparto: jornada.repartoIniciadoEn, cierre: jornada.cerradaEn })
+      .from(jornada)
+      .where(eq(jornada.fecha, fecha)),
+    tx.select({ estado: pedido.estado, n: count() }).from(pedido).where(inArray(pedido.jornadaId, delDia())).groupBy(pedido.estado),
+    tx
+      .select({
+        desactualizada: listaCompra.desactualizada,
+        lineas: sql<number>`(select count(*) from ${listaCompraItem} i where i.lista_compra_id = lista_compra.id)`,
+        compradas: sql<number>`(select count(*) from ${listaCompraItem} i where i.lista_compra_id = lista_compra.id and i.estado in ('COMPRADO', 'NO_CONSEGUIDO'))`,
+      })
+      .from(listaCompra)
+      .where(inArray(listaCompra.jornadaId, delDia())),
+    tx.select({ n: count() }).from(compra).where(and(inArray(compra.jornadaId, delDia()), eq(compra.estado, "REGISTRADA"))),
+    tx.select({ estado: entrega.estado, n: count() }).from(entrega).where(vigentes).groupBy(entrega.estado),
+    // Con una sola tabla, Drizzle escribe las columnas sin el nombre de la tabla: en la subconsulta
+    // van con el nombre completo.
+    tx
+      .select({
+        conDocumentos: sql<number>`count(*) filter (where entrega.version > 0 and exists (select 1 from ${documentoEmitido} d where d.entrega_id = entrega.id and d.tipo = 'DOC_02' and d.version = entrega.version and d.evento = 'EMISION'))`,
+        sinReparto: sql<number>`count(*) filter (where entrega.reparto_id is null and entrega.estado <> 'ENTREGADA')`,
+      })
+      .from(entrega)
+      .where(vigentes),
+    tx.select({ estado: reparto.estado, n: count() }).from(reparto).where(and(inArray(reparto.jornadaId, delDia()), ne(reparto.estado, "ANULADO"))).groupBy(reparto.estado),
+  ]);
   if (!j) {
     return {
       fecha,
@@ -42,36 +74,10 @@ export async function panelEnTransaccion(tx: Transaccion, fecha: FechaISO): Prom
       repartos: {},
     };
   }
-  const pedidos = await tx.select({ estado: pedido.estado, n: count() }).from(pedido).where(eq(pedido.jornadaId, j.id)).groupBy(pedido.estado);
-  const [l] = await tx
-    .select({
-      desactualizada: listaCompra.desactualizada,
-      lineas: sql<number>`(select count(*) from ${listaCompraItem} i where i.lista_compra_id = lista_compra.id)`,
-      compradas: sql<number>`(select count(*) from ${listaCompraItem} i where i.lista_compra_id = lista_compra.id and i.estado in ('COMPRADO', 'NO_CONSEGUIDO'))`,
-    })
-    .from(listaCompra)
-    .where(eq(listaCompra.jornadaId, j.id));
-  const [c] = await tx.select({ n: count() }).from(compra).where(and(eq(compra.jornadaId, j.id), eq(compra.estado, "REGISTRADA")));
-  const vigentes = and(eq(entrega.jornadaId, j.id), ne(entrega.estado, "ANULADA"));
-  const entregas = await tx.select({ estado: entrega.estado, n: count() }).from(entrega).where(vigentes).groupBy(entrega.estado);
-  // Con una sola tabla, Drizzle escribe las columnas sin el nombre de la tabla: en la subconsulta
-  // van con el nombre completo.
-  const [docs] = await tx
-    .select({
-      conDocumentos: sql<number>`count(*) filter (where entrega.version > 0 and exists (select 1 from ${documentoEmitido} d where d.entrega_id = entrega.id and d.tipo = 'DOC_02' and d.version = entrega.version and d.evento = 'EMISION'))`,
-      sinReparto: sql<number>`count(*) filter (where entrega.reparto_id is null and entrega.estado <> 'ENTREGADA')`,
-    })
-    .from(entrega)
-    .where(vigentes);
-  const repartos = await tx.select({ estado: reparto.estado, n: count() }).from(reparto).where(and(eq(reparto.jornadaId, j.id), ne(reparto.estado, "ANULADO"))).groupBy(reparto.estado);
-  const [pasos] = await tx
-    .select({ compra: jornada.compraIniciadaEn, preparacion: jornada.preparacionIniciadaEn, reparto: jornada.repartoIniciadoEn, cierre: jornada.cerradaEn })
-    .from(jornada)
-    .where(eq(jornada.id, j.id));
   return {
     fecha,
     estado: j.estado,
-    pasos: pasos!,
+    pasos: { compra: j.compra, preparacion: j.preparacion, reparto: j.reparto, cierre: j.cierre },
     pedidos: porEstado(pedidos),
     lista: {
       armada: Boolean(l),

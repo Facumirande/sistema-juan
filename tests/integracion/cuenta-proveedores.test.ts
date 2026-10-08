@@ -275,6 +275,32 @@ describe("pagar una compra con un toque y los datos para transferir (05/10/2026)
     await invariante(prov);
   });
 
+  it("pagar eligiendo las compras: el pago va justo a las elegidas; sin importe avisa qué falta (07/10/2026)", async () => {
+    const prov = await guardarProveedor(base.db, admin, { nombre: "Puesto de las Elegidas", condicionPagoHabitual: "CREDITO" });
+    const primera = (await comprar(prov, "CREDITO", 2000)).compraId;
+    const segunda = (await comprar(prov, "CREDITO", 5000)).compraId;
+    const tercera = (await comprar(prov, "CREDITO", 42000)).compraId;
+    // Con el importe vacío no se rompe: dice qué falta (antes daba "problema del sistema").
+    await expect(pagar(prov, "")).rejects.toThrow("Escribí cuánto se pagó.");
+    await expect(pagar(prov, "0")).rejects.toThrow("El pago tiene que ser mayor que $0.");
+    // Se eligen la primera y la tercera: el importe es su suma y cada una queda pagada. Los importes
+    // viajan como los manda la pantalla, con coma decimal.
+    await pagar(prov, "44.000", {
+      modo: "MANUAL",
+      asignaciones: [
+        { clave: `C:${primera}`, monto: "2000,00" },
+        { clave: `C:${tercera}`, monto: "42000,00" },
+      ],
+    });
+    expect([await estado(primera), await estado(segunda), await estado(tercera)]).toEqual([
+      ["PAGADA", "2000.00"],
+      ["PENDIENTE", "0.00"],
+      ["PAGADA", "42000.00"],
+    ]);
+    expect(await saldo(prov)).toBe("5000.00");
+    await invariante(prov);
+  });
+
   it("alias, CBU y titular se guardan normalizados; uno mal escrito no se guarda", async () => {
     const prov = await guardarProveedor(base.db, admin, {
       nombre: "Puesto con alias",

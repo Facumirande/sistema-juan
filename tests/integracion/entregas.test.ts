@@ -37,7 +37,7 @@ beforeAll(async () => {
 describe("preparación (04 §5.e, RN-111 a RN-119)", () => {
   it("iniciar crea una entrega por cliente con cada línea de pedido; la jornada pasa a PREPARANDO", async () => {
     const r = await iniciarPreparacion(j.base.db, j.admin, j.manana);
-    expect(r).toMatchObject({ entregasNuevas: 3, lineasNuevas: 14, sinLugar: 0, borradores: 0 });
+    expect(r).toMatchObject({ entregasNuevas: 3, lineasNuevas: 14, borradores: 0 });
     const p = await obtenerPreparacion(j.base.db, j.admin, j.manana);
     expect(p.jornada?.estado).toBe("PREPARANDO");
     for (const e of p.entregas) entregas[e.cliente] = e.id;

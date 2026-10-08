@@ -61,7 +61,7 @@ export function BotonAccion({
           )}
           {estado.enlace && (
             <Link href={estado.enlace.href} className="flex min-h-10 items-center justify-center rounded-lg border border-marca px-3 font-semibold">
-              {estado.enlace.texto} →
+              {estado.enlace.texto}{"\u00a0→"}
             </Link>
           )}
         </span>

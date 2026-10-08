@@ -25,7 +25,7 @@ export default async function ConfirmarEntrega({ params, searchParams }: PagePro
     <section className="flex max-w-xl flex-col gap-4">
       <Encabezado
         titulo={e.cliente}
-        volver={{ ruta: volver, texto: volver.startsWith("/viaje") ? "Logística" : volver === "/repartos/mios" ? "Mi reparto" : "Reparto" }}
+        volver={{ ruta: volver, texto: volver.startsWith("/viaje") ? "Recorrido" : volver === "/repartos/mios" ? "Mi reparto" : "Reparto" }}
         descripcion={[e.punto, e.direccion, e.horario && `recibe ${e.horario}`, e.orden && `parada ${e.orden}`].filter(Boolean).join(" · ")}
       />
       <div className="flex flex-wrap gap-2">
@@ -40,7 +40,7 @@ export default async function ConfirmarEntrega({ params, searchParams }: PagePro
       </div>
       {e.instrucciones && <p>📝 {e.instrucciones}</p>}
       {e.estado === "EN_REPARTO" || e.estado === "PREPARADA" ? (
-        <FormulariosConfirmacion entregaId={e.id} lineas={e.lineas} volver={volver} requiereFirma={e.requiereFirma} />
+        <FormulariosConfirmacion entregaId={e.id} lineas={e.lineas} volver={volver} requiereFirma={e.requiereFirma} recibieronAntes={e.recibieronAntes} />
       ) : (
         <Aviso>
           Esta entrega está {ESTADOS_ENTREGA[e.estado]?.toLowerCase()}

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { and, asc, count, desc, eq, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -11,7 +13,7 @@ import type { FechaISO } from "@/dominio/fechas/fechas";
 import { formatearNumeroDocumento } from "@/dominio/numeracion/numeracion";
 import { diferenciasDeLineas, juntarLineas, type LineaElegida } from "@/dominio/pedidos/carga";
 import { textoPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
-import { subtotalLinea, transicionPedidoPermitida, type AlertaPrecio, type EstadoPedido, type OrigenPrecioVenta } from "@/dominio/precios/venta";
+import { subtotalLinea, transicionPedidoPermitida, type AlertaPrecio, type EstadoPedido, type OrigenPrecioVenta, type PrecioVenta } from "@/dominio/precios/venta";
 import { aUnidadBase } from "@/dominio/unidades/unidades";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { marcarListaDesactualizada } from "@/modulos/compras/lista-compra";
@@ -291,49 +293,56 @@ export async function obtenerPedido(db: BaseDatos, authUserId: string, pedidoId:
 
 // ——— Cálculo y guardado de precios ———
 
+/** Los campos del precio estimado de una línea a partir del cálculo; con precio manual, se conserva (RN-090). */
+function estimadoDeLinea(i: { cantidadBase: string; precioManual: string | null }, r: PrecioVenta) {
+  const precio = i.precioManual ?? (r.precioUnitario ? aNumeric(r.precioUnitario, 4) : null);
+  const subtotal = precio ? aNumeric(subtotalLinea(i.cantidadBase, precio), 2) : null;
+  return {
+    subtotal,
+    campos: {
+      costoEstimado: r.costoUnitario ? aNumeric(r.costoUnitario, 4) : null,
+      origenCostoEstimado: r.origenCosto,
+      recargoEstimado: i.precioManual ? null : r.recargoAplicado ? aNumeric(r.recargoAplicado, 3) : null,
+      origenReglaEstimada: i.precioManual ? ("MANUAL" as const) : r.origen,
+      reglaPrecioId: i.precioManual ? null : r.reglaId,
+      precioEstimado: precio,
+      subtotalEstimado: subtotal,
+      alertas: i.precioManual ? [] : r.alertas,
+      precioCalculadoEn: sql`now()`,
+    },
+  };
+}
+
+const totalDe = (lineas: readonly { subtotal: string | null }[]) => aNumeric(sumar(lineas.flatMap((l) => (l.subtotal ? [l.subtotal] : []))), 2);
+
 /**
  * Recalcula el precio estimado de las líneas no canceladas de un pedido (RN-032, RN-088). Las
  * líneas con precio manual lo conservan (RN-090). Actualiza el total estimado.
  */
 export async function recalcularPedido(tx: Transaccion, pedidoId: string): Promise<void> {
-  const [p] = await tx
-    .select({ clienteId: pedido.clienteId, fecha: jornada.fecha })
-    .from(pedido)
-    .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
-    .where(eq(pedido.id, pedidoId));
+  const [[p], items] = await Promise.all([
+    tx
+      .select({ clienteId: pedido.clienteId, fecha: jornada.fecha })
+      .from(pedido)
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .where(eq(pedido.id, pedidoId)),
+    tx.select().from(pedidoItem).where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false))),
+  ]);
   if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
-  const items = await tx.select().from(pedidoItem).where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false)));
   const precios = await calcularPrecios(tx, {
     clienteId: p.clienteId,
     fecha: p.fecha,
     lineas: items.map((i) => ({ productoId: i.productoId, presentacionId: i.presentacionId })),
   });
-
-  const subtotales = [];
-  for (const [n, i] of items.entries()) {
-    const r = precios[n]!;
-    const precio = i.precioManual ?? (r.precioUnitario ? aNumeric(r.precioUnitario, 4) : null);
-    const subtotal = precio ? aNumeric(subtotalLinea(i.cantidadBase, precio), 2) : null;
-    if (subtotal) subtotales.push(subtotal);
-    await tx
-      .update(pedidoItem)
-      .set({
-        costoEstimado: r.costoUnitario ? aNumeric(r.costoUnitario, 4) : null,
-        origenCostoEstimado: r.origenCosto,
-        recargoEstimado: i.precioManual ? null : r.recargoAplicado ? aNumeric(r.recargoAplicado, 3) : null,
-        origenReglaEstimada: i.precioManual ? "MANUAL" : r.origen,
-        reglaPrecioId: i.precioManual ? null : r.reglaId,
-        precioEstimado: precio,
-        subtotalEstimado: subtotal,
-        alertas: i.precioManual ? [] : r.alertas,
-        precioCalculadoEn: sql`now()`,
-      })
-      .where(eq(pedidoItem.id, i.id));
-  }
-  await tx
-    .update(pedido)
-    .set({ totalEstimado: aNumeric(sumar(subtotales), 2) })
-    .where(eq(pedido.id, pedidoId));
+  const lineas = items.map((i, n) => ({ id: i.id, ...estimadoDeLinea(i, precios[n]!) }));
+  // Las líneas y el total se guardan juntos (una ida a la base).
+  await Promise.all([
+    ...lineas.map((l) => tx.update(pedidoItem).set(l.campos).where(eq(pedidoItem.id, l.id))),
+    tx
+      .update(pedido)
+      .set({ totalEstimado: totalDe(lineas) })
+      .where(eq(pedido.id, pedidoId)),
+  ]);
 }
 
 /**
@@ -361,7 +370,8 @@ export async function recalcularPedidosPendientes(tx: Transaccion, filtro: { pro
         conProducto,
       ),
     );
-  for (const p of pendientes) await recalcularPedido(tx, p.id);
+  // Todos a la vez: cada pedido es independiente, así que no suman idas a la base.
+  await Promise.all(pendientes.map((p) => recalcularPedido(tx, p.id)));
   return pendientes.length;
 }
 
@@ -377,24 +387,26 @@ const esquemaNuevoPedido = z.object({
 });
 
 async function clienteParaPedido(tx: Transaccion, clienteId: string, puntoEntregaId: string | null | undefined) {
-  const [cli] = await tx.select({ nombre: cliente.nombre, activo: cliente.activo }).from(cliente).where(eq(cliente.id, clienteId));
+  const [[cli], puntos] = await Promise.all([
+    tx.select({ nombre: cliente.nombre, activo: cliente.activo, requiereOC: cliente.requiereOrdenCompra }).from(cliente).where(eq(cliente.id, clienteId)),
+    tx
+      .select({ id: puntoEntrega.id, esPrincipal: puntoEntrega.esPrincipal })
+      .from(puntoEntrega)
+      .where(and(eq(puntoEntrega.clienteId, clienteId), eq(puntoEntrega.activo, true))),
+  ]);
   if (!cli) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el cliente.");
   if (!cli.activo) {
     throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} está dado de baja: para cargarle pedidos, reactivalo en su ficha.`, {
       enlace: { href: `/clientes/${clienteId}`, texto: "Abrir la ficha del cliente" },
     });
   }
-  const puntos = await tx
-    .select({ id: puntoEntrega.id, esPrincipal: puntoEntrega.esPrincipal })
-    .from(puntoEntrega)
-    .where(and(eq(puntoEntrega.clienteId, clienteId), eq(puntoEntrega.activo, true)));
   const punto = puntoEntregaId ? puntos.find((x) => x.id === puntoEntregaId) : (puntos.find((x) => x.esPrincipal) ?? puntos[0]);
   if (!punto) {
     throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} no tiene cargado dónde se le entrega: agregale una dirección en su ficha y volvé a intentar (RN-010).`, {
       enlace: { href: `/clientes/${clienteId}`, texto: "Cargar la dirección" },
     });
   }
-  return { nombre: cli.nombre, puntoId: punto.id };
+  return { nombre: cli.nombre, puntoId: punto.id, requiereOC: cli.requiereOC };
 }
 
 /** Crea un pedido en BORRADOR (RN-017). Avisa si el cliente ya tiene otro para ese día y lugar (RN-022). */
@@ -407,18 +419,21 @@ export async function crearPedido(
   return ejecutarComoUsuario(db, authUserId, "pedidos.crear", (tx, c) => crearEnTransaccion(tx, c, d));
 }
 
-async function crearEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.output<typeof esquemaNuevoPedido>): Promise<{ pedidoId: string; numero: string; duplicadoDe: string | null }> {
-  const j = await jornadaParaPedidos(tx, c, d.fecha);
-  const cli = await clienteParaPedido(tx, d.clienteId, d.puntoEntregaId);
-  const [existente] = await tx
+/** Otro pedido del cliente para ese día y lugar (RN-022), si lo hay. */
+const otroDelDia = (tx: Transaccion, jornadaId: string, clienteId: string, puntoId: string) =>
+  tx
     .select({ numero: pedido.numero })
     .from(pedido)
-    .where(and(eq(pedido.jornadaId, j.id), eq(pedido.clienteId, d.clienteId), eq(pedido.puntoEntregaId, cli.puntoId), ne(pedido.estado, "CANCELADO")))
+    .where(and(eq(pedido.jornadaId, jornadaId), eq(pedido.clienteId, clienteId), eq(pedido.puntoEntregaId, puntoId), ne(pedido.estado, "CANCELADO")))
     .limit(1);
-  const { numero, visible } = await siguienteNumero(tx, "PEDIDO");
-  const [nuevo] = await tx
-    .insert(pedido)
-    .values({
+
+async function crearEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.output<typeof esquemaNuevoPedido>): Promise<{ pedidoId: string; numero: string; duplicadoDe: string | null }> {
+  const [j, cli] = await Promise.all([jornadaParaPedidos(tx, c, d.fecha), clienteParaPedido(tx, d.clienteId, d.puntoEntregaId)]);
+  const [[existente], { numero, visible }] = await Promise.all([otroDelDia(tx, j.id, d.clienteId, cli.puntoId), siguienteNumero(tx, "PEDIDO")]);
+  const pedidoId = randomUUID();
+  await Promise.all([
+    tx.insert(pedido).values({
+      id: pedidoId,
       empresaId: c.empresaId,
       numero,
       jornadaId: j.id,
@@ -429,24 +444,24 @@ async function crearEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.outp
       observaciones: d.observaciones,
       creadoPor: c.usuarioId,
       actualizadoPor: c.usuarioId,
-    })
-    .returning({ id: pedido.id });
-  await auditar(tx, {
-    empresaId: c.empresaId,
-    usuarioId: c.usuarioId,
-    accion: "CREAR",
-    entidad: "pedido",
-    entidadId: nuevo!.id,
-    resumen: `${visible} de ${cli.nombre} para el ${d.fecha}.`,
-  });
-  await registrarActividad(tx, c, {
-    accion: "CREAR",
-    entidadTipo: "PEDIDO",
-    entidadId: nuevo!.id,
-    jornadaId: j.id,
-    resumen: `cargó el pedido ${visible} de ${cli.nombre} para el ${diaCorto(d.fecha)}`,
-  });
-  return { pedidoId: nuevo!.id, numero: visible, duplicadoDe: existente ? numeroPedido(existente.numero) : null };
+    }),
+    auditar(tx, {
+      empresaId: c.empresaId,
+      usuarioId: c.usuarioId,
+      accion: "CREAR",
+      entidad: "pedido",
+      entidadId: pedidoId,
+      resumen: `${visible} de ${cli.nombre} para el ${d.fecha}.`,
+    }),
+    registrarActividad(tx, c, {
+      accion: "CREAR",
+      entidadTipo: "PEDIDO",
+      entidadId: pedidoId,
+      jornadaId: j.id,
+      resumen: `cargó el pedido ${visible} de ${cli.nombre} para el ${diaCorto(d.fecha)}`,
+    }),
+  ]);
+  return { pedidoId, numero: visible, duplicadoDe: existente ? numeroPedido(existente.numero) : null };
 }
 
 const ETAPA_EN_PALABRAS: Partial<Record<EstadoPedido, string>> = {
@@ -693,16 +708,20 @@ export async function confirmarPedido(db: BaseDatos, authUserId: string, pedidoI
 async function confirmarEnTransaccion(tx: Transaccion, c: ContextoUsuario, pedidoId: string): Promise<void> {
   const p = await pedidoParaModificar(tx, c, pedidoId);
   if (!transicionPedidoPermitida(p.pedido.estado, "CONFIRMADO")) throw new ErrorDeNegocio("TRANSICION_INVALIDA", "El pedido ya está confirmado.");
-  const [lineas] = await tx
-    .select({ n: count() })
-    .from(pedidoItem)
-    .where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false)));
+  // Lo que hay que revisar sale junto (una ida a la base).
+  const [[lineas], [cli], [punto]] = await Promise.all([
+    tx
+      .select({ n: count() })
+      .from(pedidoItem)
+      .where(and(eq(pedidoItem.pedidoId, pedidoId), eq(pedidoItem.cancelado, false))),
+    tx.select({ nombre: cliente.nombre, requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId)),
+    tx.select({ activo: puntoEntrega.activo }).from(puntoEntrega).where(eq(puntoEntrega.id, p.pedido.puntoEntregaId)),
+  ]);
   if (Number(lineas?.n ?? 0) === 0) {
     throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no tiene productos: agregale al menos uno (RN-018).", {
       enlace: { href: `/pedidos/${pedidoId}/cambiar`, texto: "Agregar productos" },
     });
   }
-  const [cli] = await tx.select({ nombre: cliente.nombre, requiereOC: cliente.requiereOrdenCompra, activo: cliente.activo }).from(cliente).where(eq(cliente.id, p.pedido.clienteId));
   if (!cli?.activo) {
     throw new ErrorDeNegocio("VALIDACION", "Este cliente está dado de baja: reactivalo en su ficha para poder seguir con el pedido (RN-012).", {
       enlace: { href: `/clientes/${p.pedido.clienteId}`, texto: "Abrir la ficha del cliente" },
@@ -713,7 +732,6 @@ async function confirmarEnTransaccion(tx: Transaccion, c: ContextoUsuario, pedid
       enlace: { href: `/pedidos/${pedidoId}`, texto: "Cargar el número de orden" },
     });
   }
-  const [punto] = await tx.select({ activo: puntoEntrega.activo }).from(puntoEntrega).where(eq(puntoEntrega.id, p.pedido.puntoEntregaId));
   if (!punto?.activo) {
     throw new ErrorDeNegocio("VALIDACION", "El lugar de entrega de este pedido fue dado de baja: elegí otro en el pedido (RN-010).", {
       enlace: { href: `/pedidos/${pedidoId}`, texto: "Elegir otro lugar" },
@@ -722,34 +740,36 @@ async function confirmarEnTransaccion(tx: Transaccion, c: ContextoUsuario, pedid
   if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para seguir con sus pedidos, primero reabrilo desde “Cierre del día”.");
   if (p.estadoJornada === "PREPARANDO" || p.estadoJornada === "REPARTIENDO") c.permisos.exigir("pedidos.editar_en_curso");
 
-  await tx
-    .update(pedido)
-    .set({
-      estado: "CONFIRMADO",
-      esTardio: p.estadoJornada !== "ABIERTA",
-      confirmadoEn: sql`now()`,
-      confirmadoPor: c.usuarioId,
-      actualizadoPor: c.usuarioId,
-    })
-    .where(eq(pedido.id, pedidoId));
+  await Promise.all([
+    tx
+      .update(pedido)
+      .set({
+        estado: "CONFIRMADO",
+        esTardio: p.estadoJornada !== "ABIERTA",
+        confirmadoEn: sql`now()`,
+        confirmadoPor: c.usuarioId,
+        actualizadoPor: c.usuarioId,
+      })
+      .where(eq(pedido.id, pedidoId)),
+    auditar(tx, {
+      empresaId: c.empresaId,
+      usuarioId: c.usuarioId,
+      accion: "CAMBIO_ESTADO",
+      entidad: "pedido",
+      entidadId: pedidoId,
+      resumen: `${numeroPedido(p.pedido.numero)} confirmado.`,
+      datosAntes: { estado: p.pedido.estado },
+      datosDespues: { estado: "CONFIRMADO" },
+    }),
+    registrarActividad(tx, c, {
+      accion: "CONFIRMAR",
+      entidadTipo: "PEDIDO",
+      entidadId: pedidoId,
+      jornadaId: p.pedido.jornadaId,
+      resumen: `confirmó el pedido ${numeroPedido(p.pedido.numero)} de ${cli.nombre}`,
+    }),
+  ]);
   await recalcularPedido(tx, pedidoId);
-  await auditar(tx, {
-    empresaId: c.empresaId,
-    usuarioId: c.usuarioId,
-    accion: "CAMBIO_ESTADO",
-    entidad: "pedido",
-    entidadId: pedidoId,
-    resumen: `${numeroPedido(p.pedido.numero)} confirmado.`,
-    datosAntes: { estado: p.pedido.estado },
-    datosDespues: { estado: "CONFIRMADO" },
-  });
-  await registrarActividad(tx, c, {
-    accion: "CONFIRMAR",
-    entidadTipo: "PEDIDO",
-    entidadId: pedidoId,
-    jornadaId: p.pedido.jornadaId,
-    resumen: `confirmó el pedido ${numeroPedido(p.pedido.numero)} de ${cli.nombre}`,
-  });
 }
 
 /** RN-028: solo desde BORRADOR, CONFIRMADO o EN_COMPRA; con motivo salvo en BORRADOR. */
@@ -1080,24 +1100,51 @@ const lineaElegida = (l: z.output<typeof esquemaLineaElegida>): LineaElegida => 
   observaciones: l.observaciones ?? null,
 });
 
+/**
+ * El producto (y el envase) de cada línea, en dos consultas que salen juntas, con las mismas
+ * validaciones que `productoParaLinea`: activo, y el envase tiene que servir para vender (RN-019).
+ */
+async function productosParaLineas(tx: Transaccion, lineas: readonly { productoId: string; presentacionId: string | null | undefined }[]) {
+  const presentacionIds = lineas.map((l) => l.presentacionId).filter((x): x is string => Boolean(x));
+  const [productos, presentaciones] = await Promise.all([
+    tx
+      .select({ id: producto.id, nombre: producto.nombre, activo: producto.activo, admiteFraccion: producto.admiteFraccion, unidadBase: producto.unidadBase })
+      .from(producto)
+      .where(lineas.length ? inArray(producto.id, lineas.map((l) => l.productoId)) : sql`false`),
+    tx
+      .select({ id: presentacion.id, productoId: presentacion.productoId, factor: presentacion.factorABase, activo: presentacion.activo, venta: presentacion.usableEnVenta })
+      .from(presentacion)
+      .where(presentacionIds.length ? inArray(presentacion.id, presentacionIds) : sql`false`),
+  ]);
+  return lineas.map((l) => {
+    const prod = productos.find((x) => x.id === l.productoId);
+    if (!prod) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el producto.");
+    if (!prod.activo) throw new ErrorDeNegocio("VALIDACION", `${prod.nombre} está dado de baja: sacalo del pedido o reactivalo en Productos.`);
+    if (!l.presentacionId) return { ...prod, factor: "1" };
+    const pr = presentaciones.find((x) => x.id === l.presentacionId && x.productoId === l.productoId);
+    if (!pr?.activo || !pr.venta) throw new ErrorDeNegocio("VALIDACION", `${prod.nombre}: ese envase ya no se usa para vender. Elegí otro, por ejemplo por ${prod.unidadBase === "KG" ? "kilo" : "unidad"} (RN-019).`);
+    return { ...prod, factor: pr.factor };
+  });
+}
+
 async function insertarLineas(tx: Transaccion, c: ContextoUsuario, pedidoId: string, lineas: readonly LineaElegida[]): Promise<void> {
-  const [ultima] = await tx.select({ n: max(pedidoItem.linea) }).from(pedidoItem).where(eq(pedidoItem.pedidoId, pedidoId));
-  let numero = ultima?.n ?? 0;
-  for (const l of lineas) {
-    const prod = await productoParaLinea(tx, l.productoId, l.presentacionId);
-    await tx.insert(pedidoItem).values({
+  if (lineas.length === 0) return;
+  const [[ultima], productos] = await Promise.all([tx.select({ n: max(pedidoItem.linea) }).from(pedidoItem).where(eq(pedidoItem.pedidoId, pedidoId)), productosParaLineas(tx, lineas)]);
+  const desde = ultima?.n ?? 0;
+  await tx.insert(pedidoItem).values(
+    lineas.map((l, n) => ({
       empresaId: c.empresaId,
       pedidoId,
-      linea: ++numero,
+      linea: desde + n + 1,
       productoId: l.productoId,
       presentacionId: l.presentacionId,
       cantidad: aNumeric(l.cantidad, 3),
-      cantidadBase: aNumeric(cantidadBaseDe(l.cantidad, prod), 3),
+      cantidadBase: aNumeric(cantidadBaseDe(l.cantidad, productos[n]!), 3),
       observaciones: l.observaciones,
       creadoPor: c.usuarioId,
       actualizadoPor: c.usuarioId,
-    });
-  }
+    })),
+  );
 }
 
 async function resumenDeCarga(tx: Transaccion, c: ContextoUsuario, pedidoId: string, duplicadoDe: string | null): Promise<PedidoCargado> {
@@ -1128,21 +1175,95 @@ export async function cargarPedido(db: BaseDatos, authUserId: string, datos: z.i
   return ejecutarComoUsuario(db, authUserId, "pedidos.crear", (tx, c) => cargarEnTransaccion(tx, c, d));
 }
 
+/**
+ * Es lo que más se hace en el día, así que va en tres idas a la base: lo que hay que mirar (día,
+ * cliente, productos), el número con los precios, y todo lo que se guarda junto (el pedido ya con
+ * su estado, sus líneas con el precio estimado y el registro de quién lo cargó).
+ */
 async function cargarEnTransaccion(tx: Transaccion, c: ContextoUsuario, d: z.output<typeof esquemaCargaPedido>): Promise<PedidoCargado> {
   if (d.confirmar) c.permisos.exigir("pedidos.confirmar");
-  const nuevo = await crearEnTransaccion(tx, c, {
-    fecha: d.fecha,
-    clienteId: d.clienteId,
-    puntoEntregaId: d.puntoEntregaId,
-    canal: null,
-    referenciaCliente: null,
-    observaciones: d.observaciones,
+  const lineas = juntarLineas(d.lineas.map(lineaElegida));
+  const [j, cli, productos] = await Promise.all([jornadaParaPedidos(tx, c, d.fecha), clienteParaPedido(tx, d.clienteId, d.puntoEntregaId), productosParaLineas(tx, lineas)]);
+  if (d.confirmar && cli.requiereOC) {
+    throw new ErrorDeNegocio("VALIDACION", `${cli.nombre} trabaja con orden de compra: cargá el número de la orden en el pedido antes de mandarlo a la lista de compras (RN-017).`, {
+      enlace: { href: `/clientes/${d.clienteId}`, texto: "Abrir la ficha del cliente" },
+    });
+  }
+  const [[existente], { numero, visible }, precios] = await Promise.all([
+    otroDelDia(tx, j.id, d.clienteId, cli.puntoId),
+    siguienteNumero(tx, "PEDIDO"),
+    calcularPrecios(tx, { clienteId: d.clienteId, fecha: d.fecha, lineas: lineas.map((l) => ({ productoId: l.productoId, presentacionId: l.presentacionId })) }),
+  ]);
+  const pedidoId = randomUUID();
+  const items = lineas.map((l, n) => {
+    const cantidadBase = aNumeric(cantidadBaseDe(l.cantidad, productos[n]!), 3);
+    const estimado = estimadoDeLinea({ cantidadBase, precioManual: null }, precios[n]!);
+    return {
+      subtotal: estimado.subtotal,
+      valores: {
+        empresaId: c.empresaId,
+        pedidoId,
+        linea: n + 1,
+        productoId: l.productoId,
+        presentacionId: l.presentacionId,
+        cantidad: aNumeric(l.cantidad, 3),
+        cantidadBase,
+        observaciones: l.observaciones,
+        creadoPor: c.usuarioId,
+        actualizadoPor: c.usuarioId,
+        ...estimado.campos,
+      },
+    };
   });
-  await insertarLineas(tx, c, nuevo.pedidoId, juntarLineas(d.lineas.map(lineaElegida)));
-  await tx.update(pedido).set({ prioridad: d.prioridad, entregaDesde: d.entregaDesde, entregaHasta: d.entregaHasta }).where(eq(pedido.id, nuevo.pedidoId));
-  await recalcularPedido(tx, nuevo.pedidoId);
-  if (d.confirmar) await confirmarEnTransaccion(tx, c, nuevo.pedidoId);
-  return resumenDeCarga(tx, c, nuevo.pedidoId, nuevo.duplicadoDe);
+  const total = totalDe(items);
+  const estado: EstadoPedido = d.confirmar ? "CONFIRMADO" : "BORRADOR";
+  await Promise.all([
+    tx.insert(pedido).values({
+      id: pedidoId,
+      empresaId: c.empresaId,
+      numero,
+      jornadaId: j.id,
+      clienteId: d.clienteId,
+      puntoEntregaId: cli.puntoId,
+      observaciones: d.observaciones,
+      prioridad: d.prioridad,
+      entregaDesde: d.entregaDesde,
+      entregaHasta: d.entregaHasta,
+      totalEstimado: total,
+      estado,
+      // Guardado ya confirmado (no hay confirmación a la vista): tardío si el día ya se está comprando o preparando.
+      ...(d.confirmar ? { esTardio: j.estado !== "ABIERTA", confirmadoEn: sql`now()`, confirmadoPor: c.usuarioId } : {}),
+      creadoPor: c.usuarioId,
+      actualizadoPor: c.usuarioId,
+    }),
+    tx.insert(pedidoItem).values(items.map((i) => i.valores)),
+    auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "CREAR", entidad: "pedido", entidadId: pedidoId, resumen: `${visible} de ${cli.nombre} para el ${d.fecha}.` }),
+    registrarActividad(tx, c, { accion: "CREAR", entidadTipo: "PEDIDO", entidadId: pedidoId, jornadaId: j.id, resumen: `cargó el pedido ${visible} de ${cli.nombre} para el ${diaCorto(d.fecha)}` }),
+    ...(d.confirmar
+      ? [
+          auditar(tx, {
+            empresaId: c.empresaId,
+            usuarioId: c.usuarioId,
+            accion: "CAMBIO_ESTADO",
+            entidad: "pedido",
+            entidadId: pedidoId,
+            resumen: `${visible} confirmado.`,
+            datosAntes: { estado: "BORRADOR" },
+            datosDespues: { estado: "CONFIRMADO" },
+          }),
+          registrarActividad(tx, c, { accion: "CONFIRMAR", entidadTipo: "PEDIDO", entidadId: pedidoId, jornadaId: j.id, resumen: `confirmó el pedido ${visible} de ${cli.nombre}` }),
+        ]
+      : []),
+  ]);
+  return {
+    pedidoId,
+    numero: visible,
+    fecha: d.fecha,
+    cliente: cli.nombre,
+    estado,
+    duplicadoDe: existente ? numeroPedido(existente.numero) : null,
+    totalEstimado: c.permisos.tiene("precios.ver_venta") ? total : null,
+  };
 }
 
 /**

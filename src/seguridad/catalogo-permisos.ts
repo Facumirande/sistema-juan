@@ -76,9 +76,9 @@ export const CATALOGO_PERMISOS = {
   "facturacion.emitir": { clase: "V", descripcion: "Emitir comprobantes internos." },
   "facturacion.anular": { clase: "V", descripcion: "Anular comprobantes con motivo." },
   "facturacion.exportar": { clase: "V", descripcion: "Exportar ventas y comprobantes para el contador." },
-  "cobranzas.ver": { clase: "F", propuesto: true, descripcion: "Ver cuenta corriente de clientes y cobros." },
-  "cobranzas.registrar": { clase: "F", propuesto: true, descripcion: "Registrar cobros e imputarlos." },
-  "cobranzas.anular": { clase: "F", propuesto: true, descripcion: "Anular cobros con motivo." },
+  "cobranzas.ver": { clase: "F", descripcion: "Ver lo que falta cobrarle a cada cliente y sus cobros (A cobrar)." },
+  "cobranzas.registrar": { clase: "F", descripcion: "Anotar cobros a clientes y lo que debían de antes." },
+  "cobranzas.anular": { clase: "F", descripcion: "Anular cobros con motivo." },
   "stock.ver": { clase: "O", propuesto: true, descripcion: "Ver sobrantes y mermas." },
   "stock.ajustar": { clase: "O", propuesto: true, descripcion: "Registrar sobrantes, mermas y devoluciones." },
   // 4.7 Reportes, configuración, usuarios y auditoría

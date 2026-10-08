@@ -56,7 +56,7 @@ export default async function HojaDePreparacion({ params, searchParams }: PagePr
           <section key={h.id} className="flex break-after-page flex-col gap-2">
             <header className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-texto pb-1">
               <h1 className="text-lg font-bold">HOJA DE PREPARACIÓN</h1>
-              <p>Entrega del {fechaConDia(fecha)}</p>
+              <p className="text-xl font-extrabold first-letter:uppercase">{fechaConDia(fecha)}</p>
               <p className="w-full font-semibold">
                 {h.cliente} — {h.punto} · {h.numero}
                 {h.reparto && ` · ${h.reparto}${h.orden ? `, parada ${h.orden}` : ""}`}

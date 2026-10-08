@@ -134,11 +134,21 @@
   --color-navegacion: var(--navegacion);
   --shadow-tarjeta: var(--tarjeta-sombra);
   --font-sans: var(--font-geist-sans);
+  /* Los textos chicos no bajan de unos 15 px: todo se tiene que leer de un vistazo. */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.95rem;
+  --text-sm--line-height: 1.45;
 }
 
-/* 01 §16: texto base de 16 px en todas las pantallas. */
+/* 01 §16: texto base grande (pedido del usuario, 07/10/2026: toda la letra bastante más grande). */
 html {
-  font-size: 16px;
+  font-size: 17px;
+}
+@media (min-width: 640px) {
+  html {
+    font-size: 18px;
+  }
 }
 
 body {
@@ -353,4 +363,27 @@ button:disabled {
   background: var(--navegacion);
   border: 3px solid #fff;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}
+
+/* Listas que se recorren dentro de un recuadro: la barra de scroll siempre a la vista. */
+/* Un casillero obligatorio que quedó vacío al intentar guardar: en rojo hasta que se completa. */
+:is(input, select, textarea)[aria-invalid="true"] {
+  border-color: var(--error) !important;
+  outline: 2px solid var(--error);
+  outline-offset: 1px;
+}
+
+.barra-visible {
+  scrollbar-width: auto;
+  scrollbar-color: var(--marca) transparent;
+  scrollbar-gutter: stable;
+}
+.barra-visible::-webkit-scrollbar {
+  width: 12px;
+}
+.barra-visible::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: var(--marca);
+  background-clip: content-box;
 }

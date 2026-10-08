@@ -133,19 +133,19 @@ describe("balance y registro de movimientos", () => {
     expect(meses.length).toBeLessThanOrEqual(24);
 
     const libro = await libroDelMes(j.base.db, j.admin, mes, j.manana);
-    expect(libro.hojas.map((h) => h.nombre)).toEqual(["Resumen", "Gráficos", "Por día", "Clientes", "Productos"]);
+    expect(libro.hojas.map((h) => h.nombre)).toEqual(["Resumen", "Gráficos", "Por día", "Clientes", "Productos", "A cobrar", "A pagar", "Gastos e ingresos"]);
     const [resumen, graficos, porDia, clientes] = libro.hojas;
-    expect(resumen!.filas.find((x) => x[0] === "Se compró (mercadería)")![1]).toEqual({ numero: "653050" });
+    expect(resumen!.filas.find((x) => x[0] === "Compras (mercadería retirada)")![1]).toEqual({ numero: "653050" });
     expect(resumen!.filas.find((x) => x[0] === "Se vendió")![1]).toEqual({ numero: dec(meses[0]!.vendido!).toString() });
     // Un renglón por día del mes, hasta hoy, y de esas columnas salen los tres gráficos.
-    expect(porDia!.columnas).toEqual(["Día", "Vendido", "Comprado", "Ganancia", "Deuda con proveedores"]);
+    expect(porDia!.columnas).toEqual(["Día", "Vendido", "Comprado", "Ganancia", "A pagar", "Entró", "Salió"]);
     expect(porDia!.filas).toHaveLength(Number(j.manana.slice(8, 10)));
     expect(porDia!.filas.at(-1)![2]).toEqual({ numero: "653050" });
-    expect(graficos!.graficos!.map((g) => g.series.map((x) => x.columna))).toEqual([[1, 2], [3], [4]]);
+    expect(graficos!.graficos!.map((g) => g.series.map((x) => x.columna))).toEqual([[1, 2], [3], [4], [5, 6]]);
     expect(clientes!.filas).toHaveLength(3);
 
     const archivos = unzipSync(planillaXlsx(libro.hojas));
-    expect(Object.keys(archivos).filter((n) => n.startsWith("xl/charts/")).sort()).toEqual(["xl/charts/chart1.xml", "xl/charts/chart2.xml", "xl/charts/chart3.xml", "xl/charts/chart4.xml", "xl/charts/chart5.xml"]);
+    expect(Object.keys(archivos).filter((n) => n.startsWith("xl/charts/")).sort()).toEqual(Array.from({ length: 8 }, (_, n) => `xl/charts/chart${n + 1}.xml`));
     const grafico = strFromU8(archivos["xl/charts/chart1.xml"]!);
     expect(grafico).toContain(`'Por día'!$B$2:$B$${porDia!.filas.length + 1}`);
     expect(grafico).toContain("<c:v>Vendido</c:v>");
@@ -154,9 +154,9 @@ describe("balance y registro de movimientos", () => {
     expect(bienFormado("<a><b x=\"1\"/></a>") && !bienFormado("<a><b></a>")).toBe(true);
     for (const [nombre, bytes] of Object.entries(archivos)) expect([nombre, bienFormado(strFromU8(bytes))]).toEqual([nombre, true]);
     // Cada parte del archivo está declarada y enlazada: el gráfico, su dibujo y la hoja que lo muestra.
-    expect(strFromU8(archivos["[Content_Types].xml"]!).match(/drawingml\.chart\+xml/g)).toHaveLength(5);
+    expect(strFromU8(archivos["[Content_Types].xml"]!).match(/drawingml\.chart\+xml/g)).toHaveLength(8);
     expect(strFromU8(archivos["xl/worksheets/_rels/sheet2.xml.rels"]!)).toContain("../drawings/drawing2.xml");
-    expect(strFromU8(archivos["xl/drawings/_rels/drawing2.xml.rels"]!).match(/charts\/chart\d\.xml/g)).toEqual(["charts/chart1.xml", "charts/chart2.xml", "charts/chart3.xml"]);
+    expect(strFromU8(archivos["xl/drawings/_rels/drawing2.xml.rels"]!).match(/charts\/chart\d\.xml/g)).toEqual(["charts/chart1.xml", "charts/chart2.xml", "charts/chart3.xml", "charts/chart4.xml"]);
     // El mismo mes da siempre el mismo archivo.
     expect(planillaXlsx((await libroDelMes(j.base.db, j.admin, mes, j.manana)).hojas)).toEqual(planillaXlsx(libro.hojas));
 

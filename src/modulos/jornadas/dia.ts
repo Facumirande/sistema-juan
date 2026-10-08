@@ -7,7 +7,8 @@ import { etapasDelMenu, type EtapaDelMenu } from "@/dominio/jornadas/etapas";
 import { pasosDelDia, type DatosDelDia, type PasosDelDia } from "@/dominio/jornadas/pasos";
 import type { EstadoJornada } from "@/dominio/precios/venta";
 import { panelEnTransaccion, type PanelJornada } from "@/modulos/entregas/panel";
-import { hoyYSugerida } from "@/modulos/pedidos/jornadas";
+import { hoyYSugeridaDe } from "@/modulos/pedidos/jornadas";
+import { tableroEnTransaccion, type TableroDePedidos } from "@/modulos/pedidos/tablero";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 
 // Pantalla "Hoy": el día de trabajo paso a paso (pedidos → lista → compras → preparación →
@@ -27,6 +28,8 @@ export interface DiaDeTrabajo {
   sugerida: FechaISO;
   panel: PanelJornada;
   pasos: PasosDelDia;
+  /** El tablero de pedidos de ese día, si se pidió junto (y la persona puede ver pedidos). */
+  tablero: TableroDePedidos | null;
   /** Solo con los permisos de precios: lo pedido y lo entregado a precio de venta, y lo comprado. */
   plata: { pedido: string | null; comprado: string | null; entregado: string | null };
   dias: DiaCercano[];
@@ -40,6 +43,7 @@ export function datosDelPanel(p: PanelJornada): DatosDelDia {
   return {
     jornada: p.estado,
     pedidos: { confirmados: suma(p.pedidos, "CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO", "EN_REPARTO", "ENTREGADO"), borradores: suma(p.pedidos, "BORRADOR") },
+    sinPreparar: suma(p.pedidos, "CONFIRMADO", "EN_COMPRA"),
     lista: { armada: p.lista.armada, desactualizada: p.lista.desactualizada, lineas: p.lista.lineas, resueltas: p.lista.compradas, fueraDeLista: p.lista.fueraDeLista },
     compras: p.compras,
     entregas: {
@@ -100,33 +104,55 @@ async function diasCercanos(tx: Transaccion, hoy: FechaISO, sugerida: FechaISO, 
   return cercanos.slice(0, 8);
 }
 
-export async function diaDeTrabajo(db: BaseDatos, authUserId: string, pedida?: string | null): Promise<DiaDeTrabajo> {
+/**
+ * El día de trabajo. Con `conTablero` trae también el tablero de pedidos en la misma transacción:
+ * así toda la pantalla principal sale con pocas idas a la base.
+ */
+export async function diaDeTrabajo(db: BaseDatos, authUserId: string, pedida?: string | null, opciones: { conTablero?: boolean } = {}): Promise<DiaDeTrabajo> {
   return ejecutarComoUsuario(db, authUserId, "jornada.ver", async (tx, c) => {
-    const { hoy, sugerida } = await hoyYSugerida(tx);
+    const { hoy, sugerida } = hoyYSugeridaDe(c);
     const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await diaParaTrabajar(tx, hoy, sugerida);
-    const panel = await panelEnTransaccion(tx, fecha);
-    const plata: DiaDeTrabajo["plata"] = { pedido: null, comprado: null, entregado: null };
-    if (panel.estado) {
-      const [j] = await tx.select({ id: jornada.id }).from(jornada).where(eq(jornada.fecha, fecha));
-      if (c.permisos.tiene("precios.ver_venta")) {
-        const [p] = await tx.select({ total: sum(pedido.totalEstimado) }).from(pedido).where(and(eq(pedido.jornadaId, j!.id), ne(pedido.estado, "CANCELADO"), ne(pedido.estado, "BORRADOR")));
-        const [e] = await tx.select({ total: sum(entrega.importeTotal) }).from(entrega).where(and(eq(entrega.jornadaId, j!.id), eq(entrega.estado, "ENTREGADA")));
-        plata.pedido = p?.total ?? "0";
-        plata.entregado = e?.total ?? "0";
-      }
-      if (c.permisos.tiene("precios.ver_costos")) {
-        const [k] = await tx.select({ total: sum(compra.total) }).from(compra).where(and(eq(compra.jornadaId, j!.id), eq(compra.estado, "REGISTRADA")));
-        plata.comprado = k?.total ?? "0";
-      }
-    }
-    return { fecha, hoy, sugerida, panel, pasos: pasosDelDia(datosDelPanel(panel)), plata, dias: await diasCercanos(tx, hoy, sugerida, fecha) };
+    const verVenta = c.permisos.tiene("precios.ver_venta");
+    const verCostos = c.permisos.tiene("precios.ver_costos");
+    const nada = Promise.resolve([] as { total: string | null }[]);
+    // Lo que no depende entre sí sale junto: el panel, la plata del día, los días cercanos y el tablero.
+    const [panel, [p], [e], [k], dias, tablero] = await Promise.all([
+      panelEnTransaccion(tx, fecha),
+      verVenta
+        ? tx
+            .select({ total: sum(pedido.totalEstimado) })
+            .from(pedido)
+            .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+            .where(and(eq(jornada.fecha, fecha), ne(pedido.estado, "CANCELADO"), ne(pedido.estado, "BORRADOR")))
+        : nada,
+      verVenta
+        ? tx
+            .select({ total: sum(entrega.importeTotal) })
+            .from(entrega)
+            .innerJoin(jornada, eq(jornada.id, entrega.jornadaId))
+            .where(and(eq(jornada.fecha, fecha), eq(entrega.estado, "ENTREGADA")))
+        : nada,
+      verCostos
+        ? tx
+            .select({ total: sum(compra.total) })
+            .from(compra)
+            .innerJoin(jornada, eq(jornada.id, compra.jornadaId))
+            .where(and(eq(jornada.fecha, fecha), eq(compra.estado, "REGISTRADA")))
+        : nada,
+      diasCercanos(tx, hoy, sugerida, fecha),
+      opciones.conTablero && c.permisos.tiene("pedidos.ver") ? tableroEnTransaccion(tx, c, fecha) : Promise.resolve(null),
+    ]);
+    const plata: DiaDeTrabajo["plata"] = panel.estado
+      ? { pedido: verVenta ? (p?.total ?? "0") : null, entregado: verVenta ? (e?.total ?? "0") : null, comprado: verCostos ? (k?.total ?? "0") : null }
+      : { pedido: null, comprado: null, entregado: null };
+    return { fecha, hoy, sugerida, panel, pasos: pasosDelDia(datosDelPanel(panel)), plata, dias, tablero };
   });
 }
 
 /** Los días para elegir en una pantalla del día (lista de compras): hoy, el de pedidos, el elegido y los que están sin cerrar. */
 export async function diasParaElegir(db: BaseDatos, authUserId: string, pedida?: string | null): Promise<{ fecha: FechaISO; hoy: FechaISO; dias: DiaCercano[] }> {
-  return ejecutarComoUsuario(db, authUserId, null, async (tx) => {
-    const { hoy, sugerida } = await hoyYSugerida(tx);
+  return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
+    const { hoy, sugerida } = hoyYSugeridaDe(c);
     const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await diaParaTrabajar(tx, hoy, sugerida);
     return { fecha, hoy, dias: await diasCercanos(tx, hoy, sugerida, fecha) };
   });
@@ -144,8 +170,8 @@ export interface ProcesoEnCurso {
  * de ABIERTA) y no está cerrado. Nulo si no hay ningún proceso en curso.
  */
 export async function procesoEnCurso(db: BaseDatos, authUserId: string): Promise<ProcesoEnCurso | null> {
-  return ejecutarComoUsuario(db, authUserId, "jornada.ver", async (tx) => {
-    const { hoy, sugerida } = await hoyYSugerida(tx);
+  return ejecutarComoUsuario(db, authUserId, "jornada.ver", async (tx, c) => {
+    const { hoy, sugerida } = hoyYSugeridaDe(c);
     const fecha = await diaParaTrabajar(tx, hoy, sugerida);
     const panel = await panelEnTransaccion(tx, fecha);
     if (!panel.estado || panel.estado === "CERRADA") return null;

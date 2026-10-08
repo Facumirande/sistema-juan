@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { cliente, empresa, entrega, jornada, puntoEntrega, reparto } from "@/db/esquema";
+import { cliente, destinoFavorito, empresa, entrega, jornada, paradaExtra, puntoEntrega, reparto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import type { Coordenada } from "@/dominio/entregas/recorrido";
 import { coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas } from "@/dominio/entregas/ubicacion";
@@ -37,67 +37,172 @@ export interface ParadaDeViaje {
   orden: number | null;
 }
 
-const aCoordenada = (lat: string | null, lng: string | null): Coordenada | null => (lat !== null && lng !== null ? { lat: Number(lat), lng: Number(lng) } : null);
+/** Un destino del recorrido del día: una entrega que está en camino (o ya se dejó) o un destino extra. */
+export interface DestinoDelRecorrido {
+  /** "E:<id de la entrega>" o "X:<id del destino extra>": así se guarda el orden de todos juntos. */
+  clave: string;
+  tipo: "ENTREGA" | "EXTRA";
+  id: string;
+  /** El cliente, o el nombre que se le puso al destino. */
+  nombre: string;
+  punto: string | null;
+  puntoId: string | null;
+  direccion: string;
+  localidad: string | null;
+  coordenada: Coordenada | null;
+  horario: string | null;
+  telefono: string | null;
+  /** Ya se entregó (o ya se pasó por ahí). */
+  hecha: boolean;
+  numero: string | null;
+  favoritoId: string | null;
+}
+
+export interface DestinoFavorito {
+  id: string;
+  nombre: string;
+  direccion: string | null;
+  coordenada: Coordenada | null;
+}
+
+export interface ViajeDelDia {
+  salida: LugarDeSalida;
+  /** El día ya se cerró: el recorrido no se cambia. */
+  cerrado: boolean;
+  /** Las entregas que falta llevar (todavía sin entregar), estén o no en camino. */
+  paradas: ParadaDeViaje[];
+  /** Lo que está en camino, lo ya entregado y los destinos extra, en el orden del recorrido. */
+  recorrido: DestinoDelRecorrido[];
+  favoritos: DestinoFavorito[];
+}
+
+export const aCoordenada = (lat: string | null, lng: string | null): Coordenada | null => (lat !== null && lng !== null ? { lat: Number(lat), lng: Number(lng) } : null);
 
 export async function lugarDeSalida(tx: Transaccion): Promise<LugarDeSalida> {
   const [e] = await tx.select({ lat: empresa.latitud, lng: empresa.longitud, direccion: empresa.direccion }).from(empresa);
   return { coordenada: aCoordenada(e?.lat ?? null, e?.lng ?? null), direccion: e?.direccion ?? null };
 }
 
-/** Las entregas del día que falta llevar (sin anuladas ni entregadas), con su ubicación. */
-export async function viajeDelDia(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<{ salida: LugarDeSalida; paradas: ParadaDeViaje[] }> {
+/**
+ * El viaje de un día: las entregas que falta llevar y el recorrido (lo que está en camino, lo ya
+ * entregado y los destinos extra, en el orden guardado; lo que nunca se ordenó va al final).
+ */
+export async function viajeDelDia(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<ViajeDelDia> {
   return ejecutarComoUsuario(db, authUserId, "repartos.ver", async (tx) => {
-    const salida = await lugarDeSalida(tx);
-    const [j] = await tx.select({ id: jornada.id }).from(jornada).where(eq(jornada.fecha, fecha));
-    if (!j) return { salida, paradas: [] };
-    const filas = await tx
-      .select({
-        entregaId: entrega.id,
-        numero: entrega.numero,
-        estado: entrega.estado,
-        cliente: cliente.nombre,
-        puntoId: puntoEntrega.id,
-        punto: puntoEntrega.nombre,
-        direccion: puntoEntrega.direccion,
-        localidad: puntoEntrega.localidad,
-        lat: puntoEntrega.latitud,
-        lng: puntoEntrega.longitud,
-        desde: puntoEntrega.horarioDesde,
-        hasta: puntoEntrega.horarioHasta,
-        telefono: puntoEntrega.contactoTelefono,
-        repartoId: reparto.id,
-        repartoNumero: reparto.numero,
-        orden: entrega.ordenEnReparto,
-      })
-      .from(entrega)
-      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-      .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
-      .leftJoin(reparto, and(eq(reparto.id, entrega.repartoId), ne(reparto.estado, "ANULADO")))
-      .where(and(eq(entrega.jornadaId, j.id), inArray(entrega.estado, ["BORRADOR", "EN_PREPARACION", "PREPARADA", "EN_REPARTO"])))
-      .orderBy(sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre));
+    // Todo sale junto, en una sola ida a la base.
+    const [salida, [j], filas, extras, favoritos] = await Promise.all([
+      lugarDeSalida(tx),
+      tx.select({ estado: jornada.estado }).from(jornada).where(eq(jornada.fecha, fecha)),
+      tx
+        .select({
+          entregaId: entrega.id,
+          numero: entrega.numero,
+          estado: entrega.estado,
+          cliente: cliente.nombre,
+          puntoId: puntoEntrega.id,
+          punto: puntoEntrega.nombre,
+          direccion: puntoEntrega.direccion,
+          localidad: puntoEntrega.localidad,
+          lat: puntoEntrega.latitud,
+          lng: puntoEntrega.longitud,
+          desde: puntoEntrega.horarioDesde,
+          hasta: puntoEntrega.horarioHasta,
+          telefono: puntoEntrega.contactoTelefono,
+          repartoId: reparto.id,
+          repartoNumero: reparto.numero,
+          orden: entrega.ordenEnReparto,
+          lugar: entrega.ordenEnRecorrido,
+        })
+        .from(entrega)
+        .innerJoin(jornada, eq(jornada.id, entrega.jornadaId))
+        .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+        .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
+        .leftJoin(reparto, and(eq(reparto.id, entrega.repartoId), ne(reparto.estado, "ANULADO")))
+        .where(and(eq(jornada.fecha, fecha), inArray(entrega.estado, ["BORRADOR", "EN_PREPARACION", "PREPARADA", "EN_REPARTO", "ENTREGADA"])))
+        .orderBy(sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre)),
+      tx
+        .select({ x: paradaExtra })
+        .from(paradaExtra)
+        .innerJoin(jornada, eq(jornada.id, paradaExtra.jornadaId))
+        .where(eq(jornada.fecha, fecha))
+        .orderBy(asc(paradaExtra.creadoEn)),
+      tx.select().from(destinoFavorito).where(eq(destinoFavorito.activo, true)).orderBy(asc(destinoFavorito.nombre)),
+    ]);
+    const horario = (f: { desde: string | null; hasta: string | null }) => (f.desde || f.hasta ? `${f.desde?.slice(0, 5) ?? "?"}–${f.hasta?.slice(0, 5) ?? "?"}` : null);
+    const candidatos: { lugar: number | null; destino: DestinoDelRecorrido }[] = [
+      ...filas
+        .filter((f) => f.estado === "EN_REPARTO" || f.estado === "ENTREGADA")
+        .map((f) => ({
+          lugar: f.lugar,
+          destino: {
+            clave: `E:${f.entregaId}`,
+            tipo: "ENTREGA" as const,
+            id: f.entregaId,
+            nombre: f.cliente,
+            punto: f.punto,
+            puntoId: f.puntoId,
+            direccion: f.direccion,
+            localidad: f.localidad,
+            coordenada: aCoordenada(f.lat, f.lng),
+            horario: horario(f),
+            telefono: f.telefono,
+            hecha: f.estado === "ENTREGADA",
+            numero: numeroEntrega(f.numero),
+            favoritoId: null,
+          },
+        })),
+      ...extras.map(({ x }) => ({
+        lugar: x.orden,
+        destino: {
+          clave: `X:${x.id}`,
+          tipo: "EXTRA" as const,
+          id: x.id,
+          nombre: x.nombre,
+          punto: null,
+          puntoId: null,
+          direccion: x.direccion ?? "",
+          localidad: null,
+          coordenada: aCoordenada(x.latitud, x.longitud),
+          horario: null,
+          telefono: null,
+          hecha: x.hecha,
+          numero: null,
+          favoritoId: x.favoritoId,
+        },
+      })),
+    ];
     return {
       salida,
-      paradas: filas.map((f) => ({
-        entregaId: f.entregaId,
-        numero: numeroEntrega(f.numero),
-        estado: f.estado,
-        cliente: f.cliente,
-        puntoId: f.puntoId,
-        punto: f.punto,
-        direccion: f.direccion,
-        localidad: f.localidad,
-        coordenada: aCoordenada(f.lat, f.lng),
-        horario: f.desde || f.hasta ? `${f.desde?.slice(0, 5) ?? "?"}–${f.hasta?.slice(0, 5) ?? "?"}` : null,
-        telefono: f.telefono,
-        repartoId: f.repartoId,
-        reparto: f.repartoNumero ? numeroReparto(f.repartoNumero) : null,
-        orden: f.orden,
-      })),
+      cerrado: j?.estado === "CERRADA",
+      paradas: filas
+        .filter((f) => f.estado !== "ENTREGADA")
+        .map((f) => ({
+          entregaId: f.entregaId,
+          numero: numeroEntrega(f.numero),
+          estado: f.estado,
+          cliente: f.cliente,
+          puntoId: f.puntoId,
+          punto: f.punto,
+          direccion: f.direccion,
+          localidad: f.localidad,
+          coordenada: aCoordenada(f.lat, f.lng),
+          horario: horario(f),
+          telefono: f.telefono,
+          repartoId: f.repartoId,
+          reparto: f.repartoNumero ? numeroReparto(f.repartoNumero) : null,
+          orden: f.orden,
+        })),
+      // Lo que ya tiene su lugar va en ese orden; lo que se sumó después, al final, como fue llegando.
+      recorrido: candidatos
+        .map((c, i) => ({ ...c, i }))
+        .sort((a, b) => (a.lugar ?? Number.MAX_SAFE_INTEGER) - (b.lugar ?? Number.MAX_SAFE_INTEGER) || a.i - b.i)
+        .map((c) => c.destino),
+      favoritos: favoritos.map((f) => ({ id: f.id, nombre: f.nombre, direccion: f.direccion, coordenada: aCoordenada(f.latitud, f.longitud) })),
     };
   });
 }
 
-const esquemaCoordenada = z.object({ lat: z.number(), lng: z.number() }).refine((c) => coordenadaValida(c.lat, c.lng), { message: "Esa ubicación no es válida." });
+export const esquemaCoordenada = z.object({ lat: z.number(), lng: z.number() }).refine((c) => coordenadaValida(c.lat, c.lng), { message: "Esa ubicación no es válida." });
 
 /**
  * Marca dónde queda un lugar de entrega. Lo puede hacer quien edita clientes o quien entrega

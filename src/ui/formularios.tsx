@@ -6,7 +6,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 export type VarianteBoton = "principal" | "secundario" | "peligro";
 
 export function clasesBoton(variante: VarianteBoton = "principal"): string {
-  const base = "inline-flex min-h-11 items-center justify-center rounded-lg px-4 font-semibold disabled:opacity-60";
+  const base = "inline-flex min-h-12 items-center justify-center rounded-lg px-4 py-1.5 text-center font-semibold text-balance disabled:opacity-60";
   if (variante === "principal") return `${base} bg-marca text-marca-texto`;
   if (variante === "peligro") return `${base} border border-error text-error`;
   return `${base} border border-borde`;
@@ -14,10 +14,25 @@ export function clasesBoton(variante: VarianteBoton = "principal"): string {
 
 const CLASES_CONTROL = "h-12 rounded-lg border border-borde bg-superficie px-3 text-base";
 
+/** El nombre de un casillero; si es obligatorio, con su asterisco rojo. */
+export function Etiqueta({ texto, obligatorio }: { texto: string; obligatorio?: boolean }) {
+  return (
+    <span className="font-medium">
+      {texto}
+      {obligatorio && (
+        <span className="text-error" title="Obligatorio">
+          {" "}
+          *
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function Campo({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HTMLInputElement> & { etiqueta: string; ayuda?: string }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-medium">{etiqueta}</span>
+      <Etiqueta texto={etiqueta} obligatorio={input.required} />
       <input {...input} className={`${CLASES_CONTROL} ${input.className ?? ""}`} />
       {ayuda && <span className="text-sm text-texto-suave">{ayuda}</span>}
     </label>
@@ -43,7 +58,7 @@ export function Selector({
 }: SelectHTMLAttributes<HTMLSelectElement> & { etiqueta: string; opciones: readonly Opcion[]; vacia?: string; ayuda?: string }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-medium">{etiqueta}</span>
+      <Etiqueta texto={etiqueta} obligatorio={select.required} />
       <select {...select} className={CLASES_CONTROL}>
         {vacia !== undefined && <option value="">{vacia}</option>}
         {opciones.map((o) => (
@@ -72,7 +87,7 @@ export function Casilla({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HTMLI
 export function AreaTexto({ etiqueta, ...area }: TextareaHTMLAttributes<HTMLTextAreaElement> & { etiqueta: string }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-medium">{etiqueta}</span>
+      <Etiqueta texto={etiqueta} obligatorio={area.required} />
       <textarea rows={3} {...area} className="rounded-lg border border-borde bg-superficie px-3 py-2 text-base" />
     </label>
   );

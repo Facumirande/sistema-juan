@@ -15,7 +15,7 @@
 9. [Lista de compras](#9-lista-de-compras)
 10. [Compras y cuentas corrientes de proveedores](#10-compras-y-cuentas-corrientes-de-proveedores)
 11. [Repartos, entregas y documentos](#11-repartos-entregas-y-documentos)
-12. [Ventas y facturación](#12-ventas-y-facturación)
+12. [Ventas, facturación, cobros y gastos](#12-ventas-facturación-cobros-y-gastos)
 13. [Colaboración: notas y actividad](#13-colaboración-notas-y-actividad)
 14. [Relaciones y cardinalidades](#14-relaciones-y-cardinalidades)
 15. [Restricciones de integridad](#15-restricciones-de-integridad)
@@ -131,8 +131,13 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | entrega | Entregas | Documento | M11 (M10 actualiza preparación) | MVP |
 | entrega_item | Entregas | Línea | M11 (M10 actualiza preparación) | MVP |
 | documento_emitido | Documentos | Documento | M12 | MVP |
+| destino_favorito | Entregas | Maestro | — (`src/modulos/entregas/recorrido.ts`) | MVP |
+| parada_extra | Entregas | Registro | — (`src/modulos/entregas/recorrido.ts`) | MVP |
 | factura | Ventas | Documento | M13 | MVP (comprobante interno) |
 | factura_entrega | Ventas | Imputación | M13 | MVP |
+| cobro_cliente | Cuentas de clientes | Documento | — (`src/modulos/cuentas-clientes`) | MVP |
+| rubro_gasto | Gastos e ingresos | Maestro | — (`src/modulos/gastos`) | MVP |
+| movimiento_extra | Gastos e ingresos | Documento | — (`src/modulos/gastos`) | MVP |
 | nota | Colaboración | Documento | M20 | MVP |
 | nota_lectura | Colaboración | Registro | M20 | MVP |
 | actividad | Colaboración | Libro | M20 | MVP |
@@ -196,6 +201,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 | `medio_pago` | `EFECTIVO`, `TRANSFERENCIA`, `CHEQUE`, `TARJETA`, `OTRO` | TARJETA sin uso por ahora. |
 | `origen_pago` | `EN_COMPRA`, `POSTERIOR` | EN_COMPRA = pago automático de una compra CONTADO o MIXTA. |
 | `modo_imputacion` | `FIFO`, `MANUAL` | |
+| `tipo_movimiento_extra` | `GASTO`, `INGRESO` | Un gasto o un ingreso general (no es mercadería): GASTO resta del dinero real e INGRESO suma (07, RN-171). |
 | `tipo_movimiento_proveedor` | `SALDO_INICIAL` (+), `CARGO_COMPRA` (+), `PAGO` (−), `ANULACION_COMPRA` (−), `ANULACION_PAGO` (+), `AJUSTE_DEBITO` (+), `AJUSTE_CREDITO` (−) | + aumenta la deuda con el proveedor; − la disminuye. Un saldo a favor previo al sistema se carga como AJUSTE_CREDITO. |
 
 ### 3.6 Documentos, ventas y sistema
@@ -667,6 +673,7 @@ Libro de precios de compra: una fila por cada cambio de precio de una oferta. No
 | requiere_orden_compra | boolean | No | `false` | Si `true`, el pedido exige `referencia_cliente` (número de orden de compra, habitual en hospitales). |
 | acepta_sustituciones | boolean | No | `true` | Si `false`, una sustitución en preparación exige registrar quién la autorizó. |
 | requiere_firma | boolean | No | `false` | Si `true`, la confirmación de entrega exige firma o foto del remito firmado. |
+| saldo_inicial | numeric(14,2) | No | `0` | Lo que el cliente ya debía antes de empezar a usar el sistema: es lo más viejo de su cuenta y lo primero que cancelan sus cobros (07, RN-168). Check `>= 0`. |
 | plazo_cobro_dias | int | Sí | — | Sin uso. |
 | limite_credito | numeric(14,2) | Sí | — | Sin uso. |
 | observaciones | text | Sí | — | |
@@ -684,7 +691,7 @@ Dirección o servicio donde se entrega (ej. "Cocina central" y "Cocina pediatrí
 | direccion | text | No | — | |
 | localidad | text | Sí | — | |
 | referencias | text | Sí | — | "Ingreso por calle lateral, andén 2". |
-| latitud, longitud | numeric(9,6) | Sí | — | Para abrir el mapa y el GPS y calcular el viaje de entrega. Ambas o ninguna, en rango válido (check `punto_entrega_coordenadas`). Se marcan desde la ficha del cliente o el viaje: desde la computadora, en el mapa incrustado; desde el celular, también con el GPS, buscando la dirección o pegando un enlace de Google Maps. |
+| latitud, longitud | numeric(9,6) | Sí | — | Para abrir el mapa y el GPS y calcular el recorrido de entrega. Ambas o ninguna, en rango válido (check `punto_entrega_coordenadas`). Se marcan desde la ficha del cliente o el viaje: desde la computadora, en el mapa incrustado; desde el celular, también con el GPS, buscando la dirección o pegando un enlace de Google Maps. |
 | contacto_nombre | text | Sí | — | Quien recibe habitualmente (ej. jefa de cocina). |
 | contacto_telefono | text | Sí | — | |
 | horario_desde, horario_hasta | time | Sí | — | Franja de recepción. |
@@ -809,6 +816,7 @@ Fecha operativa (= fecha de entrega). Agrupa pedidos, lista de compras, compras,
 | referencia_cliente | text | Sí | — | Orden de compra del cliente. Obligatoria si `cliente.requiere_orden_compra`. |
 | estado | estado_pedido | No | `'BORRADOR'` | Ver 04-procesos-y-flujos.md. |
 | es_tardio | boolean | No | `false` | Cargado después de `empresa.hora_corte_pedidos` o con la lista de compras ya generada. |
+| frecuente | boolean | No | `false` | Marcado con la estrella como "pedido frecuente" del cliente: de ahí salen los productos sugeridos al cargarle uno nuevo (RN-157). |
 | entrega_desde, entrega_hasta | time | Sí | — | Franja especial para este pedido (si no, la del punto de entrega). En el tablero es el "plazo" de la tarjeta: vencido, pronto (faltan 2 h o menos) o a tiempo. |
 | prioridad | prioridad_pedido | No | `'NORMAL'` | Agregado (tablero). |
 | responsable_id | uuid | Sí | — | Agregado: quién se encarga (FK `usuario` de la misma empresa). Nulo = quien lo cargó. |
@@ -987,6 +995,7 @@ Una línea por producto: cuánto se necesita, cuánto ya se compró, cuánto com
 | estado | estado_lista_compra_item | No | `'PENDIENTE'` | PENDIENTE (nada comprado), PARCIAL (`0 < comprado_base < necesidad_neta_base`), COMPRADO (`comprado_base >= necesidad_neta_base`), NO_CONSEGUIDO (marcado a mano, con motivo; se revierte si luego se completa la compra). |
 | motivo_no_conseguido | text | Sí | — | Obligatorio si NO_CONSEGUIDO. |
 | tildado | boolean | No | `false` | Tildado a mano como comprado, sin anotar la compra (RN-051b). Check `lista_compra_item_tildado`: solo con estado COMPRADO. |
+| orden_manual | integer | Sí | — | Lugar en la lista cuando se ordena a mano, arrastrando (RN-158); nulo = sin ordenar. |
 | sin_pedido | boolean | No | `false` | Producto comprado sin necesidad en los pedidos (necesidad 0: todo es sobrante previsto). |
 | alertas | text[] | No | `'{}'` | SIN_PROVEEDOR, CREDITO_INSUFICIENTE, PRECIO_DESACTUALIZADO. |
 | comprador_asignado_id | uuid | Sí | — | FK `usuario`. Sin uso. |
@@ -1153,6 +1162,8 @@ erDiagram
     pedido_item |o--o{ entrega_item : "origen de"
     producto ||--o{ entrega_item : "entregado en"
     entrega |o--o{ documento_emitido : "emite"
+    jornada ||--o{ parada_extra : "suma al recorrido"
+    destino_favorito |o--o{ parada_extra : "origen de"
 
     reparto {
         uuid id PK
@@ -1235,6 +1246,7 @@ Mercadería para un cliente y punto de entrega en una jornada; puede agrupar var
 | punto_entrega_id | uuid | No | — | FK `punto_entrega` del mismo cliente. |
 | reparto_id | uuid | Sí | — | FK `reparto` de la misma jornada. |
 | orden_en_reparto | smallint | Sí | — | Orden de visita. |
+| orden_en_recorrido | int | Sí | — | Lugar en el recorrido del día, en la misma numeración que `parada_extra.orden` (RN-176). Nulo = al final, en el orden del reparto. |
 | estado | estado_entrega | No | `'BORRADOR'` | BORRADOR → EN_PREPARACION → PREPARADA → EN_REPARTO → ENTREGADA; ANULADA. |
 | con_diferencias | boolean | No | `false` | `true` si alguna línea entregada difiere de la pedida fuera de la tolerancia, hubo sustitución o rechazo (07-reglas-de-negocio.md). |
 | estado_facturacion | estado_facturacion | No | `'SIN_FACTURAR'` | FACTURADA cuando está incluida en una `factura` EMITIDA. |
@@ -1334,9 +1346,36 @@ Registro de cada emisión o reimpresión de un documento imprimible. Permite sab
 
 Restricción: `unique (empresa_id, tipo, entidad_id, version) where evento = 'EMISION'`. Emitir los documentos de una entrega crea **en la misma transacción** las filas de DOC_02 y DOC_03 con la misma versión y congela los precios (la plantilla de DOC-03 se guarda aunque quien emite no tenga permiso para verla). El contenido de cada documento se define en 09-documentos-imprimibles.md.
 
+### 11.5 destino_favorito
+
+Un lugar al que se va seguido y no es un cliente (el banco, un taller), con el nombre que se le quiera dar. Se desactiva, no se borra (RN-177).
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| + campos comunes | | | | |
+| nombre | text | No | — | No vacío. Único entre los activos de la empresa, sin distinguir mayúsculas. |
+| direccion | text | Sí | — | La dirección escrita (el GPS la busca si no hay ubicación). |
+| latitud, longitud | numeric(9,6) | Sí | — | Las dos o ninguna; dentro de −90…90 y −180…180. |
+| activo | boolean | No | `true` | `false` = quitado de los favoritos. |
+
+### 11.6 parada_extra
+
+Un destino que se suma al recorrido de un día y no es una entrega. Guarda el nombre y el lugar tal como estaban al sumarlo, aunque venga de un favorito. No es un documento: se puede quitar (RN-177).
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| + campos comunes | | | | |
+| jornada_id | uuid | No | — | FK `jornada`: el día del recorrido. |
+| favorito_id | uuid | Sí | — | FK `destino_favorito`, si salió de un favorito o se guardó como tal. |
+| nombre | text | No | — | No vacío. |
+| direccion | text | Sí | — | |
+| latitud, longitud | numeric(9,6) | Sí | — | Las dos o ninguna. Sin ubicación no entra en el cálculo del mejor recorrido. |
+| orden | int | Sí | — | Lugar en el recorrido del día, en la misma numeración que `entrega.orden_en_recorrido`. Nulo = al final. |
+| hecha | boolean | No | `false` | Ya se pasó por ahí. |
+
 ---
 
-## 12. Ventas y facturación
+## 12. Ventas, facturación, cobros y gastos
 
 Diagrama del dominio **ventas**:
 
@@ -1405,6 +1444,58 @@ Comprobante de venta que agrupa una o más entregas del mismo cliente. En el MVP
 | entrega_version | int | No | — | Versión de la entrega facturada (debe tener documentos emitidos de esa versión). |
 | importe_total | numeric(14,2) | No | — | Snapshot de `entrega.importe_total`. |
 | activa | boolean | No | `true` | `false` al anular la factura. Índice único parcial `(entrega_id) where activa`: una entrega está en un solo comprobante vigente. |
+
+### 12.3 cobro_cliente
+
+Lo que pagó un cliente ("A cobrar"). No hay libro de movimientos ni imputaciones guardadas: lo que debe cada cliente y qué entregas están cobradas se calcula cada vez repartiendo sus cobros de lo más viejo a lo más nuevo (07, RN-164 a RN-166). No se edita ni se borra: se anula con motivo.
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| + campos comunes y de anulación | | | | |
+| numero | bigint | No | — | Correlativo `COB-` (`secuencia` tipo `COBRO_CLIENTE`). `unique (empresa_id, numero)`. |
+| cliente_id | uuid | No | — | FK `cliente`. |
+| entrega_id | uuid | Sí | — | FK `entrega`. Si se cobró una entrega en particular: el cobro paga primero esa; lo que sobre va a lo más viejo. Nulo = cancela lo más viejo. |
+| fecha | date | No | — | Día del cobro (no posterior a hoy). |
+| monto | numeric(14,2) | No | — | Check `> 0`. |
+| medio_pago | medio_pago | No | `'EFECTIVO'` | |
+| estado | estado_registro | No | `'REGISTRADO'` | ANULADO exige motivo de al menos 3 letras (check). |
+| observaciones | text | Sí | — | |
+
+Índices: `(empresa_id, cliente_id, fecha)` y `(empresa_id, fecha)`.
+
+### 12.4 rubro_gasto
+
+Los rubros de "Gastos e ingresos" (Nafta, Peajes, Arreglos…), que se crean libremente con un dibujo y un título. La primera vez se cargan los predefinidos (07, RN-170). Se desactivan; no se borran.
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| + campos comunes | | | | |
+| nombre | text | No | — | No vacío. `unique (empresa_id, tipo, lower(nombre))`. |
+| dibujo | text | No | `'🧾'` | El emoji con el que se lo reconoce. |
+| tipo | tipo_movimiento_extra | No | `'GASTO'` | Si lo que se anota en él es un gasto o un ingreso. |
+| unidad | text | Sí | — | En qué se cuenta, si además del importe se anota una cantidad (litros, km, horas). |
+| orden | int | No | `0` | Orden en la pantalla. |
+| activo | boolean | No | `true` | Dado de baja deja de ofrecerse; lo ya anotado queda. |
+
+### 12.5 movimiento_extra
+
+Un gasto o un ingreso general: plata que sale o entra por fuera de la mercadería (07, RN-169). No se edita ni se borra: se anula con motivo.
+
+| Campo | Tipo | Nulo | Default | Descripción / regla |
+|---|---|---|---|---|
+| + campos comunes y de anulación | | | | |
+| rubro_id | uuid | No | — | FK `rubro_gasto`. |
+| tipo | tipo_movimiento_extra | No | — | El del rubro al anotarlo: si después el rubro cambia, lo anotado no. |
+| fecha | date | No | — | Día del gasto o del ingreso (no posterior a hoy). |
+| monto | numeric(14,2) | No | — | Check `> 0`. |
+| cantidad | numeric(12,3) | Sí | — | La cantidad, si el rubro se cuenta en algo (litros de nafta). Check `> 0` cuando no es nula. |
+| detalle | text | Sí | — | |
+| medio_pago | medio_pago | No | `'EFECTIVO'` | |
+| estado | estado_registro | No | `'REGISTRADO'` | ANULADO exige motivo de al menos 3 letras (check). |
+
+Índices: `(empresa_id, fecha)` y `(empresa_id, rubro_id, fecha)`.
+
+Las tres tablas tienen RLS por empresa (migración 0020).
 
 ## 13. Colaboración: notas y actividad
 
@@ -1485,11 +1576,16 @@ Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-
 | jornada → reparto | 1 a N | Uno por vehículo/repartidor. |
 | usuario → reparto | 0..1 a N | Repartidor asignado. |
 | reparto → entrega | 0..1 a N | Una entrega viaja en un reparto; `orden_en_reparto` define la secuencia. |
+| jornada → parada_extra | 1 a N | Los destinos que se le sumaron al recorrido de ese día. |
+| destino_favorito → parada_extra | 0..1 a N | De qué favorito salió (el destino conserva su propio nombre y lugar). |
 | cliente / punto_entrega / jornada → entrega | 1 a N | Normalmente una entrega por cliente, punto y jornada. |
 | entrega → entrega_item | 1 a N | |
 | pedido_item → entrega_item | 1 a 0..2 (en una sola entrega vigente) | Cada línea de pedido va a una sola entrega no anulada: su línea original y, si hubo, la de sustitución. Así, pedido ↔ entrega es N a M (una entrega puede agrupar varios pedidos del mismo cliente y punto). |
 | entrega → documento_emitido | 1 a N | Por versión: una emisión de DOC-02 y una de DOC-03, más reimpresiones. |
 | factura ↔ entrega (vía factura_entrega) | 1 a N / N a 0..1 vigente | Un comprobante agrupa entregas; una entrega está en un solo comprobante vigente (histórico: varios si se anularon). |
+| cliente → cobro_cliente | 1 a N | Lo que fue pagando. |
+| entrega → cobro_cliente | 0..1 a N | Solo cuando el cobro se hizo por una entrega en particular. |
+| rubro_gasto → movimiento_extra | 1 a N | Cada gasto o ingreso va a un rubro. |
 
 ---
 
@@ -1641,12 +1737,14 @@ alter table regla_precio add constraint sin_superposicion_recargo
 | jornada | `(empresa_id, fecha)` |
 | lista_compra | `(empresa_id, jornada_id)`; `(empresa_id, numero)` |
 | lista_compra_item | `(lista_compra_id, producto_id)` |
-| Documentos numerados (pedido, compra, pago_proveedor, reparto, entrega, factura) | `(empresa_id, numero)` |
+| Documentos numerados (pedido, compra, pago_proveedor, reparto, entrega, factura, cobro_cliente) | `(empresa_id, numero)` |
+| rubro_gasto | `(empresa_id, tipo, lower(nombre))` |
+| destino_favorito | `(empresa_id, lower(nombre)) where activo` |
 | pedido, compra, pago_proveedor | `clave_idempotencia` (cuando no es nula) |
 | imputacion_pago_proveedor | `(coalesce(pago_proveedor_id, movimiento_acreedor_id), coalesce(compra_id, movimiento_deudor_id)) where activa` |
 | factura_entrega | `(entrega_id) where activa` |
 | documento_emitido | `(empresa_id, tipo, entidad_id, version) where evento = 'EMISION'` |
-| movimiento_cuenta_proveedor / movimiento_cuenta_cliente | `movimiento_compensado_id` |
+| movimiento_cuenta_proveedor | `movimiento_compensado_id` |
 
 ### 15.6 Integridad entre tablas (triggers y dominio)
 
@@ -1671,10 +1769,12 @@ alter table regla_precio add constraint sin_superposicion_recargo
 |---|---|---|
 | Documentos, libros, auditoría | Sin `DELETE`. | El rol de la aplicación no tiene privilegio `DELETE` sobre esas tablas; además, trigger `impedir_borrado` que lanza error. |
 | pedido_item | `DELETE` solo si el pedido está en BORRADOR. | Privilegio `DELETE` + trigger que verifica el estado. |
-| movimiento_cuenta_proveedor, movimiento_cuenta_cliente, auditoria | Sin `UPDATE`. | Solo `SELECT, INSERT` para el rol de la aplicación. |
+| movimiento_cuenta_proveedor, auditoria | Sin `UPDATE`. | Solo `SELECT, INSERT` para el rol de la aplicación. |
 | historial_precio_compra | Solo se actualiza `vigente_hasta`. | `GRANT UPDATE (vigente_hasta)` por columna. |
 | compra y compra_item REGISTRADA | Solo cambian `estado` y campos de anulación. | Trigger `bloquear_documento_registrado`. |
 | pago_proveedor | Ídem. | Ídem. |
+| cobro_cliente, movimiento_extra | Solo cambian `estado` y los campos de anulación. | `GRANT UPDATE` por columna (`estado`, `anulado_en`, `anulado_por`, `motivo_anulacion`, `actualizado_por`). |
+| parada_extra | Se puede borrar (un destino que se saca del recorrido no es un documento). | `interno.habilitar_aislamiento('parada_extra', true)` le da `DELETE` al rol de la aplicación. |
 | factura EMITIDA | Solo cambian `estado`, anulación, `exportada_en`, `pdf_path`. | Trigger. |
 | entrega_item con `entrega.precios_congelados_en` no nulo | Los campos de precio solo cambian con `es_override = true` (y fila en `auditoria`). | Trigger. |
 | documento_emitido | Solo cambian `estado` y anulación. | Trigger. |
@@ -1691,6 +1791,8 @@ Las reglas de negocio completas (quién puede, en qué estados) están en 07-reg
 | entrega | Requiere SIN_FACTURAR. `estado = ANULADA`; sus `documento_emitido` → ANULADO; los `pedido_item` quedan libres para otra entrega. |
 | reparto | `estado = ANULADO`; sus entregas quedan con `reparto_id` nulo. |
 | factura | `estado = ANULADA`; `factura_entrega.activa = false`; entregas → SIN_FACTURAR. |
+| cobro_cliente | `estado = ANULADO` + motivo; deja de contar en la cuenta del cliente: lo que cancelaba vuelve a quedar por cobrar. |
+| movimiento_extra | `estado = ANULADO` + motivo; deja de contar en los gastos e ingresos y en el dinero real. |
 | documento_emitido | `estado = ANULADO`; la fila y el PDF se conservan. |
 
 ---
@@ -1720,6 +1822,7 @@ PostgreSQL no indexa automáticamente las claves foráneas: **toda FK lleva índ
 | movimiento_cuenta_proveedor | `(proveedor_id, fecha) include (importe)` | Saldo y estado de cuenta (DOC-05). |
 | entrega | `(empresa_id, jornada_id, estado)`, `(empresa_id, cliente_id, estado_facturacion)`, `(reparto_id, orden_en_reparto)` | Preparación, facturación pendiente, hoja de ruta. |
 | entrega_item | `(entrega_id)`, `(pedido_item_id)`, `(empresa_id, producto_id)` | Detalle, trazabilidad, ventas por producto. |
+| parada_extra | `(empresa_id, jornada_id)` | Destinos del recorrido de un día. |
 | documento_emitido | `(empresa_id, entidad, entidad_id, version)` | Documentos de una entrega. |
 | factura | `(empresa_id, cliente_id, fecha_emision desc)` | Comprobantes del cliente. |
 | auditoria | `(empresa_id, entidad, entidad_id, ocurrido_en desc)`, `(empresa_id, ocurrido_en desc)`, `(usuario_id, ocurrido_en desc)` | Historial de una ficha; auditoría por fecha y usuario. |
@@ -1739,6 +1842,9 @@ No hay vistas en la base: lo que el diseño original resolvía con vistas (`v_of
 | Partidas imputables (FIFO y deuda vencida) | `partidasDeudoras` y `partidasAcreedoras` (`src/modulos/compras/imputaciones.ts`) |
 | Saldo, crédito disponible, % de uso, semáforo y deuda vencida por proveedor | `cuentaDeProveedor`, `listarCuentasProveedores` y `cuentaCorriente` |
 | Venta, costo y margen por entrega, cliente y producto | `reporteVentas` y `balance` (`src/modulos/reportes`) |
+| Lo que debe cada cliente, qué entregas están cobradas y desde cuándo debe | `cuentasDeClientes` (`src/modulos/cuentas-clientes/cuentas.ts`), con `repartirCobros` y `debeDesde` (`src/dominio/cuentas/clientes.ts`) |
+| Gastos e ingresos por rubro | `gastosEIngresos` y `totalesPorRubro` (`src/modulos/gastos/gastos.ts`) |
+| Dinero real, pendiente y total; compras pagadas y a pagar; ventas cobradas y a cobrar | `balance` (`src/modulos/reportes/balance.ts`), con `balanceDeDinero` y `partesDe` (`src/dominio/reportes/dinero.ts`) |
 | Ficha central del producto | `obtenerProducto` (`src/modulos/catalogo/productos.ts`) |
 | Líneas de preparación y reparto **sin precios** | `lineasOperativas` y `contenidoListaEntrega` (`src/modulos/entregas/documentos.ts`): seleccionan columnas explícitas sin precio, costo ni deuda (02 §8) |
 

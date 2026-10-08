@@ -234,7 +234,11 @@ function pendienteDeAtras(clave: ClavePaso, dia: DiaDeTrabajo): { texto: string;
     case "compras":
       return { texto: `Faltan comprar ${d.lista.lineas - d.lista.resueltas} de ${plural(d.lista.lineas, "producto", "productos")} de la lista (o marcarlos como no conseguidos).`, href: `/lista-compra?fecha=${dia.fecha}`, boton: "Ver qué falta" };
     case "preparacion":
-      return { texto: "Quedan clientes sin preparar o sin remito.", href: `/preparacion/${dia.fecha}`, boton: "Ir a preparación" };
+      return {
+        texto: d.sinPreparar > 0 ? `${plural(d.sinPreparar, "pedido todavía no se empezó a preparar", "pedidos todavía no se empezaron a preparar")}.` : "Quedan clientes sin preparar o sin remito.",
+        href: d.sinPreparar > 0 ? `/inicio?fecha=${dia.fecha}` : `/preparacion/${dia.fecha}`,
+        boton: d.sinPreparar > 0 ? "Ver en el tablero" : "Ir a preparación",
+      };
     default:
       return { texto: "Quedó algo a medias en este paso.", href: `/inicio?fecha=${dia.fecha}&vista=pasos`, boton: "Revisar" };
   }
@@ -302,7 +306,7 @@ export function DiaPasoAPaso({ dia, puede }: { dia: DiaDeTrabajo; puede: (p: Per
                               <b>{TITULOS[clave]}:</b> {a.texto}
                             </p>
                             <Link href={a.href} className="self-start rounded-lg bg-white px-3 py-2 text-sm font-semibold whitespace-nowrap text-[#172b4d] shadow-sm sm:self-auto dark:bg-white/90">
-                              {a.boton} →
+                              {a.boton}{"\u00a0→"}
                             </Link>
                           </div>
                         );

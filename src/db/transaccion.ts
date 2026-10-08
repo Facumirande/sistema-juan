@@ -4,6 +4,13 @@ import type { BaseDatos, RolBase, Transaccion } from "./tipos";
 
 const ROLES_PERMITIDOS: readonly RolBase[] = ["app_negocio", "app_operativo", "app_alta"];
 
+/**
+ * Para mandar varias consultas juntas (`Promise.all`) cuando el orden importa: la consulta sale en
+ * el lugar donde se la escribe. Sin esto, una consulta de Drizzle suelta dentro del lote recién sale
+ * después de las funciones `async` de ese mismo lote, que arrancan apenas se las llama.
+ */
+export const enOrden = <T>(consulta: PromiseLike<T>): Promise<T> => Promise.resolve(consulta);
+
 /** Cambia el rol de la transacción. Solo acepta los roles conocidos (el nombre no se parametriza en SQL). */
 export async function cambiarRol(tx: Transaccion, rol: RolBase): Promise<void> {
   if (!ROLES_PERMITIDOS.includes(rol)) throw new Error(`Rol de base desconocido: ${rol}`);

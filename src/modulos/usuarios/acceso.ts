@@ -12,6 +12,7 @@ import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import type { ServicioCuentas } from "@/modulos/seguridad/cuentas";
 import { validar } from "@/modulos/validacion";
 import { interpretarIdentificador, LARGO_MINIMO_CLAVE, MENSAJE_IDENTIFICADOR_INVALIDO } from "@/seguridad/identificacion";
+import { olvidarSesiones } from "@/modulos/seguridad/memoria-sesion";
 
 // Pedidos de acceso (decisión del 26/09/2026): cada persona entra por su cuenta, con Google o
 // creándose un usuario en la app, y queda esperando hasta que un administrador la habilita.
@@ -143,6 +144,8 @@ export async function responderPedidoDeAcceso(
   authUserId: string,
   datos: { usuarioId: string; aprobar: boolean },
 ): Promise<void> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   await ejecutarComoUsuario(db, authUserId, "usuarios.administrar", async (tx, c) => {
     const [u] = await tx
       .select({ id: usuario.id, nombre: usuario.nombre, authUserId: usuario.authUserId })

@@ -128,7 +128,7 @@ export default async function DetalleDePago({ params, searchParams }: PageProps<
                   })
                   .sort((a, b) => a.descripcion.localeCompare(b.descripcion))}
               />
-              <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. el proveedor pidió cancelar la del martes" />
+              <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. el proveedor pidió cancelar la del martes" required />
             </FormularioAccion>
           </details>
           <details className="rounded-lg border border-borde bg-superficie p-4">
@@ -140,7 +140,7 @@ export default async function DetalleDePago({ params, searchParams }: PageProps<
             </p>
             <FormularioAccion accion={anularPagoAccion} boton="Anular" variante="peligro" confirmar={`¿Anular ${p.numero}?`}>
               <input type="hidden" name="pagoId" value={p.id} />
-              <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. cheque rechazado" />
+              <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. cheque rechazado" required />
             </FormularioAccion>
           </details>
         </>

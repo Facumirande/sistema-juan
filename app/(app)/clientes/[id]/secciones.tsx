@@ -159,7 +159,7 @@ export function PreciosDelCliente({
                   ...objetivos.categorias.map((k) => ({ valor: `categoria:${k.id}`, etiqueta: `Toda la categoría ${k.nombre} (solo recargo)` })),
                 ]}
               />
-              <CampoNumero etiqueta="Valor" name="valor" ayuda="Precio por unidad base (ej. 1.150) o recargo en % (ej. 28)." />
+              <CampoNumero etiqueta="Valor" name="valor" ayuda="Precio por unidad base (ej. 1.150) o recargo en % (ej. 28)." required />
               <Campo etiqueta="Referencia (opcional)" name="referencia" placeholder="Ej. Licitación 2026" />
               <Campo etiqueta="Desde" name="vigenteDesde" type="date" ayuda="Vacío = desde hoy." />
               <Campo etiqueta="Hasta (opcional)" name="vigenteHasta" type="date" />

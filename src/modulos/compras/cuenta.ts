@@ -30,6 +30,15 @@ export async function saldoNeto(tx: Transaccion, proveedorId: string): Promise<s
   return fila?.saldo ?? "0";
 }
 
+/** El saldo neto de todos los proveedores en una sola consulta (el que no tiene movimientos no figura: es 0). */
+export async function saldosNetos(tx: Transaccion): Promise<Map<string, string>> {
+  const filas = await tx
+    .select({ proveedorId: movimientoCuentaProveedor.proveedorId, saldo: sum(movimientoCuentaProveedor.importe).mapWith(String) })
+    .from(movimientoCuentaProveedor)
+    .groupBy(movimientoCuentaProveedor.proveedorId);
+  return new Map(filas.map((f) => [f.proveedorId, f.saldo ?? "0"]));
+}
+
 /**
  * Agrega un movimiento al libro y actualiza el saldo guardado en el proveedor (caché del libro,
  * 03 §6.1), en la misma transacción.
@@ -50,28 +59,32 @@ export async function registrarMovimiento(
     motivo?: string | null;
   },
 ): Promise<string> {
-  const [nuevo] = await tx
-    .insert(movimientoCuentaProveedor)
-    .values({
-      empresaId: c.empresaId,
-      proveedorId: m.proveedorId,
-      tipo: m.tipo,
-      importe: aNumeric(m.importe, 2),
-      descripcion: m.descripcion,
-      compraId: m.compraId ?? null,
-      pagoProveedorId: m.pagoProveedorId ?? null,
-      movimientoCompensadoId: m.movimientoCompensadoId ?? null,
-      fechaVencimiento: m.fechaVencimiento ?? null,
-      fechaOrigen: m.fechaOrigen ?? null,
-      motivo: m.motivo ?? null,
-      creadoPor: c.usuarioId,
-      actualizadoPor: c.usuarioId,
-    })
-    .returning({ id: movimientoCuentaProveedor.id });
-  await tx
-    .update(proveedor)
-    .set({ saldoActual: aNumeric(await saldoNeto(tx, m.proveedorId), 2) })
-    .where(eq(proveedor.id, m.proveedorId));
+  // El movimiento y el saldo guardado salen juntos (una ida a la base): el saldo se vuelve a sumar
+  // del libro en la misma consulta que lo actualiza, ya con el movimiento nuevo adentro.
+  const [[nuevo]] = await Promise.all([
+    tx
+      .insert(movimientoCuentaProveedor)
+      .values({
+        empresaId: c.empresaId,
+        proveedorId: m.proveedorId,
+        tipo: m.tipo,
+        importe: aNumeric(m.importe, 2),
+        descripcion: m.descripcion,
+        compraId: m.compraId ?? null,
+        pagoProveedorId: m.pagoProveedorId ?? null,
+        movimientoCompensadoId: m.movimientoCompensadoId ?? null,
+        fechaVencimiento: m.fechaVencimiento ?? null,
+        fechaOrigen: m.fechaOrigen ?? null,
+        motivo: m.motivo ?? null,
+        creadoPor: c.usuarioId,
+        actualizadoPor: c.usuarioId,
+      })
+      .returning({ id: movimientoCuentaProveedor.id }),
+    tx
+      .update(proveedor)
+      .set({ saldoActual: sql`(select coalesce(sum(m.importe), 0) from ${movimientoCuentaProveedor} m where m.proveedor_id = ${m.proveedorId})` })
+      .where(eq(proveedor.id, m.proveedorId)),
+  ]);
   return nuevo!.id;
 }
 

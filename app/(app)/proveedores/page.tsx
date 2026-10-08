@@ -34,7 +34,7 @@ function TarjetaProveedor({ p }: { p: ProveedorListado }) {
           <span aria-hidden className="w-4 text-center">
             💰
           </span>
-          <span className={dec(c.saldoActual).gt(0) ? "font-semibold" : "text-tarjeta-suave"}>{dec(c.saldoActual).gt(0) ? `Se le debe ${formatearMoneda(c.saldoActual)}` : "No se le debe nada"}</span>
+          <span className={dec(c.saldoActual).gt(0) ? "font-semibold" : "text-tarjeta-suave"}>{dec(c.saldoActual).gt(0) ? `Le debemos ${formatearMoneda(c.saldoActual)}` : "No le debemos nada"}</span>
           <SemaforoCredito semaforo={c.semaforo} usoPct={c.usoPct} />
         </span>
       )}
@@ -64,7 +64,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<"/pr
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
-      <Encabezado titulo="Proveedores" descripcion="Los puestos y mayoristas donde se compra. El color de arriba de cada tarjeta muestra cuánto se le debe comparado con su límite: verde tranquilo, amarillo cerca del límite, rojo al límite.">
+      <Encabezado titulo="Proveedores" descripcion="Los puestos y mayoristas donde se compra. El color de arriba de cada tarjeta muestra cuánto le debemos comparado con su límite: verde tranquilo, amarillo cerca del límite, rojo al límite.">
         {sesion.permisos.includes("proveedores.editar") && (
           <Link href="/proveedores/nuevo" className={clasesBoton("principal")}>
             ＋ Nuevo proveedor

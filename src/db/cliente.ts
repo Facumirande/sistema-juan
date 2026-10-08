@@ -4,13 +4,15 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import * as esquema from "./esquema";
+import { clienteRapido } from "./conexion";
 import type { BaseDatos } from "./tipos";
 
 let instancia: BaseDatos | undefined;
 
 /**
  * Conexión del servidor como `app_servidor` (sin BYPASSRLS) por el pooler de Supabase en
- * modo transacción; por eso `prepare: false`. Se crea al primer uso para que el build no
+ * modo transacción; por eso `prepare: false` y los valores escritos en la consulta (`conexion.ts`,
+ * que además ahorra idas a la base en cada transacción). Se crea al primer uso para que el build no
  * necesite la variable de entorno. `DATABASE_POOL_MAX` ajusta las conexiones por instancia
  * (en funciones serverless conviene 1; el pooler de Supabase reparte).
  */
@@ -19,7 +21,14 @@ export function obtenerBaseDatos(): BaseDatos {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("Falta la variable de entorno DATABASE_URL.");
     const max = Number(process.env.DATABASE_POOL_MAX) || 5;
-    instancia = drizzle(postgres(url, { prepare: false, max }), { schema: esquema });
+    instancia = drizzle(
+      clienteRapido(postgres(url, { prepare: false, max }), {
+        // En Vercel el proceso puede congelarse al terminar de responder: ahí se espera siempre el "commit".
+        esperarCommit: Boolean(process.env.VERCEL),
+        transaccionSimple: process.env.DATABASE_TRANSACCION_SIMPLE === "1",
+      }),
+      { schema: esquema },
+    );
   }
   return instancia;
 }

@@ -1,13 +1,13 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment, Suspense, type ReactNode } from "react";
 
-import { obtenerBaseDatos } from "@/db/cliente";
-import { avisosPara, type BandejaDeAvisos } from "@/modulos/colaboracion/avisos";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
 import { EnlaceDeMenu } from "@/ui/enlace-menu";
+import { MarcoConMenu } from "@/ui/marco";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
 import { Campanita } from "./actividad/campanita";
@@ -41,8 +41,8 @@ function Menu({ grupos, authUserId, permisos }: { grupos: GrupoMenu[]; authUserI
     );
   };
   return (
-    <nav aria-label="Menú principal" className="flex flex-col gap-5">
-      {grupos.map((g) =>
+    <nav aria-label="Menú principal" className="flex flex-col gap-3">
+      {grupos.map((g, i) =>
         g.plegado ? (
           <details key={g.grupo} className="group flex flex-col gap-1">
             <summary className={`${titulo} flex min-h-9 cursor-pointer list-none items-center justify-between`}>
@@ -54,8 +54,9 @@ function Menu({ grupos, authUserId, permisos }: { grupos: GrupoMenu[]; authUserI
             </div>
           </details>
         ) : (
-          <div key={g.grupo} className="flex flex-col gap-1">
-            <p className={titulo}>{g.grupo}</p>
+          // Registros y Cuentas van cada uno en su bloque, con los renglones pegados (se leen como un grupo).
+          <div key={g.grupo} className={i === 0 ? "flex flex-col gap-0.5" : "flex flex-col rounded-xl bg-fondo px-1 pt-2 pb-1"}>
+            <p className={`${titulo} pb-1`}>{g.grupo}</p>
             <Items grupo={g} etapas={etapasDe(g)} />
           </div>
         ),
@@ -86,41 +87,24 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
   if (sesion.debeCambiarClave) redirect("/crear-clave");
 
   const grupos = menuDisponible(sesion.permisos);
-  // Si los avisos fallan, la pantalla se muestra igual (con la campanita vacía).
-  const avisos = await avisosPara(obtenerBaseDatos(), authUserId).catch((error: unknown): BandejaDeAvisos => {
-    console.error("No se pudieron leer los avisos:", error);
-    return { nuevos: 0, notasSinLeer: 0, avisos: [], personas: [] };
-  });
-
+  // El menú queda como se lo dejó la última vez (abierto o guardado): la página ya llega así.
+  const menuCerrado = (await cookies()).get("menu")?.value === "cerrado";
   return (
-    <div className="flex flex-1 flex-col md:flex-row">
-      <aside className="border-b border-borde bg-superficie md:w-60 md:shrink-0 md:border-b-0 md:border-r print:hidden">
-        <details className="md:hidden">
-          <summary className="flex min-h-12 cursor-pointer items-center px-4 font-semibold">Menú</summary>
-          <div className="px-2 pb-4">
-            <Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} />
-          </div>
-        </details>
-        <div className="hidden p-3 md:block">
-          <Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} />
-        </div>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-14 items-center justify-between gap-3 border-b border-borde bg-superficie px-4 print:hidden">
-          <Link href="/inicio" className="flex min-h-11 items-center font-semibold">
-            Sistema Repartos
+    <MarcoConMenu
+      menuCerrado={menuCerrado}
+      menu={<Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} />}
+      barra={
+        <>
+          <Campanita zonaHoraria={sesion.zonaHoraria} />
+          <Link href="/mi-cuenta" className="flex min-h-11 items-center gap-2 font-medium underline-offset-4 hover:underline">
+            <Avatar persona={{ nombre: sesion.nombre, color: sesion.color }} />
+            <span className="hidden sm:inline">{sesion.nombre}</span>
           </Link>
-          <div className="flex items-center gap-3">
-            <Campanita inicial={avisos} zonaHoraria={sesion.zonaHoraria} />
-            <Link href="/mi-cuenta" className="flex min-h-11 items-center gap-2 font-medium underline-offset-4 hover:underline">
-              <Avatar persona={{ nombre: sesion.nombre, color: sesion.color }} />
-              <span className="hidden sm:inline">{sesion.nombre}</span>
-            </Link>
-            <BotonSalir />
-          </div>
-        </header>
-        <main className="min-w-0 flex-1 p-4 print:p-0">{children}</main>
-      </div>
-    </div>
+          <BotonSalir />
+        </>
+      }
+    >
+      {children}
+    </MarcoConMenu>
   );
 }

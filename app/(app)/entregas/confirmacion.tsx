@@ -4,6 +4,7 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, CampoNumero, Selector } from "@/ui/formularios";
 
 import { confirmarEntregaAccion } from "./acciones";
+import { Recepcion, type QuienRecibio } from "./recepcion";
 
 interface Linea {
   id: string;
@@ -15,22 +16,25 @@ interface Linea {
 
 const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: true });
 
-function Recepcion({ requiereFirma }: { requiereFirma?: boolean }) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <Campo etiqueta="Recibió" name="recibidoPor" placeholder="Nombre" autoComplete="off" />
-      <Campo etiqueta="Cargo (opcional)" name="recibidoCargo" placeholder="Ej. dueño, jefa de cocina" autoComplete="off" />
-      {requiereFirma && <p className="text-sm text-texto-suave sm:col-span-2">Este cliente pide el remito firmado: guardá el duplicado firmado.</p>}
-    </div>
-  );
-}
-
 /**
  * Confirmación de una entrega (P-78, 04 §5.f.3): "Entregado completo" en tres toques más el
  * nombre; "Con diferencias" por línea (nunca más de lo preparado, RN-126); "No recibió" (RN-134).
  * Sin precios.
  */
-export function FormulariosConfirmacion({ entregaId, lineas, volver, requiereFirma }: { entregaId: string; lineas: Linea[]; volver: string; requiereFirma?: boolean }) {
+export function FormulariosConfirmacion({
+  entregaId,
+  lineas,
+  volver,
+  requiereFirma,
+  recibieronAntes = [],
+}: {
+  entregaId: string;
+  lineas: Linea[];
+  volver: string;
+  requiereFirma?: boolean;
+  /** Quiénes recibieron las últimas entregas de este cliente: se eligen con un toque. */
+  recibieronAntes?: QuienRecibio[];
+}) {
   const oculto = (
     <>
       <input type="hidden" name="entregaId" value={entregaId} />
@@ -51,7 +55,7 @@ export function FormulariosConfirmacion({ entregaId, lineas, volver, requiereFir
         <FormularioAccion accion={confirmarEntregaAccion} boton="Confirmar entrega">
           {oculto}
           <input type="hidden" name="modo" value="COMPLETA" />
-          <Recepcion requiereFirma={requiereFirma} />
+          <Recepcion requiereFirma={requiereFirma} anteriores={recibieronAntes} />
         </FormularioAccion>
       </div>
 
@@ -76,7 +80,7 @@ export function FormulariosConfirmacion({ entregaId, lineas, volver, requiereFir
               </li>
             ))}
           </ul>
-          <Recepcion requiereFirma={requiereFirma} />
+          <Recepcion requiereFirma={requiereFirma} anteriores={recibieronAntes} />
           <Campo etiqueta="Observaciones (opcional)" name="observaciones" />
         </FormularioAccion>
       </details>

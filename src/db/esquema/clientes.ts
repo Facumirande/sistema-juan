@@ -42,6 +42,8 @@ export const cliente = pgTable(
     requiereFirma: boolean("requiere_firma").notNull().default(false),
     plazoCobroDias: integer("plazo_cobro_dias"),
     limiteCredito: monto("limite_credito"),
+    /** Lo que ya debía antes de empezar a usar el sistema: es lo más viejo de su cuenta ("A cobrar"). */
+    saldoInicial: monto("saldo_inicial").notNull().default("0.00"),
     observaciones: text("observaciones"),
     activo: boolean("activo").notNull().default(true),
   },
@@ -55,6 +57,7 @@ export const cliente = pgTable(
     check("cliente_nombre_no_vacio", sql`char_length(trim(${t.nombre})) > 0`),
     check("cliente_prioridad_faltantes", sql`${t.prioridadFaltantes} between 1 and 5`),
     check("cliente_recargo", sql`${t.recargoDefault} > -100`),
+    check("cliente_saldo_inicial", sql`${t.saldoInicial} >= 0`),
   ],
 );
 

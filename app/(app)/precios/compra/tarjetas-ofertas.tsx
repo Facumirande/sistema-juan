@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { formatearMoneda, formatearPorcentaje } from "@/dominio/dinero/formato";
+import { formatearFecha } from "@/dominio/fechas/fechas";
 import type { OfertaListada } from "@/modulos/precios-compra/ofertas";
 import { UNIDADES_CORTAS, haceDias } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
@@ -15,7 +16,17 @@ import type { PermisosOfertas } from "./tabla-ofertas";
  * a cuánto lo vende y cuánto sale el kilo o la unidad, si es el más barato, y tiene a la vista lo
  * que se hace seguido (cambiar el precio). Lo demás va plegado, cada botón con su explicación.
  */
-export function TarjetasDeOfertas({ ofertas, permisos }: { ofertas: OfertaListada[]; permisos: PermisosOfertas }) {
+/** Un precio que tuvo un producto en un puesto, para el historial. */
+export interface PrecioAnterior {
+  desde: string;
+  precio: string;
+  variacionPct: string | null;
+  /** "al anotar una compra", "a mano"… */
+  como: string;
+  quien: string | null;
+}
+
+export function TarjetasDeOfertas({ ofertas, permisos, historiales = {} }: { ofertas: OfertaListada[]; permisos: PermisosOfertas; historiales?: Readonly<Record<string, PrecioAnterior[]>> }) {
   const pildora = "rounded-full px-2.5 py-0.5 text-sm font-semibold";
   const opcion = "flex flex-col gap-1";
   return (
@@ -79,6 +90,31 @@ export function TarjetasDeOfertas({ ofertas, permisos }: { ofertas: OfertaListad
               </div>
             )}
             <details>
+              <summary className="min-h-10 cursor-pointer py-2 font-medium text-texto-suave">📈 Historial de precios{historiales[o.id]?.length ? ` (${historiales[o.id]!.length})` : ""}</summary>
+              {historiales[o.id]?.length ? (
+                <ul className="barra-visible flex max-h-56 flex-col divide-y divide-borde overflow-y-auto rounded-xl border border-borde">
+                  {historiales[o.id]!.map((h, i) => (
+                    <li key={`${h.desde}-${i}`} className="flex flex-wrap items-baseline justify-between gap-x-4 px-3 py-2">
+                      <span>
+                        <b>{formatearFecha(h.desde)}</b> <span className="text-sm text-texto-suave">· {[h.como, h.quien].filter(Boolean).join(" · ")}</span>
+                      </span>
+                      <span className="tabular-nums">
+                        <b>{formatearMoneda(h.precio)}</b>
+                        {h.variacionPct && <span className="text-sm text-texto-suave"> · {h.variacionPct.startsWith("-") ? "bajó" : "subió"} {formatearPorcentaje(h.variacionPct.replace("-", ""), 0)}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-texto-suave">
+                  Cada cambio de precio queda guardado acá.{" "}
+                  <Link href={`/precios/compra/historial/${o.id}`} className="underline underline-offset-2">
+                    Ver el historial completo
+                  </Link>
+                </p>
+              )}
+            </details>
+            <details>
               <summary className="min-h-10 cursor-pointer py-2 font-medium text-texto-suave">Más opciones de este puesto</summary>
               <div className="grid gap-4 pt-2 sm:grid-cols-2">
                 {permisos.editarPrecio && (
@@ -107,11 +143,6 @@ export function TarjetasDeOfertas({ ofertas, permisos }: { ofertas: OfertaListad
                     <p className="text-sm text-texto-suave">La lista de compras lo sugiere primero para este producto, aunque no sea el más barato.</p>
                   </div>
                 )}
-                <div className={opcion}>
-                  <Link href={`/precios/compra/historial/${o.id}`} className="flex min-h-12 items-center font-medium underline underline-offset-4">
-                    📈 Ver cómo fue cambiando el precio
-                  </Link>
-                </div>
                 {permisos.quitarOferta && (
                   <div className={opcion}>
                     <FormularioAccion

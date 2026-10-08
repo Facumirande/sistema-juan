@@ -90,9 +90,7 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
         <>
           <header className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-texto pb-2">
             <h1 className="text-xl font-bold">LISTA DE COMPRAS</h1>
-            <p>
-              Entrega del {fechaConDia(lista.fecha)}
-            </p>
+            <p className="text-2xl font-extrabold first-letter:uppercase">{fechaConDia(lista.fecha)}</p>
             <p className="w-full font-semibold">
               {lista.pedidos === 1 ? "1 pedido" : `${lista.pedidos} pedidos`} · {todasLasLineas.length === 1 ? "1 producto" : `${todasLasLineas.length} productos`} · {faltan === 0 ? "ya está todo comprado" : faltan === 1 ? "falta comprar 1" : `faltan comprar ${faltan}`}
               {soloFalta && " · en esta hoja, solo lo que falta"}

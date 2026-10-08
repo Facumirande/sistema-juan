@@ -38,21 +38,18 @@ export function exigirJornadaAbierta(j: { estado: string } | undefined | null) {
 
 /** Los pedidos de una entrega avanzan con ella (04 §5.e y §5.f); nunca retroceden desde ENTREGADO ni CANCELADO. */
 export async function moverPedidosDeEntrega(tx: Transaccion, entregaId: string, desde: readonly EstadoPedido[], hasta: EstadoPedido): Promise<void> {
-  const ids = await tx
-    .selectDistinct({ id: pedidoItem.pedidoId })
-    .from(entregaItem)
-    .innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
-    .where(eq(entregaItem.entregaId, entregaId));
-  if (ids.length === 0) return;
+  await moverPedidosDeEntregas(tx, [entregaId], desde, hasta);
+}
+
+/** Lo mismo para varias entregas, en una sola consulta (una ida a la base): los pedidos con líneas en ellas. */
+export async function moverPedidosDeEntregas(tx: Transaccion, entregaIds: readonly string[], desde: readonly EstadoPedido[], hasta: EstadoPedido): Promise<void> {
+  if (entregaIds.length === 0) return;
   await tx
     .update(pedido)
     .set({ estado: hasta })
     .where(
       and(
-        inArray(
-          pedido.id,
-          ids.map((i) => i.id),
-        ),
+        inArray(pedido.id, tx.selectDistinct({ id: pedidoItem.pedidoId }).from(entregaItem).innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId)).where(inArray(entregaItem.entregaId, [...entregaIds]))),
         inArray(pedido.estado, [...desde]),
       ),
     );

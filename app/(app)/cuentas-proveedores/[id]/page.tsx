@@ -52,7 +52,7 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
     <section className="flex max-w-5xl flex-col gap-6">
       <Encabezado
         titulo={c.proveedor.nombre}
-        volver={{ ruta: "/cuentas-proveedores", texto: "Deudas con proveedores" }}
+        volver={{ ruta: "/cuentas-proveedores", texto: "A pagar" }}
         descripcion={[
           c.proveedor.ubicacion,
           c.proveedor.limiteCredito ? `límite ${formatearMoneda(c.proveedor.limiteCredito)}` : "sin límite de crédito",
@@ -62,8 +62,8 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
           .join(" · ")}
       >
         {puede("pagos.registrar") && (
-          <Link href={`/cuentas-proveedores/${id}/pago`} className={clasesBoton("secundario")}>
-            Otro pago (una parte o varias compras)
+          <Link href={`/cuentas-proveedores/${id}/pago`} className={clasesBoton(i.saldoPendiente.gt(0) ? "principal" : "secundario")}>
+            💵 Pagarle (elegís qué compras)
           </Link>
         )}
         {puede("pagos.ajustar") && (
@@ -80,9 +80,9 @@ export default async function CuentaDelProveedor({ params, searchParams }: PageP
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {i.saldoAFavor.gt(0) ? (
-          <Cifra titulo="A favor nuestro" valor={formatearMoneda(i.saldoAFavor)} clase="text-marca" />
+          <Cifra titulo="Nos debe (a favor nuestro)" valor={formatearMoneda(i.saldoAFavor)} clase="text-marca" />
         ) : (
-          <Cifra titulo="Se le debe" valor={formatearMoneda(i.saldoPendiente)} />
+          <Cifra titulo="Le debemos" valor={formatearMoneda(i.saldoPendiente)} />
         )}
         <Cifra titulo="Crédito disponible" valor={i.disponible ? formatearMoneda(i.disponible) : "sin límite"} />
         <Cifra

@@ -137,6 +137,10 @@ export const tipoComprobante = pgEnum("tipo_comprobante", ["INTERNO"]);
 
 export const estadoFactura = pgEnum("estado_factura", ["EMITIDA", "ANULADA"]);
 
+// Gastos e ingresos generales del negocio (07/10/2026).
+
+export const tipoMovimientoExtra = pgEnum("tipo_movimiento_extra", ["GASTO", "INGRESO"]);
+
 // Tablero de pedidos, notas entre usuarios y actividad (uso interno, 28/09/2026).
 
 export const prioridadPedido = pgEnum("prioridad_pedido", ["ALTA", "NORMAL", "BAJA"]);

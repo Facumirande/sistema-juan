@@ -19,7 +19,7 @@ describe("menú por permisos (08 §2.2)", () => {
 
   it("quien maneja todos los repartos no ve \"Mi reparto\": usa Logística", () => {
     const dia = menuPara(PERMISOS).find((g) => g.grupo === "Día de trabajo")!;
-    expect(dia.items.map((i) => i.etiqueta)).toEqual(["Nuevo pedido", "Tablero de pedidos", "Lista de compras", "Preparación", "Remitos", "Logística", "Actividad y notas"]);
+    expect(dia.items.map((i) => i.etiqueta)).toEqual(["Tablero de pedidos", "Nuevo pedido", "Lista de compras", "Preparación", "Remitos", "Logística", "Actividad y notas"]);
     // Las etapas del día van juntas, debajo del tablero.
     expect(dia.items.filter((i) => i.etapa).map((i) => i.etiqueta)).toEqual(["Lista de compras", "Preparación", "Remitos", "Logística"]);
   });

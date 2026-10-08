@@ -127,6 +127,41 @@
       "when": 1791265255900,
       "tag": "0017_quitar_dibujo_de_producto",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791334940029,
+      "tag": "0018_segunda_entrega_frecuentes_y_orden",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791356560509,
+      "tag": "0019_cobros_gastos_e_ingresos",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791356579079,
+      "tag": "0020_cobros_gastos_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791428105818,
+      "tag": "0021_recorrido_y_destinos",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791428108036,
+      "tag": "0022_recorrido_rls",
+      "breakpoints": true
     }
   ]
 }

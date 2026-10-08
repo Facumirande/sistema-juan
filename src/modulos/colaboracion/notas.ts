@@ -1,9 +1,10 @@
 import { and, asc, count, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { nota, notaLectura, tipoEntidad, usuario } from "@/db/esquema";
+import { jornada, nota, notaLectura, pedido, tipoEntidad, usuario } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import type { FechaISO } from "@/dominio/fechas/fechas";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { textoObligatorio, validar } from "@/modulos/validacion";
 
@@ -188,6 +189,21 @@ export async function contarNotasDe(tx: Transaccion, c: ContextoUsuario, tipo: T
     })
     .from(nota)
     .where(and(eq(nota.entidadTipo, tipo), inArray(nota.entidadId, [...ids])))
+    .groupBy(nota.entidadId);
+  return new Map(filas.map((f) => [f.id, { total: Number(f.total), sinLeer: Number(f.sinLeer) }]));
+}
+
+/** Lo mismo que `contarNotasDe` para los pedidos de un día, sin tener que conocer antes cuáles son (sale junto con el tablero). */
+export async function contarNotasDePedidosDelDia(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO): Promise<Map<string, { total: number; sinLeer: number }>> {
+  if (!c.permisos.tiene(PERMISO_PARA_VER.PEDIDO)) return new Map();
+  const filas = await tx
+    .select({
+      id: nota.entidadId,
+      total: count(),
+      sinLeer: sql<number>`count(*) filter (where ${sinLeerPara(c)})`,
+    })
+    .from(nota)
+    .where(and(eq(nota.entidadTipo, "PEDIDO"), inArray(nota.entidadId, tx.select({ id: pedido.id }).from(pedido).innerJoin(jornada, eq(jornada.id, pedido.jornadaId)).where(eq(jornada.fecha, fecha)))))
     .groupBy(nota.entidadId);
   return new Map(filas.map((f) => [f.id, { total: Number(f.total), sinLeer: Number(f.sinLeer) }]));
 }

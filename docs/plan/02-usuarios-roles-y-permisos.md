@@ -107,9 +107,9 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `compras.registrar` | Registrar compras (CONTADO, CREDITO o MIXTA), incluido el pago en el momento. | Sí (si cambia el precio de lista) | C |
 | `compras.anular` | Anular una compra con motivo (genera movimiento compensatorio en la cuenta del proveedor). | Sí | C |
 | `compras.exceder_limite` | Confirmar una compra a crédito que supera el límite del proveedor, con motivo. | Sí | F |
-| `pagos.ver` | Ver la cuenta corriente de cada proveedor: movimientos, pagos, imputaciones, vencimientos, historial. | No | F |
-| `pagos.registrar` | Registrar pagos a proveedores e imputarlos (FIFO automático o manual). | Sí | F |
-| `pagos.anular` | Anular un pago con motivo (genera movimiento compensatorio) y reimputar pagos. | Sí | F |
+| `pagos.ver` | Ver la cuenta corriente de cada proveedor ("A pagar"): movimientos, pagos, imputaciones, vencimientos, historial. Ver los gastos e ingresos generales. | No | F |
+| `pagos.registrar` | Registrar pagos a proveedores e imputarlos (FIFO automático o manual). Anotar gastos e ingresos generales y manejar sus rubros. | Sí | F |
+| `pagos.anular` | Anular un pago con motivo (genera movimiento compensatorio) y reimputar pagos. Anular un gasto o un ingreso. | Sí | F |
 | `pagos.ajustar` | Registrar ajustes de cuenta corriente (débito/crédito, ej. nota de crédito del proveedor) y saldos iniciales. | Sí | F |
 
 ### 4.5 Preparación, repartos y entregas
@@ -121,7 +121,7 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `preparacion.asignar_faltantes` | Decidir cómo se reparte un producto faltante entre clientes (por prioridad o manual). | Sí | O |
 | `repartos.ver` | Ver todos los repartos (hojas de ruta) de una jornada. | No | O |
 | `repartos.ver_propios` | Ver solo los repartos asignados al propio usuario y marcar su salida ("Salir") y su regreso. | No | O |
-| `repartos.gestionar` | Crear hojas de ruta, asignar repartidor, vehículo, entregas y orden de visita. | No | O |
+| `repartos.gestionar` | Crear hojas de ruta, asignar repartidor, vehículo, entregas y orden de visita; ordenar el recorrido del día, sumarle destinos y manejar los destinos favoritos. | No | O |
 | `entregas.ver` | Ver entregas, sus cantidades y su estado (datos operativos). | No | O |
 | `entregas.gestionar` | Armar entregas a partir de pedidos (agrupar pedidos del mismo cliente y punto de entrega) y pasarlas a EN_REPARTO. | No | O |
 | `entregas.emitir_documentos` | Emitir y reemitir los documentos de una entrega: genera **juntos** DOC-02 y DOC-03 de la misma versión y congela los precios. Quien emite sin `documentos.imprimir_contable` recibe solo DOC-02; DOC-03 queda guardado para quien pueda verlo. | Sí | O |
@@ -142,9 +142,9 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `facturacion.emitir` | Emitir el comprobante interno que agrupa una o más entregas. | Sí | V |
 | `facturacion.anular` | Anular un comprobante con motivo (las entregas vuelven a SIN_FACTURAR). | Sí | V |
 | `facturacion.exportar` | Exportar ventas y comprobantes para el contador (CSV/Excel). | Sí | V |
-| `cobranzas.ver` | Reservado, sin uso. Ver cuenta corriente de clientes y cobros. | No | F |
-| `cobranzas.registrar` | Reservado, sin uso. Registrar cobros de clientes e imputarlos a comprobantes. | Sí | F |
-| `cobranzas.anular` | Reservado, sin uso. Anular cobros con motivo. | Sí | F |
+| `cobranzas.ver` | Ver lo que falta cobrarle a cada cliente y sus cobros ("A cobrar"). | No | F |
+| `cobranzas.registrar` | Anotar cobros a clientes y lo que debían antes de usar el sistema. | Sí | F |
+| `cobranzas.anular` | Anular un cobro con motivo. | Sí | F |
 | `stock.ver` | Reservado, sin uso. Ver sobrantes y mermas (cantidades). | No | O |
 | `stock.ajustar` | Reservado, sin uso. Registrar sobrantes, mermas y devoluciones. | Sí | O |
 
@@ -225,9 +225,9 @@ Referencias: **Sí** = incluido por defecto en el rol. **Opc.** = no viene por d
 | facturacion.emitir | Sí | — | — | Nunca | Nunca | Sí |
 | facturacion.anular | Sí | — | — | Nunca | Nunca | Opc. |
 | facturacion.exportar | Sí | — | — | Nunca | Nunca | Sí |
-| cobranzas.ver (reservado) | Sí | Opc. | — | Nunca | Nunca | Sí |
-| cobranzas.registrar (reservado) | Sí | — | — | Nunca | Nunca | Sí |
-| cobranzas.anular (reservado) | Sí | — | — | Nunca | Nunca | Opc. |
+| cobranzas.ver | Sí | Opc. | — | Nunca | Nunca | Sí |
+| cobranzas.registrar | Sí | — | — | Nunca | Nunca | Sí |
+| cobranzas.anular | Sí | — | — | Nunca | Nunca | Opc. |
 | stock.ver (reservado) | Sí | — | Sí | Sí | — | Opc. |
 | stock.ajustar (reservado) | Sí | — | Opc. | Opc. | — | — |
 | reportes.ver | Sí | Opc. | Opc. | Nunca | Nunca | Sí |
@@ -265,7 +265,7 @@ Si una persona necesita, por ejemplo, preparar y además facturar, se le asignan
 | **V — Precio de venta** | `pedido_item.precio_estimado`, `subtotal_estimado`, `origen_regla_estimada`; `pedido.total_estimado`; `entrega_item.precio_unitario`, `importe`, `origen_regla`; `entrega.importe_neto`, `importe_iva`, `importe_total`; `factura.importe_*`; `factura_entrega.importe_total`. | `precios.ver_venta` | **Nunca** |
 | **C — Costo** | `proveedor_producto.precio_vigente`, `costo_base`, `precio_anterior`; todo `historial_precio_compra`; `compra.total`, `monto_pagado_en_el_acto`; `compra_item.precio_unitario`, `costo_base`, `subtotal`; `lista_compra_item.precio_sugerido`, `costo_estimado`; `pedido_item.costo_estimado`; `entrega_item.costo_unitario`; `entrega.costo_total`. | `precios.ver_costos` | **Nunca** |
 | **M — Margen y reglas** | `recargo_default` de empresa, categoría, producto y cliente; `empresa.recargo_global`, `margen_minimo_pct`; toda `regla_precio`; `pedido_item.recargo_estimado`; `entrega_item.recargo_aplicado`; alertas de margen (`alertas` de `pedido_item` y `entrega_item`); margen en $ y %. | `precios.ver_margenes` (ver) / `precios.editar_reglas` (editar) | **Nunca** |
-| **F — Financiero** | `proveedor.limite_credito`, `plazo_pago_dias`, `saldo_actual`; saldo pendiente, crédito disponible, semáforo, deuda vencida; `pago_proveedor`, `imputacion_pago_proveedor`, `movimiento_cuenta_proveedor`; estado de pago de compras. | `proveedores.ver_credito`, `pagos.ver`, `cobranzas.ver` | **Nunca** |
+| **F — Financiero** | `proveedor.limite_credito`, `plazo_pago_dias`, `saldo_actual`; saldo pendiente, crédito disponible, semáforo, deuda vencida; `pago_proveedor`, `imputacion_pago_proveedor`, `movimiento_cuenta_proveedor`; estado de pago de compras; `cobro_cliente`, lo que debe cada cliente y `cliente.saldo_inicial`; `movimiento_extra` (gastos e ingresos generales). | `proveedores.ver_credito`, `pagos.ver`, `cobranzas.ver` | **Nunca** |
 | **P — Personal y seguridad** | Usuarios, roles, permisos, auditoría, direcciones IP y dispositivos. | `usuarios.administrar`, `auditoria.ver` | **Nunca** |
 
 ### 7.2 Qué ve cada rol en pantallas compartidas (ejemplos)

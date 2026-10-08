@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { auditar } from "@/db/auditoria";
@@ -39,17 +41,24 @@ export async function emitirComprobante(
     if (e.estado !== "ENTREGADA") throw new ErrorDeNegocio("VALIDACION", `${n} todavía no se entregó.`);
     if (e.estadoFacturacion === "FACTURADA") throw new ErrorDeNegocio("VALIDACION", `${n} ya está facturada.`);
     if (!dec(e.importeTotal).gt(0)) throw new ErrorDeNegocio("VALIDACION", `${n} tiene total $0: no se factura (RN-136).`);
-    if (!(await documentosAlDia(tx, e.id, e.version))) throw new ErrorDeNegocio("VALIDACION", `${n}: faltan emitir los documentos de su última versión.`);
   }
-  const [cli] = await tx.select().from(cliente).where(eq(cliente.id, clienteId));
-  const empresa = await configuracionEmpresa(tx);
+  // Lo que falta leer y el número del comprobante salen juntos (una ida a la base).
+  const [alDia, [cli], empresa, { numero, visible }] = await Promise.all([
+    documentosAlDiaDe(tx, entregas),
+    tx.select().from(cliente).where(eq(cliente.id, clienteId)),
+    configuracionEmpresa(tx),
+    siguienteNumero(tx, "FACTURA"),
+  ]);
+  const sinDocumentos = entregas.find((e) => !alDia.has(e.id));
+  if (sinDocumentos) throw new ErrorDeNegocio("VALIDACION", `${numeroEntrega(sinDocumentos.numero)}: faltan emitir los documentos de su última versión.`);
   const neto = sumar(entregas.map((e) => e.importeNeto));
   const iva = sumar(entregas.map((e) => e.importeIva));
   const total = sumar(entregas.map((e) => e.importeTotal));
-  const { numero, visible } = await siguienteNumero(tx, "FACTURA");
-  const [f] = await tx
-    .insert(factura)
-    .values({
+  const facturaId = randomUUID();
+  // El comprobante, sus entregas y el registro se guardan juntos (una ida): primero el comprobante.
+  await Promise.all([
+    tx.insert(factura).values({
+      id: facturaId,
       empresaId: c.empresaId,
       numero,
       clienteId,
@@ -66,36 +75,33 @@ export async function emitirComprobante(
       importeTotal: aNumeric(total, 2),
       creadoPor: c.usuarioId,
       actualizadoPor: c.usuarioId,
-    })
-    .returning({ id: factura.id });
-  for (const e of entregas) {
-    await tx.insert(facturaEntrega).values({
+    }),
+    tx.insert(facturaEntrega).values(
+      entregas.map((e) => ({
+        empresaId: c.empresaId,
+        facturaId,
+        entregaId: e.id,
+        entregaVersion: e.version,
+        importeTotal: e.importeTotal,
+        creadoPor: c.usuarioId,
+        actualizadoPor: c.usuarioId,
+      })),
+    ),
+    tx
+      .update(entrega)
+      .set({ estadoFacturacion: "FACTURADA", actualizadoPor: c.usuarioId })
+      .where(inArray(entrega.id, entregas.map((e) => e.id))),
+    auditar(tx, {
       empresaId: c.empresaId,
-      facturaId: f!.id,
-      entregaId: e.id,
-      entregaVersion: e.version,
-      importeTotal: e.importeTotal,
-      creadoPor: c.usuarioId,
-      actualizadoPor: c.usuarioId,
-    });
-  }
-  await tx
-    .update(entrega)
-    .set({ estadoFacturacion: "FACTURADA", actualizadoPor: c.usuarioId })
-    .where(inArray(
-      entrega.id,
-      entregas.map((e) => e.id),
-    ));
-  await auditar(tx, {
-    empresaId: c.empresaId,
-    usuarioId: c.usuarioId,
-    accion: "CREAR",
-    entidad: "factura",
-    entidadId: f!.id,
-    resumen: `${visible} a ${cli!.nombre}: ${formatearMoneda(total)} (${entregas.length} ${entregas.length === 1 ? "entrega" : "entregas"}).`,
-  });
-  await registrarActividad(tx, c, { accion: "FACTURAR", entidadTipo: "FACTURA", entidadId: f!.id, resumen: `emitió el comprobante ${visible} a ${cli!.nombre}` });
-  return { facturaId: f!.id, numero: visible, total: aNumeric(total, 2) };
+      usuarioId: c.usuarioId,
+      accion: "CREAR",
+      entidad: "factura",
+      entidadId: facturaId,
+      resumen: `${visible} a ${cli!.nombre}: ${formatearMoneda(total)} (${entregas.length} ${entregas.length === 1 ? "entrega" : "entregas"}).`,
+    }),
+    registrarActividad(tx, c, { accion: "FACTURAR", entidadTipo: "FACTURA", entidadId: facturaId, resumen: `emitió el comprobante ${visible} a ${cli!.nombre}` }),
+  ]);
+  return { facturaId, numero: visible, total: aNumeric(total, 2) };
 }
 
 /**
@@ -103,13 +109,15 @@ export async function emitirComprobante(
  * emite solo al confirmar la entrega (siempre que tenga total y documentos al día).
  */
 export async function facturarAlConfirmar(tx: Transaccion, c: ContextoUsuario, entregaId: string): Promise<string | null> {
-  const [e] = await tx
-    .select({ total: entrega.importeTotal, version: entrega.version, estado: entrega.estado, facturacion: entrega.estadoFacturacion, periodicidad: cliente.periodicidadFacturacion })
-    .from(entrega)
-    .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-    .where(eq(entrega.id, entregaId));
+  const [[e], empresa] = await Promise.all([
+    tx
+      .select({ total: entrega.importeTotal, version: entrega.version, estado: entrega.estado, facturacion: entrega.estadoFacturacion, periodicidad: cliente.periodicidadFacturacion })
+      .from(entrega)
+      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+      .where(eq(entrega.id, entregaId)),
+    configuracionEmpresa(tx),
+  ]);
   if (!e || e.estado !== "ENTREGADA" || e.facturacion !== "SIN_FACTURAR" || e.periodicidad !== "POR_ENTREGA" || !dec(e.total).gt(0)) return null;
-  const empresa = await configuracionEmpresa(tx);
   if (!empresa.facturarAutomaticoPorEntrega || !(await documentosAlDia(tx, entregaId, e.version))) return null;
   return (await emitirComprobante(tx, c, { entregaIds: [entregaId] })).numero;
 }

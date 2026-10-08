@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNull, lte, or, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, or, sql, sum } from "drizzle-orm";
 
 import { categoria, cliente, compra, compraItem, empresa, jornada, presentacion, producto, proveedor, proveedorProducto, reglaPrecio } from "@/db/esquema";
 import type { Transaccion } from "@/db/tipos";
@@ -52,55 +52,58 @@ export async function costosReales(tx: Transaccion, productoIds: readonly string
  */
 export async function calcularPrecios(tx: Transaccion, p: { clienteId: string; fecha: FechaISO; lineas: readonly LineaAPrecio[] }): Promise<PrecioVenta[]> {
   if (p.lineas.length === 0) return [];
-  const [e] = await tx.select().from(empresa);
+  const productoIds = [...new Set(p.lineas.map((l) => l.productoId))];
+  const presentacionIds = [...new Set(p.lineas.map((l) => l.presentacionId).filter((x): x is string => x !== null))];
+  // Todo lo que hace falta sale junto, en una sola ida a la base.
+  const [[e], [cli], productos, factores, ofertas, reglas, reales] = await Promise.all([
+    tx.select().from(empresa),
+    tx.select({ recargo: cliente.recargoDefault }).from(cliente).where(eq(cliente.id, p.clienteId)),
+    tx
+      .select({
+        id: producto.id,
+        categoriaId: producto.categoriaId,
+        recargo: producto.recargoDefault,
+        alicuotaIva: producto.alicuotaIva,
+        preferidoId: producto.proveedorPreferidoId,
+        recargoCategoria: categoria.recargoDefault,
+      })
+      .from(producto)
+      .innerJoin(categoria, eq(categoria.id, producto.categoriaId))
+      .where(inArray(producto.id, productoIds)),
+    tx
+      .select({ id: presentacion.id, factor: presentacion.factorABase })
+      .from(presentacion)
+      .where(presentacionIds.length ? inArray(presentacion.id, presentacionIds) : sql`false`),
+    tx
+      .select({
+        productoId: proveedorProducto.productoId,
+        proveedorId: proveedorProducto.proveedorId,
+        costoBase: proveedorProducto.costoBase,
+        disponible: proveedorProducto.disponible,
+        fechaActualizacion: proveedorProducto.fechaActualizacion,
+      })
+      .from(proveedorProducto)
+      .innerJoin(proveedor, and(eq(proveedor.id, proveedorProducto.proveedorId), eq(proveedor.activo, true)))
+      .where(and(inArray(proveedorProducto.productoId, productoIds), eq(proveedorProducto.activo, true))),
+    tx
+      .select()
+      .from(reglaPrecio)
+      .where(
+        and(
+          eq(reglaPrecio.clienteId, p.clienteId),
+          eq(reglaPrecio.activo, true),
+          lte(reglaPrecio.vigenteDesde, p.fecha),
+          or(isNull(reglaPrecio.vigenteHasta), gte(reglaPrecio.vigenteHasta, p.fecha)),
+          // Las reglas de esos productos o de sus categorías.
+          or(inArray(reglaPrecio.productoId, productoIds), inArray(reglaPrecio.categoriaId, tx.select({ id: producto.categoriaId }).from(producto).where(inArray(producto.id, productoIds)))),
+        ),
+      ),
+    costosReales(tx, productoIds, p.fecha),
+  ]);
   if (!e) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la configuración de la empresa.");
-  const [cli] = await tx.select({ recargo: cliente.recargoDefault }).from(cliente).where(eq(cliente.id, p.clienteId));
   if (!cli) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el cliente.");
 
-  const productoIds = [...new Set(p.lineas.map((l) => l.productoId))];
-  const productos = await tx
-    .select({
-      id: producto.id,
-      categoriaId: producto.categoriaId,
-      recargo: producto.recargoDefault,
-      alicuotaIva: producto.alicuotaIva,
-      preferidoId: producto.proveedorPreferidoId,
-      recargoCategoria: categoria.recargoDefault,
-    })
-    .from(producto)
-    .innerJoin(categoria, eq(categoria.id, producto.categoriaId))
-    .where(inArray(producto.id, productoIds));
-  const presentacionIds = [...new Set(p.lineas.map((l) => l.presentacionId).filter((x): x is string => x !== null))];
-  const factores = presentacionIds.length
-    ? await tx.select({ id: presentacion.id, factor: presentacion.factorABase }).from(presentacion).where(inArray(presentacion.id, presentacionIds))
-    : [];
-  const ofertas = await tx
-    .select({
-      productoId: proveedorProducto.productoId,
-      proveedorId: proveedorProducto.proveedorId,
-      costoBase: proveedorProducto.costoBase,
-      disponible: proveedorProducto.disponible,
-      fechaActualizacion: proveedorProducto.fechaActualizacion,
-    })
-    .from(proveedorProducto)
-    .innerJoin(proveedor, and(eq(proveedor.id, proveedorProducto.proveedorId), eq(proveedor.activo, true)))
-    .where(and(inArray(proveedorProducto.productoId, productoIds), eq(proveedorProducto.activo, true)));
-  const categoriaIds = [...new Set(productos.map((x) => x.categoriaId))];
-  const reglas = await tx
-    .select()
-    .from(reglaPrecio)
-    .where(
-      and(
-        eq(reglaPrecio.clienteId, p.clienteId),
-        eq(reglaPrecio.activo, true),
-        lte(reglaPrecio.vigenteDesde, p.fecha),
-        or(isNull(reglaPrecio.vigenteHasta), gte(reglaPrecio.vigenteHasta, p.fecha)),
-        or(inArray(reglaPrecio.productoId, productoIds), inArray(reglaPrecio.categoriaId, categoriaIds)),
-      ),
-    );
-
   const hoy = hoyEnEmpresa(new Date(), e.zonaHoraria);
-  const reales = await costosReales(tx, productoIds, p.fecha);
   const aplicable = (r: (typeof reglas)[number] | undefined): ReglaAplicable | null =>
     r ? { id: r.id, valor: r.valor, vigenteHasta: r.vigenteHasta, referencia: r.referencia } : null;
 

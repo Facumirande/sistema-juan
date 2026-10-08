@@ -37,7 +37,7 @@ Es una aplicación web que se usa desde el navegador del celular o de la computa
 | 05 | [Precios y márgenes](05-precios-y-margenes.md) | Precios de compra y su actualización, comparación entre proveedores, costo de referencia, precio de venta con 7 niveles de reglas, redondeo, IVA, alertas. | Dueño, desarrollo |
 | 06 | [Créditos y pagos](06-creditos-y-pagos.md) | Cuenta corriente de proveedores, pagos e imputación, límite de crédito y semáforo, vencimientos. | Dueño, desarrollo |
 | 07 | [Reglas de negocio](07-reglas-de-negocio.md) | Catálogo RN-001 a RN-152, casos borde resueltos, parámetros por empresa. | Dueño, desarrollo |
-| 08 | [Pantallas y acciones](08-pantallas-y-acciones.md) | Las pantallas construidas: tablero, carga de pedidos, lista de compras, preparación, viaje de entrega, cuentas, facturación y balance, con sus acciones, permisos y reglas. | Dueño, desarrollo |
+| 08 | [Pantallas y acciones](08-pantallas-y-acciones.md) | Las pantallas construidas: tablero, carga de pedidos, lista de compras, preparación, recorrido de entrega (Logística), cuentas, facturación y balance, con sus acciones, permisos y reglas. | Dueño, desarrollo |
 | 09 | [Documentos imprimibles](09-documentos-imprimibles.md) | DOC-01 a DOC-08: contenido, permisos, versiones, ejemplos impresos y cómo se generan. | Dueño, desarrollo |
 | 10 | [Plan de implementación](10-plan-de-implementacion.md) | Estado de las iteraciones, puesta en marcha, pruebas, carga de los datos reales y decisiones tomadas. | Dueño, desarrollo |
 

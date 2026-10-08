@@ -7,7 +7,10 @@ export function CampoClave({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HT
   const [visible, setVisible] = useState(false);
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-medium">{etiqueta}</span>
+      <span className="font-medium">
+        {etiqueta}
+        {input.required && <span className="text-error"> *</span>}
+      </span>
       <span className="flex gap-2">
         <input
           {...input}

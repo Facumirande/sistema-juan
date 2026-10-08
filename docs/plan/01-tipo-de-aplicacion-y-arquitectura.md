@@ -320,7 +320,7 @@ Referencia: Android de gama media con 4G irregular.
 1. Server Components para casi todo: el celular recibe HTML listo y poco JavaScript.
 2. Las pantallas del mercado, el depósito y el reparto no cargan librerías pesadas; los gráficos del balance son SVG propios.
 3. Los montos siempre esperan la confirmación del servidor.
-4. Botones de al menos 48 px de alto, texto de 16 px o más, alto contraste (legible al sol), teclado numérico para cantidades y precios, acciones principales al alcance del pulgar.
+4. Botones de al menos 48 px de alto, letra grande (18 px de base en la computadora y 17 en el celular; ningún texto por debajo de unos 15 px), alto contraste (legible al sol), teclado numérico para cantidades y precios, acciones principales al alcance del pulgar.
 5. Índices de 03 para las consultas del día (por jornada, proveedor y cliente).
 
 ---

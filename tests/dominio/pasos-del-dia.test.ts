@@ -5,6 +5,7 @@ import { pasosDelDia, type DatosDelDia } from "@/dominio/jornadas/pasos";
 const vacio: DatosDelDia = {
   jornada: null,
   pedidos: { confirmados: 0, borradores: 0 },
+  sinPreparar: 0,
   lista: { armada: false, desactualizada: false, lineas: 0, resueltas: 0, fueraDeLista: 0 },
   compras: 0,
   entregas: { total: 0, preparadas: 0, conDocumentos: 0, enCamino: 0, entregadas: 0 },
@@ -94,5 +95,14 @@ describe("el día de trabajo paso a paso", () => {
     const d = con({ jornada: "PREPARANDO", pedidos: { confirmados: 2, borradores: 0 }, entregas: { total: 2, preparadas: 0, conDocumentos: 0, enCamino: 0, entregadas: 0 } });
     expect(estados(d)).toMatchObject({ pedidos: "hecho", lista: "salteado", compras: "salteado", preparacion: "en_curso" });
     expect(pasosDelDia(d).actual).toBe("preparacion");
+  });
+
+  it("con un pedido entregado y otros sin empezar a preparar, el día no pasa al cierre", () => {
+    const entregado = { total: 1, preparadas: 1, conDocumentos: 1, enCamino: 1, entregadas: 1 };
+    const d = con({ jornada: "REPARTIENDO", pedidos: confirmados, lista: { ...listaArmada, resueltas: 5 }, compras: 3, entregas: entregado, repartos: 1, sinPreparar: 2 });
+    expect(estados(d)).toMatchObject({ preparacion: "en_curso", entregas: "en_curso", cierre: "pendiente" });
+    expect(pasosDelDia(d)).toMatchObject({ actual: "entregas", atrasados: ["preparacion"] });
+    // Sin pedidos esperando, con todo entregado toca cerrar.
+    expect(pasosDelDia({ ...d, sinPreparar: 0 })).toMatchObject({ actual: "cierre", atrasados: [] });
   });
 });

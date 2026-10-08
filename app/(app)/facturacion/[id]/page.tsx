@@ -70,7 +70,7 @@ export default async function DetalleComprobante({ params }: PageProps<"/factura
           <p className="py-2 text-sm text-texto-suave">Sus entregas vuelven a quedar sin facturar: se pueden corregir y facturar de nuevo.</p>
           <FormularioAccion accion={anularComprobanteAccion} boton="Anular" variante="peligro" confirmar={`¿Anular ${f.numero}?`}>
             <input type="hidden" name="facturaId" value={f.id} />
-            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. hay que corregir una entrega" />
+            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. hay que corregir una entrega" required />
           </FormularioAccion>
         </details>
       )}

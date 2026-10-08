@@ -39,8 +39,13 @@ export const numeroOpcional = (mensaje: string) =>
       return n.toString();
     });
 
+/**
+ * Igual que `numeroOpcional`, pero vacío es un error. Corta ahí la validación (`abort`): lo que se
+ * le encadene después (`.refine((v) => dec(v).gt(0))`) no llega a correr con un valor vacío. Sin
+ * eso, un casillero obligatorio sin completar rompía la acción en vez de avisar qué falta.
+ */
 export const numeroObligatorio = (mensaje: string) =>
-  numeroOpcional(mensaje).refine((v): v is string => v !== null, { message: mensaje });
+  numeroOpcional(mensaje).refine((v): v is string => v !== null, { message: mensaje, abort: true });
 
 export const enteroOpcional = (mensaje: string, minimo = 0) =>
   numeroOpcional(mensaje).refine((v) => v === null || (Number.isInteger(Number(v)) && Number(v) >= minimo), { message: mensaje });

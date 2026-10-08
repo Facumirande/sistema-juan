@@ -8,6 +8,8 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 
 import * as esquema from "@/db/esquema";
 import { rol, usuario, usuarioRol } from "@/db/esquema";
+import { esDeLectura } from "@/db/conexion";
+import { conLiterales } from "@/db/literales";
 import { enEmpresa } from "@/db/transaccion";
 import type { BaseDatos } from "@/db/tipos";
 import { esErrorDeNegocio } from "@/dominio/errores";
@@ -20,12 +22,69 @@ export interface BaseDePrueba {
   comoSuperusuario<T>(fn: () => Promise<T>): Promise<T>;
 }
 
+type ConConsultas = { query: (consulta: string, parametros?: unknown[], opciones?: unknown) => unknown };
+
+// Reloj lógico de las idas a la base: cada consulta sale cuando terminó la que esperaba y tarda
+// una ida; las que salen juntas (Promise.all) cuentan una sola. Como en producción
+// (`src/db/conexion.ts`), abrir la transacción no cuesta una ida y cerrarla cuesta una solo si se
+// escribió algo. Es lo que tarda de verdad una pantalla o un botón: cada ida son unos 50 ms desde
+// la oficina.
+const reloj = { ahora: 0, consultas: 0 };
+
+/** Una ida a la base (o varias juntas): empieza cuando el que la pide ya recibió lo anterior. */
+async function ida<T>(fn: () => T | Promise<T>): Promise<T> {
+  const fin = reloj.ahora + 1;
+  reloj.consultas++;
+  try {
+    return await fn();
+  } finally {
+    reloj.ahora = Math.max(reloj.ahora, fin);
+  }
+}
+
+/**
+ * Cuántas idas a la base hace `fn` (el camino más largo: lo que sale junto cuenta una vez) y cuántas
+ * consultas manda. Sirve para cuidar la velocidad: ver `tests/integracion/velocidad.test.ts`.
+ */
+export async function medirIdas<T>(fn: () => Promise<T>): Promise<{ idas: number; consultas: number; resultado: T }> {
+  const antes = { ...reloj };
+  const resultado = await fn();
+  return { idas: reloj.ahora - antes.ahora, consultas: reloj.consultas - antes.consultas, resultado };
+}
+
+/**
+ * En las pruebas los valores también van escritos dentro de cada consulta, igual que en producción
+ * (`src/db/cliente.ts`): así todas las pruebas ejercitan ese mismo camino.
+ */
+function usarLiterales(pg: PGlite): void {
+  const envolver = (cliente: ConConsultas, marca?: { escribio: boolean }) => {
+    const original = cliente.query.bind(cliente);
+    cliente.query = (consulta, parametros, opciones) => {
+      if (marca && !esDeLectura(consulta)) marca.escribio = true;
+      return ida(() => original(conLiterales(consulta, parametros ?? []), [], opciones));
+    };
+  };
+  envolver(pg as unknown as ConConsultas);
+  const base = pg as unknown as { transaction: (fn: (tx: ConConsultas) => unknown, ...resto: unknown[]) => unknown };
+  const transaccion = base.transaction.bind(base);
+  base.transaction = (fn, ...resto) =>
+    transaccion(async (tx) => {
+      const marca = { escribio: false };
+      envolver(tx, marca);
+      const resultado = await fn(tx);
+      // El "commit" se espera solo si hay algo que guardar.
+      if (marca.escribio) await ida(() => undefined);
+      return resultado;
+    }, ...resto);
+}
+
 /**
  * PostgreSQL en memoria con las migraciones aplicadas. La sesión queda como `app_servidor`
  * (LOGIN, NOINHERIT, sin BYPASSRLS), igual que la aplicación en producción.
  */
 export async function crearBaseDePrueba(): Promise<BaseDePrueba> {
   const pg = new PGlite({ extensions: { btree_gist } });
+  usarLiterales(pg);
   const db = drizzle(pg, { schema: esquema });
   await migrate(db, { migrationsFolder: "src/db/migraciones" });
   await pg.exec(`

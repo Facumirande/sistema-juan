@@ -4,7 +4,10 @@ import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
 import { sumarDias } from "@/dominio/fechas/fechas";
 import { listarActividad } from "@/modulos/colaboracion/actividad";
 import { generarListaCompra, obtenerListaCompra } from "@/modulos/compras/lista-compra";
-import { datosParaCargarPedido } from "@/modulos/pedidos/carga";
+import { crearProducto } from "@/modulos/catalogo/productos";
+import { avisosPara } from "@/modulos/colaboracion/avisos";
+import { crearRegla } from "@/modulos/precios-venta/reglas";
+import { datosParaCargarPedido, historialDeCliente, marcarPedidoFrecuente } from "@/modulos/pedidos/carga";
 import { cambiarProductosDePedido, cancelarPedido, cargarPedido, confirmarPedido, crearPedido, obtenerPedido } from "@/modulos/pedidos/pedidos";
 import { tableroDePedidos } from "@/modulos/pedidos/tablero";
 
@@ -225,3 +228,51 @@ describe("confirmar un pedido vacío", () => {
     expect(e.detalle?.enlace).toEqual({ href: `/pedidos/${pedidoId}/cambiar`, texto: "Agregar productos" });
   });
 });
+
+describe("historial de pedidos, pedidos frecuentes y lo que se sugiere", () => {
+  it("el historial trae los pedidos del cliente del más nuevo al más viejo, y la estrella define las sugerencias", async () => {
+    const restaurante = j.ids.restaurante!;
+    const historial = await historialDeCliente(j.base.db, j.admin, restaurante);
+    expect(historial.length).toBeGreaterThan(0);
+    expect(historial.every((h) => h.lineas.length > 0 && !h.frecuente && h.estado !== "CANCELADO")).toBe(true);
+    expect([...historial].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.numero.localeCompare(a.numero))).toEqual(historial);
+
+    // Sin ninguno marcado, se sugiere lo que más pide.
+    const antes = (await datosParaCargarPedido(j.base.db, j.admin)).clientes.find((c) => c.id === restaurante)!;
+    expect([antes.deFrecuentes, antes.habituales.length > 0]).toEqual([false, true]);
+
+    // Con un pedido marcado con la estrella, las sugerencias salen de ese pedido.
+    const elegido = historial.at(-1)!;
+    await marcarPedidoFrecuente(j.base.db, j.admin, { pedidoId: elegido.id, frecuente: true });
+    expect((await historialDeCliente(j.base.db, j.admin, restaurante)).find((h) => h.id === elegido.id)!.frecuente).toBe(true);
+    const despues = (await datosParaCargarPedido(j.base.db, j.admin)).clientes.find((c) => c.id === restaurante)!;
+    expect(despues.deFrecuentes).toBe(true);
+    expect([...despues.habituales].sort()).toEqual([...new Set(elegido.lineas.map((l) => l.productoId))].sort());
+
+    // Sacarle la estrella vuelve a lo de siempre; un pedido que no existe se avisa.
+    await marcarPedidoFrecuente(j.base.db, j.admin, { pedidoId: elegido.id, frecuente: false });
+    expect((await datosParaCargarPedido(j.base.db, j.admin)).clientes.find((c) => c.id === restaurante)!.deFrecuentes).toBe(false);
+    expect((await errorDe(marcarPedidoFrecuente(j.base.db, j.admin, { pedidoId: "00000000-0000-4000-8000-00000000abcd", frecuente: true }))).codigo).toBe("NO_ENCONTRADO");
+  });
+
+  it("los productos se listan con cuándo se pidieron por última vez", async () => {
+    const { productos } = await datosParaCargarPedido(j.base.db, j.admin);
+    expect(productos.find((p) => p.id === j.ids.tomate)!.ultimaVez).not.toBeNull();
+  });
+});
+
+describe("avisos de productos para revisar", () => {
+  it("un producto sin precio de compra, o vendido por debajo de lo que cuesta, aparece en la campanita con su enlace", async () => {
+    const sinPrecio = await crearProducto(j.base.db, j.admin, { nombre: "Rabanito de prueba", categoriaId: j.ids.verduras!, unidadBase: "ATADO", admiteFraccion: false });
+    let avisos = (await avisosPara(j.base.db, j.admin)).paraRevisar;
+    expect(avisos.find((a) => a.id === sinPrecio)).toMatchObject({ producto: "Rabanito de prueba", href: `/productos/${sinPrecio}`, problemas: [expect.stringContaining("Le falta el precio de compra")] });
+    // Los que están bien no aparecen.
+    expect(avisos.some((a) => a.id === j.ids.tomate)).toBe(false);
+
+    // Un precio pactado por debajo del costo se avisa con el cliente y los dos importes.
+    await crearRegla(j.base.db, j.admin, { clienteId: j.ids.restaurante!, tipo: "PRECIO_FIJO", productoId: j.ids.tomate!, valor: "1", confirmar: true });
+    avisos = (await avisosPara(j.base.db, j.admin)).paraRevisar;
+    expect(avisos.find((a) => a.id === j.ids.tomate)!.problemas[0]).toMatch(/A Restaurante La Esquina se le vende a \$1 y cuesta \$[\d.]+: se pierde plata/);
+  });
+});
+

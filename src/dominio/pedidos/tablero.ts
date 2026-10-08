@@ -17,14 +17,14 @@ export interface Columna {
 
 export const COLUMNAS: readonly Columna[] = [
   // No hay confirmación: un pedido cargado ya está listo para mandarse a la lista de compras.
-  { clave: "pedidos", titulo: "Pedidos", ayuda: "Cargados: mandalos a la lista de compras cuando quieras.", estados: ["BORRADOR", "CONFIRMADO"], seleccionable: true },
-  { clave: "en_lista", titulo: "Lista de compras", ayuda: "Se están comprando: tildá lo que ya está.", estados: ["EN_COMPRA"], seleccionable: true },
+  { clave: "pedidos", titulo: "Pedidos", ayuda: "Mandalos a la lista de compras.", estados: ["BORRADOR", "CONFIRMADO"], seleccionable: true },
+  { clave: "en_lista", titulo: "Lista de compras", ayuda: "Tildá lo que ya se compró.", estados: ["EN_COMPRA"], seleccionable: true },
   // Pedidos en la lista con todo lo suyo ya comprado (la columna se decide con columnaDeTarjeta).
-  { clave: "comprados", titulo: "Comprado", ayuda: "Ya está todo lo suyo: listo para preparar.", estados: [], seleccionable: false },
+  { clave: "comprados", titulo: "Comprado", ayuda: "Listos para preparar.", estados: [], seleccionable: false },
   // Desde "Preparando" se arrastran (o se eligen) a "En camino" cuando salen a entregar.
-  { clave: "preparando", titulo: "Preparando", ayuda: "Separándose. Cuando sale, arrastralo a En camino.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: true },
-  { clave: "en_camino", titulo: "En camino", ayuda: "Salieron a entregar.", estados: ["EN_REPARTO"], seleccionable: false },
-  { clave: "entregados", titulo: "Entregados", ayuda: "Ya los recibió el cliente.", estados: ["ENTREGADO"], seleccionable: false },
+  { clave: "preparando", titulo: "Preparando", ayuda: "Tildá lo que ya separaste.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: true },
+  { clave: "en_camino", titulo: "En camino", ayuda: "Al entregarlo, marcalo.", estados: ["EN_REPARTO"], seleccionable: false },
+  { clave: "entregados", titulo: "Entregados", ayuda: "Con todo entregado, cerrá el día.", estados: ["ENTREGADO"], seleccionable: false },
 ];
 
 /**
@@ -86,23 +86,65 @@ export function textoPlazo(desde: string | null, hasta: string | null): string |
   return null;
 }
 
-export type AccionAlMover = "AGREGAR_A_LISTA" | "AGREGAR_Y_COMPRAR" | "SACAR_DE_LISTA" | "MARCAR_COMPRADO" | "DESMARCAR_COMPRADO" | "PREPARAR" | "SALIR";
+export type AccionAlMover =
+  | "AGREGAR_A_LISTA"
+  | "AGREGAR_Y_COMPRAR"
+  | "SACAR_DE_LISTA"
+  | "MARCAR_COMPRADO"
+  | "DESMARCAR_COMPRADO"
+  | "PREPARAR"
+  | "SALIR"
+  | "ENTREGAR"
+  // Un paso atrás, por si una tarjeta se pasó por accidente.
+  | "DEJAR_DE_PREPARAR"
+  | "VOLVER_DE_CAMINO"
+  | "DESHACER_ENTREGA";
 
 /** Columnas entre las que una tarjeta va y vuelve: lo anterior a la preparación. */
 const VAN_Y_VUELVEN: readonly ClaveColumna[] = ["pedidos", "en_lista", "comprados"];
 
-/** Columnas cuyas tarjetas se pueden arrastrar: las de antes de preparar y "Preparando" (para que salgan). */
-export const COLUMNAS_ARRASTRABLES: readonly ClaveColumna[] = [...VAN_Y_VUELVEN, "preparando"];
+/** Columnas cuyas tarjetas se pueden arrastrar: todas (también hacia atrás, de a un paso). */
+export const COLUMNAS_ARRASTRABLES: readonly ClaveColumna[] = [...VAN_Y_VUELVEN, "preparando", "en_camino", "entregados"];
+
+/**
+ * El paso atrás de una tarjeta de cada columna, por si se pasó por accidente: adónde vuelve y cómo
+ * se llama el botón. De "Lista de compras" y "Comprado" se vuelve a Pedidos (sale de la lista).
+ */
+export const PASO_ANTERIOR: Readonly<Record<ClaveColumna, { hacia: ClaveColumna; texto: string } | null>> = {
+  pedidos: null,
+  en_lista: { hacia: "pedidos", texto: "↩ Volver a Pedidos" },
+  comprados: { hacia: "pedidos", texto: "↩ Volver a Pedidos" },
+  preparando: { hacia: "comprados", texto: "↩ Todavía no se prepara: volver atrás" },
+  en_camino: { hacia: "preparando", texto: "↩ No salió: volver a Preparando" },
+  entregados: { hacia: "en_camino", texto: "↩ No se entregó: volver a En camino" },
+};
+
+/**
+ * El paso que sigue para una tarjeta de cada columna: adónde va y cómo se llama el botón verde que
+ * la hace avanzar. "Entregados" es el final: no tiene paso siguiente.
+ */
+export const PASO_SIGUIENTE: Readonly<Record<ClaveColumna, { hacia: ClaveColumna; texto: string } | null>> = {
+  pedidos: { hacia: "en_lista", texto: "🛒 Mandar a la lista de compras" },
+  en_lista: { hacia: "comprados", texto: "✓ Ya está todo comprado" },
+  comprados: { hacia: "preparando", texto: "📦 Empezar a prepararlo" },
+  preparando: { hacia: "en_camino", texto: "🚚 Sale ahora" },
+  en_camino: { hacia: "entregados", texto: "✅ Ya se entregó" },
+  entregados: null,
+};
 
 /**
  * Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). Entre Pedidos,
- * Lista de compras y Comprado se va y se vuelve; soltarla en Preparando empieza a preparar el
- * día; de "Preparando" a "En camino" sale a entregar: se termina de preparar, se hace el remito y
- * sale el reparto.
+ * Lista de compras y Comprado se va y se vuelve; soltarla en Preparando empieza a preparar
+ * ese pedido; de "Preparando" a "En camino" sale a entregar (se termina de preparar, se hace el
+ * remito y sale el reparto), y de "En camino" a "Entregados" queda entregado completo. Hacia atrás
+ * se vuelve de a un paso: de "Preparando" a donde estaba antes, de "En camino" a "Preparando" y de
+ * "Entregados" a "En camino".
  */
 export function accionAlMover(desde: ClaveColumna, hacia: ClaveColumna): AccionAlMover | null {
-  if (desde === "preparando") return hacia === "en_camino" ? "SALIR" : null;
-  if (desde === hacia || !VAN_Y_VUELVEN.includes(desde)) return null;
+  if (desde === hacia) return null;
+  if (desde === "preparando") return hacia === "en_camino" ? "SALIR" : VAN_Y_VUELVEN.includes(hacia) ? "DEJAR_DE_PREPARAR" : null;
+  if (desde === "en_camino") return hacia === "entregados" ? "ENTREGAR" : hacia === "preparando" ? "VOLVER_DE_CAMINO" : null;
+  if (desde === "entregados") return hacia === "en_camino" ? "DESHACER_ENTREGA" : null;
   if (hacia === "preparando") return "PREPARAR";
   if (hacia === "pedidos") return "SACAR_DE_LISTA";
   if (hacia === "en_lista") return desde === "pedidos" ? "AGREGAR_A_LISTA" : "DESMARCAR_COMPRADO";
@@ -116,12 +158,12 @@ export type DondeSeHace = "preparacion" | "viaje";
 /** Por qué una tarjeta no se puede soltar ahí y dónde se hace ese paso (para decirlo con su botón). */
 export function porQueNoSeMueve(desde: ClaveColumna, hacia: ClaveColumna): { mensaje: string; ir: DondeSeHace } {
   if (!VAN_Y_VUELVEN.includes(desde)) {
-    if (hacia === "entregados" && desde === "en_camino") return { mensaje: "Pasa a Entregados cuando tocás “✅ Entregar” en Logística.", ir: "viaje" };
-    if (hacia === "entregados" && desde === "preparando") return { mensaje: "Primero tiene que salir: arrastralo a “En camino” y, cuando lo recibe el cliente, tocá “✅ Entregar” en Logística.", ir: "viaje" };
-    return { mensaje: "Este pedido ya se está preparando o ya salió: no vuelve atrás desde el tablero. Si hay que corregir algo, se hace en la preparación.", ir: "preparacion" };
+    if (hacia === "entregados" && desde === "preparando") return { mensaje: "Todavía no salió a entregar. Primero pasalo a “En camino” (el botón “🚚 Sale ahora” de la tarjeta) y, cuando lo recibe el cliente, marcalo entregado.", ir: "viaje" };
+    if (desde === "entregados") return { mensaje: "Un pedido entregado vuelve de a un paso: soltalo en “En camino” (si no se entregó) y, desde ahí, en “Preparando” (si tampoco salió).", ir: "viaje" };
+    return { mensaje: "Un pedido que ya salió vuelve de a un paso: soltalo primero en “Preparando” (queda preparado, sin salir) y, si hace falta, después más atrás.", ir: "preparacion" };
   }
-  if (hacia === "entregados") return { mensaje: "Para que quede Entregado primero hay que prepararlo y llevarlo: pasa solo al tocar “✅ Entregar” en el viaje.", ir: "preparacion" };
-  return { mensaje: "Para que salga En camino primero hay que prepararlo: después se arma el viaje en Logística y pasa solo.", ir: "preparacion" };
+  if (hacia === "entregados") return { mensaje: "Para marcarlo Entregado primero hay que prepararlo y que salga: pasalo a “Preparando”, después a “En camino” y recién ahí a “Entregados”.", ir: "preparacion" };
+  return { mensaje: "Para que salga En camino primero hay que prepararlo: pasalo a “Preparando”, separá lo suyo y después tocá “🚚 Sale ahora”.", ir: "preparacion" };
 }
 
 /** Qué se puede hacer con las tarjetas elegidas (según su estado y la columna en la que están). */

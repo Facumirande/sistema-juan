@@ -95,6 +95,8 @@ export const pedido = pgTable(
     /** Tablero: quién se encarga del pedido (el "miembro" de la tarjeta). Nulo = quien lo cargó. */
     responsableId: uuid("responsable_id"),
     esTardio: boolean("es_tardio").notNull().default(false),
+    /** Marcado con la estrella como "pedido frecuente" del cliente: de ahí salen los productos sugeridos al cargar. */
+    frecuente: boolean("frecuente").notNull().default(false),
     entregaDesde: time("entrega_desde"),
     entregaHasta: time("entrega_hasta"),
     observaciones: text("observaciones"),

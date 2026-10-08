@@ -1,11 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { tiempoRelativo } from "@/dominio/colaboracion/tiempo";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
-import { COLUMNAS, columnaDeTarjeta, textoPlazo } from "@/dominio/pedidos/tablero";
+import { COLUMNAS, PASO_ANTERIOR, PASO_SIGUIENTE, columnaDeTarjeta, textoPlazo, type ClaveColumna } from "@/dominio/pedidos/tablero";
 import type { EntradaActividad } from "@/modulos/colaboracion/actividad";
 import type { NotaVisible } from "@/modulos/colaboracion/notas";
 import type { PersonaVisible } from "@/modulos/colaboracion/personas";
@@ -14,25 +13,20 @@ import type { avanceDeTarjeta } from "@/modulos/pedidos/tablero";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
+import { Checklist, type ProductoDeChecklist } from "@/ui/checklist";
 import { ESTADOS_PEDIDO, fechaConDia } from "@/ui/etiquetas";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { FlechaNavegacion } from "@/ui/iconos";
 
 import { HiloDeNotas } from "../actividad/notas";
-import { salenAhoraAccion } from "../repartos/acciones";
-import {
-  armarListaConElegidosAccion,
-  pasarACompradoAccion,
-  asignarElegidosAccion,
-  plazoAccion,
-  prioridadElegidosAccion,
-  sacarDeListaAccion,
-} from "./acciones";
+import { asignarElegidosAccion, moverTarjetaAccion, plazoAccion, prioridadElegidosAccion, sacarDeListaAccion } from "./acciones";
+import { ChecklistVivo, type ParaComprar } from "./checklist-vivo";
 
-// La tarjeta abierta (como en Trello), grande y despejada: primero lo que lleva el pedido (con lo
-// ya comprado o preparado tildado) y el botón para cambiarlo; después dónde se entrega, las notas
-// entre las personas y el historial. Al costado, lo que se puede hacer.
+// La tarjeta abierta (como en Trello), grande y despejada: primero lo que lleva el pedido, con el
+// mismo checklist de la tarjeta cerrada (se tilda ahí mismo lo comprado o lo separado) y el botón
+// para cambiarlo; después dónde se entrega, las notas entre las personas y el historial. Al
+// costado, el botón verde del paso que sigue y lo demás que se puede hacer.
 
 type Avance = Awaited<ReturnType<typeof avanceDeTarjeta>>;
 
@@ -70,6 +64,25 @@ function Dato({ titulo, children }: { titulo: string; children: ReactNode }) {
 }
 
 const botonLateral = "flex min-h-12 w-full items-center gap-2 rounded-xl bg-black/5 px-4 text-left text-base font-medium hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15";
+const botonVerde = "flex min-h-16 w-full items-center justify-center rounded-xl bg-marca px-3 py-2 text-center text-xl leading-tight font-extrabold text-balance text-marca-texto shadow-sm hover:brightness-110";
+/** Qué permiso hace falta para volver atrás una tarjeta que ya se está preparando, salió o se entregó. */
+const PERMISO_PARA_VOLVER: Readonly<Record<ClaveColumna, Permiso | null>> = {
+  pedidos: null,
+  en_lista: null,
+  comprados: null,
+  preparando: "preparacion.registrar",
+  en_camino: "repartos.gestionar",
+  entregados: "entregas.confirmar",
+};
+/** Qué permiso hace falta para hacer avanzar una tarjeta de cada columna (el mismo criterio que el tablero). */
+const PERMISO_PARA_AVANZAR: Readonly<Record<ClaveColumna, Permiso | null>> = {
+  pedidos: "lista_compra.generar",
+  en_lista: "lista_compra.editar",
+  comprados: "preparacion.registrar",
+  preparando: "repartos.gestionar",
+  en_camino: "entregas.confirmar",
+  entregados: null,
+};
 
 export function TarjetaAbierta({
   pedido: p,
@@ -79,6 +92,7 @@ export function TarjetaAbierta({
   yo,
   zonaHoraria,
   puede,
+  paraComprar,
 }: {
   pedido: DetallePedido;
   avance: Avance;
@@ -87,6 +101,8 @@ export function TarjetaAbierta({
   yo: string;
   zonaHoraria: string;
   puede: (permiso: Permiso) => boolean;
+  /** Con esto, cada producto tiene su "$" para anotar el precio y el proveedor (mientras se compra). */
+  paraComprar?: ParaComprar | null;
 }) {
   const ahora = new Date();
   const columna = COLUMNAS.find((c) => c.clave === columnaDeTarjeta(p.estado, avance.que === "comprado" && avance.lineas.length > 0 && avance.lineas.every((l) => l.hecha), avance.entregaId !== null));
@@ -98,6 +114,23 @@ export function TarjetaAbierta({
   const hechos = avance.lineas.filter((l) => l.hecha).length;
   const vacio = avance.lineas.length === 0;
   const destino = { coordenada: p.coordenada, direccion: p.direccion, localidad: p.localidad };
+  const productos: ProductoDeChecklist[] = avance.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo, hecha: l.hecha, aviso: l.aviso, listaItemId: l.listaItemId, compra: l.compra, tildado: l.tildado, entregaItemId: l.entregaItemId }));
+  // Se tilda en la misma tarjeta: la compra mientras está en la lista, lo separado mientras se prepara.
+  const seTilda =
+    !abierto || vacio
+      ? null
+      : avance.que === "comprado" && puede("lista_compra.editar")
+        ? ("compra" as const)
+        : avance.que === "preparado" && puede("preparacion.registrar") && productos.some((x) => x.entregaItemId)
+          ? ("separar" as const)
+          : null;
+  const paso = columna ? PASO_SIGUIENTE[columna.clave] : null;
+  const permisoDelPaso = columna ? PERMISO_PARA_AVANZAR[columna.clave] : null;
+  const puedeAvanzar = Boolean(paso && columna && !vacio && permisoDelPaso && puede(permisoDelPaso));
+  // Un paso atrás, por si la tarjeta se pasó por accidente (de la lista de compras se vuelve con "sacar de la lista").
+  const anterior = columna ? PASO_ANTERIOR[columna.clave] : null;
+  const permisoParaVolver = columna ? PERMISO_PARA_VOLVER[columna.clave] : null;
+  const puedeVolver = Boolean(anterior && permisoParaVolver && puede(permisoParaVolver) && p.estadoJornada !== "CERRADA");
 
   return (
     <div className="flex flex-col gap-8 p-5 sm:p-8">
@@ -108,7 +141,7 @@ export function TarjetaAbierta({
         <div className="min-w-0">
           <h2 className="text-3xl leading-tight font-semibold">{p.cliente}</h2>
           <p className="mt-1 text-base text-tarjeta-suave">
-            En <b>{columna?.titulo ?? ESTADOS_PEDIDO[p.estado]}</b> · {p.numero} · se entrega el {fechaConDia(p.fecha)}
+            En <b>{columna?.titulo ?? ESTADOS_PEDIDO[p.estado]}</b> · {p.numero} · se entrega el <b className="text-xl text-tarjeta-texto">{fechaConDia(p.fecha)}</b>
           </p>
         </div>
       </header>
@@ -160,7 +193,7 @@ export function TarjetaAbierta({
           >
             {avance.que && !vacio && (
               <div className="flex items-center gap-3 text-sm text-tarjeta-suave">
-                <span className="w-10 tabular-nums">{Math.round((hechos / avance.lineas.length) * 100)} %</span>
+                <span className="shrink-0 whitespace-nowrap tabular-nums">{Math.round((hechos / avance.lineas.length) * 100)} %</span>
                 <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
                   <div className={`h-2.5 rounded-full ${hechos === avance.lineas.length ? "bg-[var(--listo-fondo)]" : "bg-[var(--etiqueta-azul)]"}`} style={{ width: `${(hechos / avance.lineas.length) * 100}%` }} />
                 </div>
@@ -177,26 +210,14 @@ export function TarjetaAbierta({
                 )}
               </div>
             ) : (
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {avance.lineas.map((l) => (
-                  <li key={l.id} className={`flex items-center gap-3 rounded-xl p-3 ${l.hecha && avance.que ? "bg-[var(--listo-fondo)]/40" : "bg-black/[0.04] dark:bg-white/[0.06]"}`}>
-                    <span aria-hidden className="text-3xl leading-none">
-                      {dibujoDeProducto(l.producto, l.grupo)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-lg leading-tight font-medium ${l.hecha && avance.que ? "line-through opacity-70" : ""}`}>{l.producto}</span>
-                      <span className="block font-semibold tabular-nums">{l.cantidad}</span>
-                      {l.aviso && <span className="mt-1 block w-fit rounded-md bg-[var(--pastel-naranja)] px-2 text-sm font-semibold text-[var(--pastel-naranja-texto)]">⚠ {l.aviso}</span>}
-                    </span>
-                    {avance.que && (
-                      <span aria-hidden className="text-xl">
-                        {l.hecha ? "✅" : "⬜"}
-                      </span>
-                    )}
-                    <span className="sr-only">{l.hecha ? "hecho" : "pendiente"}</span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {seTilda ? (
+                  <ChecklistVivo productos={productos} modo={seTilda} fecha={p.fecha} etiqueta={`Lo que lleva ${p.cliente}`} paraComprar={seTilda === "compra" ? paraComprar : null} />
+                ) : (
+                  <Checklist productos={productos} modo={avance.que ? "visto" : "ver"} tamano="amplio" etiqueta={`Lo que lleva ${p.cliente}`} />
+                )}
+                {seTilda && <p className="text-sm text-tarjeta-suave">{seTilda === "compra" ? (paraComprar ? "Tildá ✓ lo que ya compraste, o ✕ si no se consiguió. Con el $ anotás a quién se lo compraste y a cuánto: ese precio queda guardado para ese proveedor." : "Tildá ✓ lo que ya compraste, o ✕ si no se consiguió.") : "Tildá ✓ lo que ya separaste para el cliente. Si falta algo, anotalo desde “Anotar lo que falta”."}</p>}
+              </>
             )}
             {p.totalEstimado !== null && !vacio && (
               <p className="text-lg">
@@ -249,41 +270,26 @@ export function TarjetaAbierta({
 
         <aside className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold text-tarjeta-suave">Acciones</p>
-            {cambiable && (
-              <Link href={`/pedidos/${p.id}/cambiar`} className={botonLateral}>
-                ✏️ {vacio ? "Agregar productos" : "Cambiar productos"}
+            {puedeAvanzar && paso && columna && (
+              <BotonAccion accion={moverTarjetaAccion} datos={{ pedido: p.id, desde: columna.clave, hacia: paso.hacia }} className={botonVerde}>
+                {paso.texto}
+                {"\u00a0→"}
+              </BotonAccion>
+            )}
+            <p className="text-sm font-semibold text-tarjeta-suave">Otras acciones</p>
+            {columna?.clave === "preparando" && avance.entregaId && puede("preparacion.ver") && (
+              <Link href={`/preparacion/${p.fecha}/entrega/${avance.entregaId}`} className={botonLateral}>
+                ✏️ Anotar lo que falta (o un reemplazo)
               </Link>
-            )}
-            {columna?.clave === "pedidos" && !vacio && puede("lista_compra.generar") && (
-              <BotonAccion accion={armarListaConElegidosAccion} datos={{ pedido: p.id }} className={botonLateral}>
-                🛒 Mandar a la lista de compras
-              </BotonAccion>
-            )}
-            {columna?.clave === "en_lista" && puede("lista_compra.editar") && (
-              <BotonAccion accion={pasarACompradoAccion} datos={{ pedido: p.id }} className={botonLateral} titulo="Tilda todo lo que le falta, sin anotar puesto ni precio">
-                ✓ Pasar a Comprado
-              </BotonAccion>
             )}
             {(columna?.clave === "en_lista" || columna?.clave === "comprados") && puede("lista_compra.generar") && (
               <BotonAccion accion={sacarDeListaAccion} datos={{ pedido: p.id }} className={botonLateral} confirmar="¿Sacar este pedido de la lista de compras? Vuelve a la columna Pedidos; lo ya comprado queda.">
                 ↩ Volver a Pedidos
               </BotonAccion>
             )}
-            {(columna?.clave === "preparando" || columna?.clave === "comprados") && puede("preparacion.ver") && (
-              <Link href={avance.entregaId ? `/preparacion/${p.fecha}/entrega/${avance.entregaId}` : `/preparacion/${p.fecha}`} className="flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--pastel-amarillo)] px-4 text-left text-base font-semibold text-[var(--pastel-amarillo-texto)] hover:brightness-95">
-                📦 {p.estado === "PREPARADO" ? "Ver lo que se separó" : "Preparar su pedido"}
-              </Link>
-            )}
-            {columna?.clave === "preparando" && avance.entregaId && puede("repartos.gestionar") && (
-              <BotonAccion
-                accion={salenAhoraAccion}
-                datos={{ pedido: p.id }}
-                mostrarExito
-                className="flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--pastel-verde)] px-4 text-left text-base font-semibold text-[var(--pastel-verde-texto)] hover:brightness-95"
-                titulo="Pasa a En camino: se hace el remito y sale el reparto"
-              >
-                🚚 Sale ahora (En camino)
+            {puedeVolver && anterior && columna && (
+              <BotonAccion accion={moverTarjetaAccion} datos={{ pedido: p.id, desde: columna.clave, hacia: anterior.hacia }} className={botonLateral} titulo="Por si se pasó de columna sin querer">
+                {anterior.texto}
               </BotonAccion>
             )}
             {avance.entregaId && ["PREPARADO", "EN_REPARTO", "ENTREGADO"].includes(p.estado) && puede("documentos.imprimir_entrega") && (

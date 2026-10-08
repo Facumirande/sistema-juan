@@ -192,7 +192,7 @@ export default async function DetalleEntrega({ params }: PageProps<"/entregas/[i
                 <Campo etiqueta="Detalle" name={`det_${l.id}`} defaultValue={l.detalleDiferencia ?? ""} />
               </div>
             ))}
-            <Campo etiqueta="Por qué se corrige" name="motivo" placeholder="Ej. el cliente avisó que faltó una caja" />
+            <Campo etiqueta="Por qué se corrige" name="motivo" placeholder="Ej. el cliente avisó que faltó una caja" required />
           </FormularioAccion>
         </details>
       )}
@@ -202,7 +202,7 @@ export default async function DetalleEntrega({ params }: PageProps<"/entregas/[i
           <summary className="cursor-pointer font-semibold text-error">Anular la entrega</summary>
           <FormularioAccion accion={anularEntregaAccion} boton="Anular" variante="peligro" confirmar="¿Anular esta entrega? Sus documentos quedan anulados.">
             <input type="hidden" name="entregaId" value={e.id} />
-            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. se cargó al cliente equivocado" />
+            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. se cargó al cliente equivocado" required />
           </FormularioAccion>
         </details>
       )}

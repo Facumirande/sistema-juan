@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 
+import { obtenerBaseDatos } from "@/db/cliente";
+import { esErrorDeNegocio } from "@/dominio/errores";
 import type { LineaElegida } from "@/dominio/pedidos/carga";
 import type { PrioridadPedido } from "@/dominio/pedidos/tablero";
 import {
@@ -17,6 +19,8 @@ import {
   type CanalPedido,
   type PedidoCargado,
 } from "@/modulos/pedidos/pedidos";
+import { historialDeCliente, marcarPedidoFrecuente, type PedidoDelHistorial } from "@/modulos/pedidos/carga";
+import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
 import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
@@ -120,4 +124,29 @@ export async function guardarPedidoVisualAccion(datos: PedidoVisual): Promise<Es
     return { ok: true, mensaje: null };
   });
   return pedido ? { ...resultado, pedido } : resultado;
+}
+
+/** El historial de pedidos de un cliente, para elegir uno o marcarlo como frecuente (se pide al abrir el panel). */
+export async function historialDeClienteAccion(clienteId: string): Promise<{ pedidos: PedidoDelHistorial[]; mensaje: string | null }> {
+  const authUserId = await obtenerAuthUserId();
+  if (!authUserId) return { pedidos: [], mensaje: "Tu sesión terminó: ingresá de nuevo." };
+  try {
+    return { pedidos: await historialDeCliente(obtenerBaseDatos(), authUserId, clienteId), mensaje: null };
+  } catch (error) {
+    if (esErrorDeNegocio(error)) return { pedidos: [], mensaje: error.message };
+    throw error;
+  }
+}
+
+/** La estrella de un pedido del historial. */
+export async function marcarFrecuenteAccion(pedidoId: string, frecuente: boolean): Promise<{ ok: boolean; mensaje: string | null }> {
+  const authUserId = await obtenerAuthUserId();
+  if (!authUserId) return { ok: false, mensaje: "Tu sesión terminó: ingresá de nuevo." };
+  try {
+    await marcarPedidoFrecuente(obtenerBaseDatos(), authUserId, { pedidoId, frecuente });
+    return { ok: true, mensaje: null };
+  } catch (error) {
+    if (esErrorDeNegocio(error)) return { ok: false, mensaje: error.message };
+    throw error;
+  }
 }

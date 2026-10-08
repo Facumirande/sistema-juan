@@ -29,7 +29,6 @@ export async function iniciarPreparacionAccion(_estado: EstadoAccion, datos: For
     const avisos = [
       r.borradores ? `${r.borradores} ${r.borradores === 1 ? "pedido no tiene" : "pedidos no tienen"} productos y no ${r.borradores === 1 ? "entra" : "entran"}.` : null,
       problemas.length ? `Quedaron afuera: ${problemas.join(" ")}` : null,
-      r.sinLugar ? `${r.sinLugar} ${r.sinLugar === 1 ? "producto llegó" : "productos llegaron"} tarde para un pedido que ya salió: cargalos en otro pedido.` : null,
     ].filter(Boolean);
     return { ok: true, mensaje: [partes.length ? `Listo: ${partes.join(" y ")}.` : "Todo al día: no había pedidos nuevos.", ...avisos].join(" ") };
   });

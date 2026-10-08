@@ -10,6 +10,7 @@ import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroObligatorio, textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
+import { olvidarSesiones } from "@/modulos/seguridad/memoria-sesion";
 
 // P-95 Configuración del negocio (iteración 8): los datos que salen en los documentos y los
 // parámetros que el dueño puede ajustar (03 §4.1). La ganancia general se cambia en Precios de
@@ -96,6 +97,8 @@ const esquemaConfiguracion = z
 
 /** Guarda la configuración (auditado). Si cambian el redondeo o la ganancia mínima, recalcula los pedidos pendientes. */
 export async function guardarConfiguracion(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaConfiguracion>): Promise<{ pedidosRecalculados: number }> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   const d = validar(esquemaConfiguracion, datos);
   return ejecutarComoUsuario(db, authUserId, "configuracion.editar", async (tx, c) => {
     const [antes] = await tx.select().from(empresa);

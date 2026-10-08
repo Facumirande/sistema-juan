@@ -3,9 +3,11 @@
 import { accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
 import { desmarcarPedidoComprado, generarListaCompra, marcarNoConseguido, marcarPedidoComprado, sacarPedidoDeLista, tildarLinea } from "@/modulos/compras/lista-compra";
-import { iniciarPreparacion } from "@/modulos/entregas/preparacion";
+import { entregarPedido } from "@/modulos/entregas/entregas";
+import { iniciarPreparacion, separarLinea } from "@/modulos/entregas/preparacion";
 import { mandarEnCamino } from "@/modulos/entregas/repartos";
-import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
+import { volverAtras } from "@/modulos/entregas/volver-atras";
+import { cerrarJornada, reabrirJornada } from "@/modulos/jornadas/cierre";
 import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido } from "@/modulos/pedidos/pedidos";
 import { estadosDePedidos } from "@/modulos/pedidos/tablero";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
@@ -95,12 +97,15 @@ export async function plazoAccion(_estado: EstadoAccion, datos: FormData): Promi
   });
 }
 
-/** Arrastrar y soltar una tarjeta de una columna a otra. */
+/**
+ * Mover una tarjeta de una columna a otra (arrastrándola o con su botón verde). Si no se puede,
+ * el mensaje dice por qué y qué hay que hacer.
+ */
 export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
+  return ejecutarAccion(async ({ db, authUserId }): Promise<EstadoAccion> => {
     const id = campo(datos, "pedido");
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
-    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí: de Preparando solo sale a En camino, y la entrega se marca al dejar el pedido." };
+    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí. Cada pedido avanza de a un paso: Pedidos → Lista de compras → Comprado → Preparando → En camino → Entregados." };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
     if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
     const aLaLista = async () => {
@@ -125,15 +130,58 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
         return { ok: true, mensaje: `${p.cliente} volvió a la lista de compras: lo suyo quedó sin tildar.` };
       case "SALIR":
         return resultadoDeSalida(await mandarEnCamino(db, authUserId, { pedidoIds: [id], confirmar: tildada(datos, "confirmarVariacion") }));
+      case "ENTREGAR": {
+        const r = await entregarPedido(db, authUserId, id);
+        return { ok: true, mensaje: `✅ ${r.cliente}: entregado.` };
+      }
+      // Un paso atrás (la tarjeta se pasó por accidente).
+      case "DEJAR_DE_PREPARAR":
+      case "VOLVER_DE_CAMINO":
+      case "DESHACER_ENTREGA": {
+        const r = await volverAtras(db, authUserId, { pedidoId: id, paso: accion });
+        return { ok: true, mensaje: `↩ ${r.cliente} volvió un paso atrás.` };
+      }
       case "PREPARAR": {
-        const { problemas } = await completarPedidosDelDia(db, authUserId, p.fecha);
-        const r = await iniciarPreparacion(db, authUserId, p.fecha);
-        const partes = [r.entregasNuevas ? `Empezó la preparación: ${cuantos(r.entregasNuevas, "cliente", "clientes")} para preparar.` : "La preparación del día ya estaba empezada: quedó al día."];
-        if (problemas.length) partes.push(`Quedaron afuera: ${problemas.join(" ")}`);
-        return { ok: true, mensaje: partes.join(" "), enlace: { href: `/preparacion/${p.fecha}`, texto: "📦 Ir a preparar" } };
+        // Se prepara solo este pedido: los demás siguen donde están.
+        if (p.estado === "BORRADOR") await confirmarPedido(db, authUserId, id);
+        const r = await iniciarPreparacion(db, authUserId, p.fecha, { pedidoIds: [id] });
+        if (r.lineasNuevas === 0) {
+          return {
+            ok: false,
+            mensaje: `No se pudo empezar a preparar el pedido de ${p.cliente}: no tiene productos para separar. Abrilo, revisá lo que lleva y volvé a intentarlo.`,
+            enlace: { href: `/pedidos/${id}/cambiar`, texto: `Ver lo que lleva ${p.cliente}` },
+          };
+        }
+        return { ok: true, mensaje: `📦 ${p.cliente} pasó a Preparando.` };
       }
     }
   });
+}
+
+/** El tilde de un producto en una tarjeta de "Preparando": separado (lo pedido, o lo que alcanzó) o sin separar. */
+export async function separarProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await separarLinea(db, authUserId, { itemId: campo(datos, "itemId"), separado: campo(datos, "separado") === "si" });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** Reabrir un día cerrado desde el tablero, para corregir algo o volver atrás un pedido. */
+export async function reabrirDiaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await reabrirJornada(db, authUserId, { fecha: campo(datos, "fecha"), motivo: "Reabierto desde el tablero." });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** Cerrar el día desde el tablero, cuando ya se entregó todo. Si algo lo impide, lo dice y lleva al cierre. */
+export async function cerrarDiaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  const fecha = campo(datos, "fecha");
+  const r = await ejecutarAccion(async ({ db, authUserId }) => {
+    await cerrarJornada(db, authUserId, fecha);
+    return { ok: true, mensaje: "🔒 Día cerrado: quedó todo entregado y guardado." };
+  });
+  return r.ok || r.enlace ? r : { ...r, enlace: { href: `/jornadas/${fecha}/cierre`, texto: "Ver qué falta para cerrar" } };
 }
 
 /**

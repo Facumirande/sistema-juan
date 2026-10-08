@@ -238,7 +238,7 @@ export interface CuentaListada {
 }
 
 /**
- * P-60 Deudas con proveedores: saldo, semáforo, vencimientos y último pago de cada uno. Primero
+ * P-60 A pagar (lo que se les debe a los proveedores): saldo, semáforo, vencimientos y último pago de cada uno. Primero
  * los EXCEDIDO, ROJO y con deuda vencida (08 §5.9).
  */
 export async function listarCuentasProveedores(db: BaseDatos, authUserId: string): Promise<{ hoy: FechaISO; cuentas: CuentaListada[] }> {

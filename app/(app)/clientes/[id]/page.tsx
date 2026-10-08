@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
@@ -11,7 +12,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { DIAS_SEMANA, PERIODICIDADES, TIPOS_CLIENTE } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
-import { Aviso, Encabezado, Estado, Tarjeta } from "@/ui/formularios";
+import { Aviso, Encabezado, Estado, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { FlechaNavegacion } from "@/ui/iconos";
 
 import { cambiarEstadoClienteAccion, cambiarEstadoPuntoAccion, editarClienteAccion, guardarPuntoAccion, marcarPrincipalAccion } from "../acciones";
@@ -52,6 +53,11 @@ export default async function FichaDeCliente({ params }: PageProps<"/clientes/[i
         volver={{ ruta: "/clientes", texto: "Clientes" }}
         descripcion={`${TIPOS_CLIENTE[c.tipoCliente]} · comprobante de venta ${c.periodicidadFacturacion === "POR_ENTREGA" ? "en cada entrega" : PERIODICIDADES[c.periodicidadFacturacion]?.toLowerCase()}${c.prioridadFaltantes === 1 ? " · se le completa primero si falta mercadería" : ""}`}
       >
+        {sesion.permisos.includes("cobranzas.ver") && (
+          <Link href={`/cuentas-clientes/${c.id}`} className={clasesBoton("secundario")}>
+            🤝 Su cuenta (lo que debe y lo que pagó)
+          </Link>
+        )}
         <Estado activo={c.activo} />
       </Encabezado>
 

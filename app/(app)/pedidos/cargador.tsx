@@ -3,30 +3,31 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { ABREVIATURA_UNIDAD, formatearMoneda } from "@/dominio/dinero/formato";
 import { sumarDias } from "@/dominio/fechas/fechas";
 import {
   cantidadPermitida,
-  cantidadesRapidas,
   coincideBusqueda,
   leerCantidad,
   presentacionInicial,
   sumarCantidad,
-  textoCantidad,
-  type PresentacionDeVenta,
+  type LineaElegida,
 } from "@/dominio/pedidos/carga";
 import type { PrioridadPedido } from "@/dominio/pedidos/tablero";
-import type { ClienteParaCargar, DatosDeCarga, ProductoParaCargar } from "@/modulos/pedidos/carga";
+import type { ClienteParaCargar, DatosDeCarga, PedidoDelHistorial, ProductoParaCargar } from "@/modulos/pedidos/carga";
 import type { PedidoCargado } from "@/modulos/pedidos/pedidos";
+import { NombreDeProducto } from "@/ui/checklist";
 import { fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente } from "@/ui/etiquetas-tablero";
 
-import { guardarPedidoVisualAccion } from "./acciones";
+import { guardarPedidoVisualAccion, historialDeClienteAccion, marcarFrecuenteAccion } from "./acciones";
 
-// Carga visual de pedidos (28/09/2026): el cliente, el día y los productos se eligen tocando
-// recuadros grandes; la cantidad se ajusta con − y + o escribiéndola. A la derecha (abajo en el
-// celular) queda el resumen con la prioridad, el horario y la nota, y el botón para guardar.
+// Carga visual de pedidos (28/09/2026; compacta desde el 07/10): el cliente y el día van a la misma
+// altura y los productos quedan a la vista en un solo recuadro, sin categorías: arriba los
+// frecuentes del cliente (la única división) y después todos los demás, del más reciente al menos.
+// Cada producto se agrega con su ＋; la cantidad se ajusta con − y + o escribiéndola, y en qué se
+// pide (kg, cajón…) se elige con botones solo si el producto tiene varias formas. A la derecha
+// (abajo en el celular) queda el resumen con la prioridad, el horario y la nota, y el botón para guardar.
 
 interface Entrada {
   clave: string;
@@ -76,16 +77,16 @@ const nuevaClave = () => `e${++siguienteClave}`;
 
 function Paso({ id, n, titulo, ayuda, derecha, children }: { id: string; n: number; titulo: string; ayuda?: string; derecha?: ReactNode; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-titulo`} className="flex scroll-mt-4 flex-col gap-4 rounded-2xl border border-borde bg-superficie p-4 sm:p-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-marca text-lg font-bold text-marca-texto">
+    <section id={id} aria-labelledby={`${id}-titulo`} className="flex scroll-mt-4 flex-col gap-3 rounded-2xl border border-borde bg-superficie p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marca font-bold text-marca-texto">
           {n}
         </span>
-        <div className="min-w-0 flex-1 basis-60">
-          <h2 id={`${id}-titulo`} className="text-xl font-semibold">
+        <div className="min-w-0 flex-1 basis-40">
+          <h2 id={`${id}-titulo`} className="text-xl leading-tight font-semibold">
             {titulo}
           </h2>
-          {ayuda && <p className="text-texto-suave">{ayuda}</p>}
+          {ayuda && <p className="text-sm text-texto-suave">{ayuda}</p>}
         </div>
         {derecha}
       </div>
@@ -101,25 +102,81 @@ function nombreDelDia(fecha: string, hoy: string): string {
   return dia.charAt(0).toUpperCase() + dia.slice(1);
 }
 
-function RecuadroCliente({ c, elegido, alElegir }: { c: ClienteParaCargar; elegido: boolean; alElegir: () => void }) {
+function RecuadroCliente({ c, alElegir }: { c: ClienteParaCargar; alElegir: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={alElegir}
-      aria-pressed={elegido}
-      className={`flex min-h-28 items-center gap-4 rounded-2xl border-2 p-4 text-left transition-colors ${elegido ? "border-marca bg-marca/10" : "border-borde bg-superficie hover:border-marca/60 hover:bg-marca/5"}`}
-    >
-      <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-full bg-fondo text-3xl">
+    <button type="button" onClick={alElegir} className="flex min-h-14 items-center gap-2 rounded-xl border-2 border-borde bg-superficie px-3 py-1.5 text-left transition-colors hover:border-marca hover:bg-marca/5">
+      <span aria-hidden className="text-lg">
         {dibujoDeCliente(c.tipo)}
       </span>
       <span className="min-w-0">
-        <span className="block text-lg leading-tight font-semibold">{c.nombre}</span>
-        {c.direccion && <span className="mt-1 line-clamp-2 block text-sm text-texto-suave">{c.direccion}</span>}
+        <span className="block truncate text-base leading-tight font-bold">{c.nombre}</span>
+        {c.direccion && <span className="block truncate text-xs text-texto-suave">{c.direccion}</span>}
       </span>
     </button>
   );
 }
 
+/**
+ * La cantidad de un producto del pedido, fácil de cambiar: − y + grandes y el número para escribirlo
+ * (al tocarlo queda todo seleccionado: se escribe encima). En qué se pide (kg, cajón, bolsa…) se
+ * elige con botones solo si el producto tiene más de una forma; si no, va su única medida.
+ */
+function Cantidad({ p, entrada, invalida = false, alCambiar, alQuitar }: { p: ProductoParaCargar; entrada: Entrada; invalida?: boolean; alCambiar: (cambios: Partial<Entrada>) => void; alQuitar: () => void }) {
+  const unidad = ABREVIATURA_UNIDAD[p.unidadBase];
+  const cantidad = leerCantidad(entrada.cantidad);
+  const sumar = (paso: string) => {
+    const nueva = sumarCantidad(cantidad ?? "0", paso);
+    if (nueva === "0") alQuitar();
+    else alCambiar({ cantidad: conComa(nueva) });
+  };
+  const baseId = p.presentaciones.find((x) => x.esUnidadBase)?.id ?? null;
+  const otras = p.presentaciones.filter((x) => !x.esUnidadBase);
+  const elegida = entrada.presentacionId && entrada.presentacionId !== baseId ? entrada.presentacionId : null;
+  const boton = "flex size-12 shrink-0 items-center justify-center rounded-xl bg-marca text-3xl leading-none font-bold text-marca-texto active:scale-95";
+  const medida = (activa: boolean) => `min-h-10 rounded-full border-2 px-3 text-sm font-bold ${activa ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca/60"}`;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <div className={`flex items-center gap-1 rounded-2xl border-2 bg-superficie p-1 ${invalida ? "border-error" : "border-borde"}`}>
+          <button type="button" onClick={() => sumar("-1")} aria-label={`Uno menos de ${p.nombre}`} className={boton}>
+            −
+          </button>
+          <input
+            value={entrada.cantidad}
+            onChange={(e) => alCambiar({ cantidad: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputMode="decimal"
+            enterKeyHint="done"
+            aria-label={`Cantidad de ${p.nombre}`}
+            aria-invalid={invalida}
+            className="h-12 w-16 min-w-0 rounded-lg bg-transparent text-center text-2xl font-extrabold tabular-nums focus:bg-marca/10"
+          />
+          <button type="button" onClick={() => sumar("1")} aria-label={`Uno más de ${p.nombre}`} className={boton}>
+            +
+          </button>
+        </div>
+        {otras.length === 0 && <span className="text-lg font-bold text-texto-suave">{unidad}</span>}
+      </div>
+      {otras.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`En qué se pide ${p.nombre}`}>
+          <button type="button" onClick={() => alCambiar({ presentacionId: null })} aria-pressed={elegida === null} className={medida(elegida === null)}>
+            {unidad}
+          </button>
+          {otras.map((x) => (
+            <button key={x.id} type="button" onClick={() => alCambiar({ presentacionId: x.id })} aria-pressed={elegida === x.id} className={medida(elegida === x.id)}>
+              {x.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Un producto para agregar al pedido: su dibujo y su nombre bien visibles (del mismo tamaño) y su
+ * ＋. Una vez agregado queda resaltado en el mismo lugar, con su cantidad para ajustarla ahí mismo.
+ */
 function RecuadroProducto({
   p,
   entrada,
@@ -135,7 +192,6 @@ function RecuadroProducto({
   alCambiar: (cambios: Partial<Entrada>) => void;
   alQuitar: () => void;
 }) {
-  const dibujo = dibujoDeProducto(p.nombre, p.grupo);
   const unidad = ABREVIATURA_UNIDAD[p.unidadBase];
   const inicial = presentacionInicial(p.presentaciones, p.presentacionDefectoId);
   if (!entrada) {
@@ -143,109 +199,40 @@ function RecuadroProducto({
       <button
         type="button"
         onClick={alAgregar}
-        aria-pressed={false}
         id={`producto-${p.id}`}
-        className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-borde bg-superficie p-4 text-center transition-colors hover:border-marca/60 hover:bg-marca/5"
+        title={`Agregar ${p.nombre} al pedido`}
+        className="flex min-h-16 items-center gap-2 rounded-xl border-2 border-borde bg-superficie px-2.5 py-2 text-left transition-colors hover:border-marca hover:bg-marca/5"
       >
-        <span aria-hidden className="text-5xl leading-none">
-          {dibujo}
+        <span className="min-w-0 flex-1">
+          <NombreDeProducto nombre={p.nombre} grupo={p.grupo} className="text-xl" />
+          <span className="block truncate text-xs text-texto-suave">{inicial && !inicial.esUnidadBase ? inicial.nombre : `por ${unidad}`}</span>
         </span>
-        <span className="text-lg leading-tight font-semibold">{p.nombre}</span>
-        <span className="text-sm text-texto-suave">
-          {inicial && !inicial.esUnidadBase ? inicial.nombre : `por ${unidad}`} · {p.codigo}
+        <span className="flex shrink-0 items-center gap-1 rounded-lg bg-marca/15 px-2 py-1.5 text-sm font-bold text-marca">
+          <span aria-hidden className="text-lg leading-none">
+            ＋
+          </span>
+          <span className="max-sm:sr-only">Agregar</span>
         </span>
       </button>
     );
   }
-  const presentacion: Pick<PresentacionDeVenta, "nombre" | "esUnidadBase" | "factor"> = p.presentaciones.find((x) => x.id === entrada.presentacionId) ?? {
-    nombre: unidad,
-    esUnidadBase: true,
-    factor: "1",
-  };
-  const cantidad = leerCantidad(entrada.cantidad);
-  const cambiarCantidad = (paso: string) => {
-    const nueva = sumarCantidad(cantidad ?? "0", paso);
-    if (nueva === "0") alQuitar();
-    else alCambiar({ cantidad: conComa(nueva) });
-  };
-  const baseId = p.presentaciones.find((x) => x.esUnidadBase)?.id ?? null;
-  const valorPresentacion = entrada.presentacionId && entrada.presentacionId !== baseId ? entrada.presentacionId : "";
   return (
-    <div
-      id={`producto-${p.id}`}
-      className={`col-span-2 flex flex-col gap-4 rounded-2xl border-2 bg-marca/10 p-4 sm:p-5 ${marcado ? "border-error ring-2 ring-error/40" : "border-marca ring-2 ring-marca/30"}`}
-    >
-      <div className="flex items-center gap-3">
-        <span aria-hidden className="text-5xl leading-none">
-          {dibujo}
+    <div id={`producto-${p.id}`} className={`flex flex-col gap-2 rounded-xl border-2 px-2.5 py-2 ${marcado ? "border-error bg-error/5" : "border-marca bg-marca/10"}`}>
+      <div className="flex items-center gap-1">
+        <span aria-hidden className="text-lg font-bold text-marca">
+          ✓
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-xl leading-tight font-semibold">{p.nombre}</p>
-          <p className="text-lg font-medium">{cantidad ? textoCantidad(cantidad, presentacion, p.unidadBase) : "¿Cuánto lleva?"}</p>
-        </div>
-        <button type="button" onClick={alQuitar} aria-label={`Sacar ${p.nombre}`} className="flex size-10 shrink-0 items-center justify-center rounded-full text-xl hover:bg-black/10 dark:hover:bg-white/10">
+        <NombreDeProducto nombre={p.nombre} grupo={p.grupo} className="flex-1 text-xl" />
+        <button type="button" onClick={alQuitar} aria-label={`Sacar ${p.nombre} del pedido`} title="Sacarlo del pedido" className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10">
           ✕
         </button>
       </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex items-center gap-2">
-        <button type="button" onClick={() => cambiarCantidad("-1")} aria-label={`Uno menos de ${p.nombre}`} className="flex size-12 shrink-0 items-center justify-center rounded-xl border-2 border-borde bg-superficie text-2xl font-bold">
-          −
-        </button>
-        <input
-          value={entrada.cantidad}
-          onChange={(e) => alCambiar({ cantidad: e.target.value })}
-          inputMode="decimal"
-          aria-label={`Cantidad de ${p.nombre}`}
-          aria-invalid={Boolean(marcado)}
-          className="h-12 w-24 rounded-xl border-2 border-borde bg-superficie text-center text-xl font-semibold"
-        />
-        <button type="button" onClick={() => cambiarCantidad("1")} aria-label={`Uno más de ${p.nombre}`} className="flex size-12 shrink-0 items-center justify-center rounded-xl border-2 border-borde bg-superficie text-2xl font-bold">
-          +
-        </button>
-        </div>
-      {p.presentaciones.filter((x) => !x.esUnidadBase).length > 0 && (
-        <label className="flex min-w-40 flex-1 flex-col gap-1 text-sm">
-          <span className="font-medium">Se pide</span>
-          <select value={valorPresentacion} onChange={(e) => alCambiar({ presentacionId: e.target.value || null })} className="h-12 rounded-xl border-2 border-borde bg-superficie px-2 text-base">
-            <option value="">Por {unidad}</option>
-            {p.presentaciones
-              .filter((x) => !x.esUnidadBase)
-              .map((x) => (
-                <option key={x.id} value={x.id}>
-                  Por {x.nombre.toLowerCase()}
-                </option>
-              ))}
-          </select>
-        </label>
-      )}
-      </div>
-      <div className="flex flex-wrap gap-2" role="group" aria-label={`Cantidades rápidas de ${p.nombre}`}>
-        {cantidadesRapidas(p.unidadBase, presentacion.esUnidadBase).map((q) => (
-          <button
-            key={q}
-            type="button"
-            onClick={() => alCambiar({ cantidad: q })}
-            aria-pressed={cantidad === q}
-            className={`min-h-11 min-w-11 rounded-full border-2 px-3 font-semibold ${cantidad === q ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie"}`}
-          >
-            {q}
-          </button>
-        ))}
-      </div>
+      <Cantidad p={p} entrada={entrada} invalida={Boolean(marcado)} alCambiar={alCambiar} alQuitar={alQuitar} />
       {marcado && (
-        <p role="alert" className="text-sm font-medium text-error">
+        <p role="alert" className="text-xs font-medium text-error">
           {marcado}
         </p>
       )}
-      <input
-        value={entrada.nota}
-        onChange={(e) => alCambiar({ nota: e.target.value })}
-        maxLength={200}
-        placeholder="Nota (opcional): ej. bien maduros"
-        aria-label={`Nota para ${p.nombre}`}
-        className="h-10 rounded-lg border border-borde bg-superficie px-3 text-sm"
-      />
     </div>
   );
 }
@@ -284,6 +271,10 @@ export function CargadorDePedido({
   const [problema, setProblema] = useState<Problema | null>(null);
   const [listo, setListo] = useState<PedidoCargado | null>(null);
   const [guardando, empezar] = useTransition();
+  // El historial de pedidos del cliente (se pide al abrir el panel) y qué panel está abierto.
+  const [panel, setPanel] = useState<"historial" | "frecuentes" | null>(null);
+  const [historial, setHistorial] = useState<{ clienteId: string; pedidos: PedidoDelHistorial[]; mensaje: string | null } | null>(null);
+  const [, pedirHistorial] = useTransition();
 
   const cliente = datos.clientes.find((c) => c.id === clienteId) ?? null;
   const punto = cliente?.puntos.find((p) => p.id === puntoId) ?? cliente?.puntos[0] ?? null;
@@ -294,10 +285,52 @@ export function CargadorDePedido({
   const clientesVisibles = datos.clientes.filter((c) => coincideBusqueda(`${c.nombre} ${c.direccion ?? ""}`, buscarCliente));
   const productosVisibles = datos.productos.filter((p) => coincideBusqueda(`${p.nombre} ${p.codigo} ${p.categoria ?? ""}`, buscarProducto));
   const buscando = buscarProducto.trim() !== "";
-  // Por categoría; sin búsqueda, lo que suele pedir el cliente va arriba y no se repite abajo.
-  const grupos = [...new Set(productosVisibles.map((p) => p.categoria ?? "Otros"))]
-    .map((cat) => ({ cat, productos: productosVisibles.filter((p) => (p.categoria ?? "Otros") === cat && (buscando || !habituales.includes(p))) }))
-    .filter((g) => g.productos.length > 0);
+  // Una sola lista, sin categorías: primero lo que se pidió hace menos. Sin búsqueda, lo sugerido va arriba y no se repite abajo.
+  const porReciente = [...productosVisibles].sort((a, b) => (b.ultimaVez ?? "").localeCompare(a.ultimaVez ?? "") || a.nombre.localeCompare(b.nombre, "es"));
+  const frecuentes = buscando ? [] : habituales;
+  const listados = porReciente.filter((p) => !frecuentes.includes(p));
+  // Los clientes a los que se les cargó un pedido hace menos, primero.
+  const recientes = datos.clientes
+    .filter((c) => c.ultimo)
+    .sort((a, b) => b.ultimo!.fecha.localeCompare(a.ultimo!.fecha))
+    .slice(0, 6);
+  const suHistorial = cliente && historial?.clienteId === cliente.id ? historial : null;
+  const pedidosDelPanel = (suHistorial?.pedidos ?? []).filter((h) => panel === "historial" || h.frecuente);
+
+  const abrirPanel = (cual: "historial" | "frecuentes") => {
+    if (panel === cual) {
+      setPanel(null);
+      return;
+    }
+    setPanel(cual);
+    if (cliente && historial?.clienteId !== cliente.id) {
+      const id = cliente.id;
+      pedirHistorial(async () => {
+        const r = await historialDeClienteAccion(id);
+        setHistorial({ clienteId: id, ...r });
+      });
+    }
+  };
+  const alternarEstrella = (h: PedidoDelHistorial) => {
+    const frecuente = !h.frecuente;
+    const poner = (valor: boolean, mensaje: string | null) => setHistorial((actual) => (actual ? { ...actual, mensaje, pedidos: actual.pedidos.map((x) => (x.id === h.id ? { ...x, frecuente: valor } : x)) } : actual));
+    poner(frecuente, null);
+    pedirHistorial(async () => {
+      const r = await marcarFrecuenteAccion(h.id, frecuente);
+      if (!r.ok) poner(!frecuente, r.mensaje ?? "No se pudo guardar la estrella: probá de nuevo.");
+    });
+  };
+  /** Suma al pedido los productos de otro pedido (los que ya están elegidos quedan como están). */
+  const sumarLineas = (lineas: readonly LineaElegida[]) => {
+    setEntradas((previas) => [
+      ...previas,
+      ...lineas
+        .filter((l) => productoPorId.has(l.productoId) && !previas.some((e) => e.productoId === l.productoId))
+        .map((l) => ({ clave: nuevaClave(), productoId: l.productoId, presentacionId: l.presentacionId, cantidad: conComa(l.cantidad), nota: l.observaciones ?? "" })),
+    ]);
+    setProblema(null);
+    setPanel(null);
+  };
 
   const marcar = (p: Problema | null) => {
     setProblema(p);
@@ -309,7 +342,7 @@ export function CargadorDePedido({
     setPuntoId(c.puntos[0]?.id ?? null);
     setBuscarCliente("");
     setProblema(null);
-    setTimeout(() => irA(c.puntos.length > 0 ? "dia" : "cliente"), 50);
+    setPanel(null);
   };
   const agregar = (p: ProductoParaCargar) => {
     const inicial = presentacionInicial(p.presentaciones, p.presentacionDefectoId);
@@ -321,17 +354,17 @@ export function CargadorDePedido({
     if (problema?.producto === productoId) setProblema(null);
   };
   const quitar = (clave: string) => setEntradas((previas) => previas.filter((e) => e.clave !== clave));
-  const repetirUltimo = () => {
-    if (!cliente?.ultimo) return;
-    if (entradas.length > 0 && !window.confirm("¿Cambiar lo que ya elegiste por su último pedido?")) return;
-    setEntradas(
-      cliente.ultimo.lineas
-        .filter((l) => productoPorId.has(l.productoId))
-        .map((l) => ({ clave: nuevaClave(), productoId: l.productoId, presentacionId: l.presentacionId, cantidad: conComa(l.cantidad), nota: l.observaciones ?? "" })),
-    );
-    setProblema(null);
-  };
-
+  const recuadro = (p: ProductoParaCargar) => (
+    <RecuadroProducto
+      key={p.id}
+      p={p}
+      entrada={porProducto.get(p.id)}
+      marcado={problema?.producto === p.id ? problema.mensaje : null}
+      alAgregar={() => agregar(p)}
+      alCambiar={(c) => cambiar(p.id, c)}
+      alQuitar={() => quitar(porProducto.get(p.id)!.clave)}
+    />
+  );
   const revisar = (): Problema | null => {
     if (!cliente) return { mensaje: "Falta elegir el cliente: tocá su recuadro (o buscalo por el nombre).", seccion: "cliente" };
     if (!punto) {
@@ -418,20 +451,22 @@ export function CargadorDePedido({
             Ojo: {listo.cliente} ya tenía el pedido {listo.duplicadoDe} para ese día. Si era el mismo pedido, cancelá uno de los dos desde el tablero.
           </p>
         )}
-        <div className="flex flex-wrap justify-center gap-3">
-          {!editando && (
-            <button type="button" onClick={cargarOtro} className="min-h-14 rounded-xl bg-marca px-6 text-lg font-semibold text-marca-texto">
-              ＋ Cargar otro pedido
-            </button>
-          )}
-          <Link href={`/inicio?fecha=${listo.fecha}&pedido=${listo.pedidoId}`} className="flex min-h-14 items-center rounded-xl border-2 border-borde px-6 text-lg font-semibold">
-            Ver en el tablero
+        <div className="flex flex-col items-center gap-3">
+          <Link href={`/inicio?fecha=${listo.fecha}`} className="flex min-h-16 items-center rounded-xl bg-marca px-8 text-xl font-bold text-marca-texto shadow-sm hover:opacity-90">
+            ← Volver al tablero
           </Link>
-          {!editando && (
-            <Link href={`/pedidos/${listo.pedidoId}/cambiar`} className="flex min-h-14 items-center rounded-xl px-4 text-lg font-medium underline underline-offset-4">
-              Cambiar algo de este pedido
-            </Link>
-          )}
+          <div className="flex flex-wrap justify-center gap-3">
+            {!editando && (
+              <button type="button" onClick={cargarOtro} className="min-h-12 rounded-xl border-2 border-marca bg-marca/15 px-5 text-lg font-semibold hover:bg-marca/25">
+                ＋ Cargar otro pedido
+              </button>
+            )}
+            {!editando && (
+              <Link href={`/pedidos/${listo.pedidoId}/cambiar`} className="flex min-h-12 items-center rounded-xl px-4 text-lg font-medium underline underline-offset-4">
+                Cambiar algo de este pedido
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -442,16 +477,16 @@ export function CargadorDePedido({
   const confirmaAlGuardar = puedeConfirmar && (!editando || pedido.estado === "BORRADOR");
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold">{editando ? `Cambiar el pedido ${pedido.numero}` : "Nuevo pedido"}</h1>
-          <p className="text-lg text-texto-suave">
+          <h1 className="text-2xl font-semibold">{editando ? `Cambiar el pedido ${pedido.numero}` : "Nuevo pedido"}</h1>
+          <p className="text-texto-suave">
             {editando
               ? pedido.estado === "EN_COMPRA"
                 ? "Ya está en la lista de compras: al guardar, la lista se marca para actualizarla con lo nuevo."
                 : "Sumá, cambiá o sacá productos y guardá."
-              : "Tocá el cliente, el día y lo que lleva. Al final, guardalo."}
+              : "Elegí el cliente y el día, agregá los productos con su ＋ y guardalo."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -460,240 +495,352 @@ export function CargadorDePedido({
               📥 Cargar desde Excel
             </Link>
           )}
-          <Link href={`/inicio?fecha=${fecha}`} className="flex min-h-11 items-center rounded-lg border border-borde px-4 font-semibold">
+          <Link href={`/inicio?fecha=${fecha}`} className="flex min-h-12 items-center rounded-xl bg-marca px-5 text-lg font-bold text-marca-texto shadow-sm hover:opacity-90">
             ← Volver al tablero
           </Link>
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-6">
-          <Paso
-            id="cliente"
-            n={1}
-            titulo={cliente ? "Cliente" : "¿Para quién es?"}
-            ayuda={cliente ? undefined : "Tocá el recuadro del cliente. Si hay muchos, escribí parte del nombre."}
-            derecha={
-              cliente && !editando ? (
-                <button type="button" onClick={() => setClienteId(null)} className="min-h-11 rounded-lg border border-borde px-4 font-semibold">
-                  Cambiar de cliente
-                </button>
-              ) : null
-            }
-          >
-            {cliente ? (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-4 rounded-2xl bg-marca/10 p-4">
-                  <span aria-hidden className="flex size-16 shrink-0 items-center justify-center rounded-full bg-superficie text-4xl">
-                    {dibujoDeCliente(cliente.tipo)}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-2xl leading-tight font-semibold">{cliente.nombre}</p>
-                    {punto ? <p className="text-texto-suave">📍 {punto.direccion}</p> : <p className="font-medium text-error">No tiene cargado dónde se le entrega.</p>}
-                  </div>
-                </div>
-                {cliente.puntos.length > 1 && (
-                  <div className="flex flex-col gap-2">
-                    <p className="font-medium">¿Dónde se entrega?</p>
-                    <div className="flex flex-wrap gap-2">
-                      {cliente.puntos.map((pt) => (
-                        <button
-                          key={pt.id}
-                          type="button"
-                          onClick={() => setPuntoId(pt.id)}
-                          aria-pressed={punto?.id === pt.id}
-                          className={`min-h-12 rounded-xl border-2 px-4 text-left ${punto?.id === pt.id ? "border-marca bg-marca/10 font-semibold" : "border-borde"}`}
-                        >
-                          {pt.nombre} <span className="block text-sm font-normal text-texto-suave">{pt.direccion}</span>
-                        </button>
-                      ))}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        <div className="@container flex min-w-0 flex-col gap-4">
+          {/* El cliente y el día van a la misma altura apenas hay lugar para los dos. */}
+          <div className="grid gap-4 @xl:grid-cols-2">
+            <Paso
+              id="cliente"
+              n={1}
+              titulo={cliente ? "Cliente" : "¿Para quién es?"}
+              derecha={
+                cliente && !editando ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClienteId(null);
+                      setPanel(null);
+                    }}
+                    className="min-h-10 rounded-lg border border-borde px-3 text-sm font-semibold"
+                  >
+                    Cambiar
+                  </button>
+                ) : null
+              }
+            >
+              {cliente ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3 rounded-xl bg-marca/10 p-3">
+                    <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-superficie text-xl">
+                      {dibujoDeCliente(cliente.tipo)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xl leading-tight font-bold">{cliente.nombre}</p>
+                      {punto ? <p className="truncate text-sm text-texto-suave">📍 {punto.direccion}</p> : <p className="text-sm font-medium text-error">No tiene cargado dónde se le entrega.</p>}
                     </div>
                   </div>
-                )}
-                {!punto && (
-                  <Link href={`/clientes/${cliente.id}`} className="self-start rounded-lg bg-marca px-4 py-2 font-semibold text-marca-texto">
-                    Cargar la dirección →
-                  </Link>
-                )}
+                  {cliente.puntos.length > 1 && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-sm font-semibold text-texto-suave">¿Dónde se entrega?</p>
+                      <div className="flex flex-wrap gap-2">
+                        {cliente.puntos.map((pt) => (
+                          <button
+                            key={pt.id}
+                            type="button"
+                            onClick={() => setPuntoId(pt.id)}
+                            aria-pressed={punto?.id === pt.id}
+                            title={pt.direccion}
+                            className={`min-h-10 rounded-xl border-2 px-3 text-sm ${punto?.id === pt.id ? "border-marca bg-marca/10 font-bold" : "border-borde font-medium"}`}
+                          >
+                            {pt.nombre}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!punto && (
+                    <Link href={`/clientes/${cliente.id}`} className="self-start rounded-lg bg-marca px-4 py-2 font-semibold text-marca-texto">
+                      Cargar la dirección →
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <input
+                    value={buscarCliente}
+                    onChange={(e) => setBuscarCliente(e.target.value)}
+                    placeholder="🔎 Buscar cliente…"
+                    aria-label="Buscar cliente"
+                    className="h-11 rounded-xl border-2 border-borde bg-superficie px-3"
+                  />
+                  {!buscarCliente.trim() && recientes.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <h3 className="text-sm font-semibold text-texto-suave">🕘 Clientes recientes</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {recientes.map((c) => (
+                          <button key={c.id} type="button" onClick={() => elegirCliente(c)} className="min-h-10 rounded-full border-2 border-borde bg-superficie px-3 text-sm font-bold hover:border-marca">
+                            {c.nombre}{" "}
+                            <span className="font-normal text-texto-suave">
+                              · {c.ultimo!.fecha.slice(8, 10)}/{c.ultimo!.fecha.slice(5, 7)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <h3 className="text-sm font-semibold text-texto-suave">Clientes</h3>
+                    {clientesVisibles.length === 0 ? (
+                      <p className="text-texto-suave">
+                        No hay clientes con ese nombre.{" "}
+                        <Link href="/clientes" className="font-semibold underline underline-offset-2">
+                          Agregá el cliente en Clientes
+                        </Link>{" "}
+                        y volvé.
+                      </p>
+                    ) : (
+                      <div className="barra-visible grid max-h-44 grid-cols-1 content-start gap-2 overflow-y-auto">
+                        {clientesVisibles.map((c) => (
+                          <RecuadroCliente key={c.id} c={c} alElegir={() => elegirCliente(c)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Paso>
+
+            <Paso id="dia" n={2} titulo="¿Para qué día?">
+              <div className="flex flex-wrap gap-2">
+                {dias.map((d) => {
+                  const cerrado = datos.cerrados.includes(d);
+                  const elegido = d === fecha;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      disabled={cerrado || (editando && pedido.estado === "EN_COMPRA" && d !== pedido.fecha)}
+                      onClick={() => setFecha(d)}
+                      aria-pressed={elegido}
+                      className={`flex min-h-12 min-w-16 flex-col items-center justify-center rounded-xl border-2 px-2 leading-tight disabled:opacity-40 ${elegido ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca/60"}`}
+                    >
+                      <span className="font-bold">{nombreDelDia(d, datos.hoy)}</span>
+                      <span className="text-xs">{cerrado ? "cerrado" : `${d.slice(8, 10)}/${d.slice(5, 7)}`}</span>
+                    </button>
+                  );
+                })}
+                <label className="flex min-h-12 flex-col justify-center rounded-xl border-2 border-dashed border-borde px-2 text-xs">
+                  <span className="font-semibold">Otro día</span>
+                  <input
+                    type="date"
+                    min={datos.hoy}
+                    value={dias.includes(fecha) ? "" : fecha}
+                    onChange={(e) => e.target.value && setFecha(e.target.value)}
+                    disabled={editando && pedido.estado === "EN_COMPRA"}
+                    className="h-7 rounded-md border border-borde bg-superficie px-1"
+                  />
+                </label>
               </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                <input
-                  value={buscarCliente}
-                  onChange={(e) => setBuscarCliente(e.target.value)}
-                  placeholder="🔎 Buscar cliente…"
-                  aria-label="Buscar cliente"
-                  className="h-14 rounded-xl border-2 border-borde bg-superficie px-4 text-lg"
-                />
-                {clientesVisibles.length === 0 ? (
-                  <p className="text-texto-suave">
-                    No hay clientes con ese nombre. <Link href="/clientes" className="font-semibold underline underline-offset-2">Agregá el cliente en Clientes</Link> y volvé.
+              <p className="flex flex-col leading-tight">
+                <span className="text-sm text-texto-suave">Se entrega el</span>
+                <b className="text-2xl font-extrabold first-letter:uppercase">{fechaConDia(fecha)}</b>
+              </p>
+              {yaTiene.length > 0 && (
+                <div className="flex flex-col gap-2 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-50">
+                  <p className="font-semibold">
+                    ⚠️ {cliente!.nombre} ya tiene {yaTiene.length === 1 ? `el pedido ${yaTiene[0]!.numero}` : `${yaTiene.length} pedidos`} para ese día ({ETAPA[yaTiene[0]!.estado] ?? "en curso"}).
                   </p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {clientesVisibles.map((c) => (
-                      <RecuadroCliente key={c.id} c={c} elegido={false} alElegir={() => elegirCliente(c)} />
+                  <p className="text-sm">Si es para sumarle productos, cambiá ese pedido. Si es un pedido aparte, seguí acá.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {yaTiene.map((a) => (
+                      <Link key={a.id} href={`/pedidos/${a.id}/cambiar`} className="rounded-lg bg-amber-600 px-3 py-2 font-semibold text-white">
+                        Cambiar el {a.numero} →
+                      </Link>
                     ))}
                   </div>
-                )}
-              </div>
-            )}
-          </Paso>
-
-          <Paso id="dia" n={2} titulo="¿Para qué día?" ayuda="El día en que se entrega.">
-            <div className="flex flex-wrap gap-2">
-              {dias.map((d) => {
-                const cerrado = datos.cerrados.includes(d);
-                const elegido = d === fecha;
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    disabled={cerrado || (editando && pedido.estado === "EN_COMPRA" && d !== pedido.fecha)}
-                    onClick={() => setFecha(d)}
-                    aria-pressed={elegido}
-                    className={`flex min-h-16 min-w-24 flex-col items-center justify-center rounded-xl border-2 px-3 disabled:opacity-40 ${elegido ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca/60"}`}
-                  >
-                    <span className="text-lg font-semibold">{nombreDelDia(d, datos.hoy)}</span>
-                    <span className="text-sm">{cerrado ? "cerrado" : `${d.slice(8, 10)}/${d.slice(5, 7)}`}</span>
-                  </button>
-                );
-              })}
-              <label className="flex min-h-16 flex-col justify-center gap-1 rounded-xl border-2 border-dashed border-borde px-3 text-sm">
-                <span className="font-medium">Otro día</span>
-                <input
-                  type="date"
-                  min={datos.hoy}
-                  value={dias.includes(fecha) ? "" : fecha}
-                  onChange={(e) => e.target.value && setFecha(e.target.value)}
-                  disabled={editando && pedido.estado === "EN_COMPRA"}
-                  className="h-9 rounded-md border border-borde bg-superficie px-2"
-                />
-              </label>
-            </div>
-            <p className="text-lg">
-              Se entrega el <b>{fechaConDia(fecha)}</b>
-              {fecha === datos.sugerida && !editando && <span className="text-texto-suave"> (el día para el que se están tomando pedidos)</span>}.
-            </p>
-            {yaTiene.length > 0 && (
-              <div className="flex flex-col gap-2 rounded-xl border-2 border-amber-500 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950 dark:text-amber-50">
-                <p className="font-semibold">
-                  ⚠️ {cliente!.nombre} ya tiene {yaTiene.length === 1 ? `el pedido ${yaTiene[0]!.numero}` : `${yaTiene.length} pedidos`} para ese día ({ETAPA[yaTiene[0]!.estado] ?? "en curso"}).
-                </p>
-                <p>Si es para sumarle productos, cambiá ese pedido. Si es un pedido aparte, seguí acá.</p>
-                <div className="flex flex-wrap gap-2">
-                  {yaTiene.map((a) => (
-                    <Link key={a.id} href={`/pedidos/${a.id}/cambiar`} className="rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white">
-                      Cambiar el {a.numero} →
-                    </Link>
-                  ))}
                 </div>
-              </div>
-            )}
-          </Paso>
+              )}
+            </Paso>
+          </div>
 
           <Paso
             id="productos"
             n={3}
             titulo="¿Qué lleva?"
-            ayuda="Tocá cada producto y ajustá la cantidad con − y +, o escribila."
             derecha={
-              cliente?.ultimo && !editando ? (
-                <button type="button" onClick={repetirUltimo} className="min-h-12 rounded-xl border-2 border-marca px-4 font-semibold">
-                  ↺ Repetir su último pedido ({cliente.ultimo.fecha.slice(8, 10)}/{cliente.ultimo.fecha.slice(5, 7)} · {cliente.ultimo.lineas.length} productos)
-                </button>
+              cliente ? (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => abrirPanel("historial")} aria-pressed={panel === "historial"} className={`min-h-10 rounded-lg border-2 px-3 text-sm font-semibold ${panel === "historial" ? "border-marca bg-marca/10" : "border-borde"}`}>
+                    🕘 Historial de pedidos
+                  </button>
+                  <button type="button" onClick={() => abrirPanel("frecuentes")} aria-pressed={panel === "frecuentes"} className={`min-h-10 rounded-lg border-2 px-3 text-sm font-semibold ${panel === "frecuentes" ? "border-marca bg-marca/10" : "border-borde"}`}>
+                    ⭐ Pedidos frecuentes
+                  </button>
+                </div>
               ) : null
             }
           >
+            {panel && cliente && (
+              <div className="flex flex-col gap-2 rounded-xl border-2 border-marca/40 bg-fondo p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold">{panel === "historial" ? `🕘 Historial de pedidos de ${cliente.nombre}` : `⭐ Pedidos frecuentes de ${cliente.nombre}`}</h3>
+                  <button type="button" onClick={() => setPanel(null)} aria-label="Cerrar" className="flex size-9 items-center justify-center rounded-full text-xl hover:bg-black/10 dark:hover:bg-white/10">
+                    ×
+                  </button>
+                </div>
+                <p className="text-sm text-texto-suave">
+                  {panel === "historial"
+                    ? "Tocá la estrella para guardar un pedido como frecuente: sus productos son los que se sugieren al cargarle uno nuevo. “＋ Usar” agrega sus productos a este pedido."
+                    : "Los pedidos que marcaste con la estrella. “＋ Usar” agrega sus productos a este pedido."}
+                </p>
+                {suHistorial === null ? (
+                  <p className="text-texto-suave">Buscando sus pedidos…</p>
+                ) : (
+                  <>
+                    {suHistorial.mensaje && (
+                      <p role="alert" className="font-medium text-error">
+                        {suHistorial.mensaje}
+                      </p>
+                    )}
+                    {pedidosDelPanel.length === 0 ? (
+                      <p className="text-texto-suave">{panel === "historial" ? "Todavía no tiene pedidos anteriores." : "Todavía no marcaste ningún pedido como frecuente: abrí el Historial y tocá la estrella del que quieras."}</p>
+                    ) : (
+                      <ul className="barra-visible flex max-h-64 flex-col gap-2 overflow-y-auto">
+                        {pedidosDelPanel.map((h) => (
+                          <li key={h.id} className="flex items-center gap-2 rounded-xl border border-borde bg-superficie p-2">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={h.frecuente}
+                              aria-label={`Pedido frecuente: ${h.numero}`}
+                              title={h.frecuente ? "Es un pedido frecuente: tocá para sacarle la estrella" : "Marcarlo como pedido frecuente"}
+                              onClick={() => alternarEstrella(h)}
+                              className={`flex size-11 shrink-0 items-center justify-center rounded-lg text-3xl leading-none ${h.frecuente ? "text-amber-500" : "text-texto-suave hover:text-amber-500"}`}
+                            >
+                              {h.frecuente ? "★" : "☆"}
+                            </button>
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-bold first-letter:uppercase">
+                                {fechaConDia(h.fecha)} <span className="text-sm font-normal text-texto-suave">· {h.numero}</span>
+                              </span>
+                              <span className="block truncate text-sm text-texto-suave">
+                                {h.lineas
+                                  .map((l) => productoPorId.get(l.productoId)?.nombre)
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </span>
+                            </span>
+                            <button type="button" onClick={() => sumarLineas(h.lineas)} className="min-h-10 shrink-0 rounded-lg bg-marca px-3 text-sm font-bold text-marca-texto">
+                              ＋ Usar
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             <input
               value={buscarProducto}
               onChange={(e) => setBuscarProducto(e.target.value)}
               placeholder="🔎 Buscar producto por nombre o código…"
               aria-label="Buscar producto"
-              className="h-14 rounded-xl border-2 border-borde bg-superficie px-4 text-lg"
+              className="h-12 rounded-xl border-2 border-borde bg-superficie px-3 text-lg"
             />
-            {!buscando && habituales.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <h3 className="text-lg font-semibold">⭐ Lo que suele pedir</h3>
-                <div className="grid grid-flow-row-dense grid-cols-2 items-start gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {habituales.map((p) => (
-                    <RecuadroProducto
-                      key={`h-${p.id}`}
-                      p={p}
-                      entrada={porProducto.get(p.id)}
-                      marcado={problema?.producto === p.id ? problema.mensaje : null}
-                      alAgregar={() => agregar(p)}
-                      alCambiar={(c) => cambiar(p.id, c)}
-                      alQuitar={() => quitar(porProducto.get(p.id)!.clave)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            {productosVisibles.length === 0 && (
+            {productosVisibles.length === 0 ? (
               <p className="text-texto-suave">
-                No hay productos con ese nombre. <Link href="/productos/nuevo" className="font-semibold underline underline-offset-2">Crealo en Productos</Link> y volvé.
+                No hay productos con ese nombre.{" "}
+                <Link href="/productos/nuevo" className="font-semibold underline underline-offset-2">
+                  Crealo en Productos
+                </Link>{" "}
+                y volvé.
               </p>
-            )}
-            {grupos.map(({ cat, productos }) => (
-              <div key={cat} className="flex flex-col gap-3">
-                <h3 className="text-lg font-semibold">{cat}</h3>
-                <div className="grid grid-flow-row-dense grid-cols-2 items-start gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {productos.map((p) => (
-                      <RecuadroProducto
-                        key={p.id}
-                        p={p}
-                        entrada={porProducto.get(p.id)}
-                        marcado={problema?.producto === p.id ? problema.mensaje : null}
-                        alAgregar={() => agregar(p)}
-                        alCambiar={(c) => cambiar(p.id, c)}
-                        alQuitar={() => quitar(porProducto.get(p.id)!.clave)}
-                      />
-                    ))}
-                </div>
+            ) : (
+              // Un solo recuadro con todos los productos: arriba, los frecuentes del cliente (la única
+              // división); después, todos los demás, del que se pidió hace menos al que hace más.
+              <div className="barra-visible flex max-h-[34rem] flex-col gap-3 overflow-y-scroll rounded-xl border border-borde p-2">
+                {frecuentes.length > 0 && (
+                  <>
+                    <h3 className="flex flex-wrap items-baseline gap-x-2 px-1 text-lg font-bold">
+                      ⭐ Productos frecuentes
+                      <span className="text-sm font-normal text-texto-suave">
+                        de {cliente!.nombre}
+                        {cliente!.deFrecuentes ? " (de sus pedidos frecuentes)" : ""}
+                      </span>
+                    </h3>
+                    <div className="grid grid-cols-1 content-start items-start gap-2 @md:grid-cols-2 @3xl:grid-cols-3">{frecuentes.map(recuadro)}</div>
+                  </>
+                )}
+                {frecuentes.length > 0 && listados.length > 0 && <hr className="border-t-2 border-borde" />}
+                {listados.length > 0 && <div className="grid grid-cols-1 content-start items-start gap-2 @md:grid-cols-2 @3xl:grid-cols-3">{listados.map(recuadro)}</div>}
               </div>
-            ))}
+            )}
           </Paso>
         </div>
 
-        <aside id="resumen" aria-labelledby="resumen-titulo" className="flex scroll-mt-4 flex-col gap-5 rounded-2xl border-2 border-marca/40 bg-superficie p-4 sm:p-6 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
-          <div>
-            <h2 id="resumen-titulo" className="text-xl font-semibold">
-              🧺 El pedido
-            </h2>
-            <p className="text-texto-suave">
-              {cliente ? cliente.nombre : "Sin cliente"} · {fechaConDia(fecha)}
-            </p>
+        <aside id="resumen" aria-labelledby="resumen-titulo" className="flex scroll-mt-4 flex-col gap-4 rounded-2xl border-2 border-marca/40 bg-superficie p-4 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
+          <div className="z-10 -mx-4 -mt-4 flex flex-col gap-3 rounded-t-2xl border-b border-borde bg-superficie px-4 pt-4 pb-3 lg:sticky lg:top-0">
+            <div>
+              <h2 id="resumen-titulo" className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
+                🧺 El pedido
+                <span className="rounded-full bg-marca px-2.5 py-0.5 text-base font-bold text-marca-texto">{entradas.length === 1 ? "1 producto" : `${entradas.length} productos`}</span>
+              </h2>
+              <p className="text-texto-suave">
+                {cliente ? cliente.nombre : "Sin cliente"} · {fechaConDia(fecha)}
+              </p>
+            </div>
+            {/* En pantallas chicas el botón de guardar va en la barra de abajo, siempre a la vista. */}
+            <div className="hidden flex-col gap-2 lg:flex">
+              {problema && (
+                <div role="alert" className="flex flex-col gap-2 rounded-xl border-2 border-error bg-error/10 p-3">
+                  <p className="font-semibold text-error">{problema.mensaje}</p>
+                  {problema.enlace && (
+                    <Link href={problema.enlace.href} className="self-start rounded-lg bg-marca px-4 py-2 font-semibold text-marca-texto">
+                      {problema.enlace.texto}{"\u00a0→"}
+                    </Link>
+                  )}
+                </div>
+              )}
+              <button type="button" disabled={guardando} onClick={() => guardar(confirmaAlGuardar)} className="min-h-16 rounded-xl bg-marca px-4 text-xl font-bold text-marca-texto shadow-sm hover:opacity-90 disabled:opacity-60">
+                {guardando ? "Guardando…" : botonPrincipal}
+              </button>
+              <p className="text-sm text-texto-suave">{editando ? "Los cambios se ven enseguida en el tablero." : "Queda en la columna “Pedidos” del tablero."}</p>
+            </div>
           </div>
           {entradas.length === 0 ? (
-            <p className="rounded-xl bg-fondo p-4 text-center text-texto-suave">Todavía no elegiste productos: tocá los recuadros de la izquierda.</p>
+            <p className="rounded-xl bg-fondo p-4 text-center text-texto-suave">Todavía no agregaste productos: tocá ＋ en los de la izquierda.</p>
           ) : (
             <ul className="flex flex-col divide-y divide-borde rounded-xl border border-borde">
               {entradas.map((e) => {
                 const p = productoPorId.get(e.productoId)!;
-                const cantidad = leerCantidad(e.cantidad);
-                const pres = p.presentaciones.find((x) => x.id === e.presentacionId) ?? { nombre: ABREVIATURA_UNIDAD[p.unidadBase], esUnidadBase: true };
                 return (
-                  <li key={e.clave} className="flex items-center gap-3 p-3">
-                    <button type="button" onClick={() => irA(`producto-${p.id}`)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                      <span aria-hidden className="text-3xl leading-none">
-                        {dibujoDeProducto(p.nombre, p.grupo)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block font-semibold">{p.nombre}</span>
-                        <span className={`block ${cantidad ? "" : "font-medium text-error"}`}>{cantidad ? textoCantidad(cantidad, pres, p.unidadBase) : "Falta la cantidad"}</span>
-                        {e.nota.trim() && <span className="block text-sm text-texto-suave">“{e.nota.trim()}”</span>}
-                      </span>
-                    </button>
-                    <button type="button" onClick={() => quitar(e.clave)} aria-label={`Sacar ${p.nombre}`} className="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10">
-                      ✕
-                    </button>
+                  <li key={e.clave} className="flex flex-col gap-1.5 p-2.5">
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => irA(`producto-${p.id}`)} className="min-w-0 flex-1 text-left" title="Verlo en la lista de productos">
+                        <NombreDeProducto nombre={p.nombre} grupo={p.grupo} className="text-xl" />
+                      </button>
+                      <button type="button" onClick={() => quitar(e.clave)} aria-label={`Sacar ${p.nombre} del pedido`} title="Sacarlo del pedido" className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10">
+                        🗑
+                      </button>
+                    </div>
+                    <Cantidad p={p} entrada={e} invalida={problema?.producto === p.id} alCambiar={(c) => cambiar(p.id, c)} alQuitar={() => quitar(e.clave)} />
+                    {!leerCantidad(e.cantidad) && <p className="text-sm font-medium text-error">Falta la cantidad</p>}
+                    <input
+                      value={e.nota}
+                      onChange={(ev) => cambiar(p.id, { nota: ev.target.value })}
+                      maxLength={200}
+                      placeholder="Nota (opcional): ej. bien maduros"
+                      aria-label={`Nota para ${p.nombre}`}
+                      className="h-9 rounded-lg border border-borde bg-superficie px-2 text-sm"
+                    />
                   </li>
                 );
               })}
             </ul>
           )}
 
+          <details open={prioridad !== "NORMAL" || Boolean(desde || hasta || nota) || otroHorario || undefined} className="rounded-xl border border-borde p-3">
+            <summary className="min-h-11 cursor-pointer py-2 text-lg font-semibold">
+              ⚙️ Urgencia, horario y nota <span className="font-normal text-texto-suave">(opcional)</span>
+            </summary>
+            <div className="mt-2 flex flex-col gap-4">
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 font-semibold">¿Es urgente?</legend>
             <div className="grid grid-cols-3 gap-2">
@@ -766,36 +913,31 @@ export function CargadorDePedido({
             />
           </label>
 
-          {problema && (
-            <div role="alert" className="flex flex-col gap-2 rounded-xl border-2 border-error bg-error/10 p-4">
-              <p className="font-semibold text-error">{problema.mensaje}</p>
-              {problema.enlace && (
-                <Link href={problema.enlace.href} className="self-start rounded-lg bg-marca px-4 py-2 font-semibold text-marca-texto">
-                  {problema.enlace.texto} →
-                </Link>
-              )}
             </div>
-          )}
-
-          <div className="flex flex-col gap-2">
-            <button type="button" disabled={guardando} onClick={() => guardar(confirmaAlGuardar)} className="min-h-14 rounded-xl bg-marca px-4 text-lg font-semibold text-marca-texto disabled:opacity-60">
-              {guardando ? "Guardando…" : botonPrincipal}
-            </button>
-            <p className="text-sm text-texto-suave">
-              {editando ? "Los cambios se ven enseguida en el tablero." : "Queda en la columna “Pedidos” del tablero; desde ahí se manda a la lista de compras."}
-            </p>
-          </div>
+          </details>
         </aside>
       </div>
 
-      <div className="sticky bottom-3 z-30 flex items-center gap-3 rounded-2xl bg-superficie p-3 shadow-lg ring-1 ring-black/10 lg:hidden">
-        <span className="flex-1 font-semibold">
-          🧺 {entradas.length === 0 ? "Sin productos" : entradas.length === 1 ? "1 producto" : `${entradas.length} productos`}
-          {cliente && <span className="block truncate text-sm font-normal text-texto-suave">{cliente.nombre}</span>}
-        </span>
-        <button type="button" onClick={() => irA("resumen")} className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto">
-          Revisar y guardar ↓
-        </button>
+      <div className="sticky bottom-3 z-30 flex flex-col gap-2 rounded-2xl bg-superficie p-3 shadow-lg ring-1 ring-black/10 lg:hidden">
+        {problema && (
+          <div role="alert" className="flex flex-col gap-2 rounded-xl border-2 border-error bg-error/10 p-3">
+            <p className="font-semibold text-error">{problema.mensaje}</p>
+            {problema.enlace && (
+              <Link href={problema.enlace.href} className="self-start rounded-lg bg-marca px-4 py-2 font-semibold text-marca-texto">
+                {problema.enlace.texto}{"\u00a0→"}
+              </Link>
+            )}
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => irA("resumen")} className="min-w-0 flex-1 text-left font-semibold" title="Ver el pedido completo">
+            🧺 {entradas.length === 0 ? "Sin productos" : entradas.length === 1 ? "1 producto" : `${entradas.length} productos`} <span className="font-normal underline underline-offset-2">ver ↓</span>
+            {cliente && <span className="block truncate text-sm font-normal text-texto-suave">{cliente.nombre}</span>}
+          </button>
+          <button type="button" disabled={guardando} onClick={() => guardar(confirmaAlGuardar)} className="min-h-14 shrink-0 rounded-xl bg-marca px-5 text-lg font-bold text-marca-texto shadow-sm disabled:opacity-60">
+            {guardando ? "Guardando…" : editando ? "✓ Guardar" : "✓ Guardar el pedido"}
+          </button>
+        </div>
       </div>
     </div>
   );

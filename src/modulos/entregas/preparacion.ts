@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { and, asc, count, eq, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { cliente, compra, entrega, entregaItem, jornada, pedido, pedidoItem, presentacion, producto, puntoEntrega, reparto } from "@/db/esquema";
+import { categoria, cliente, compra, documentoEmitido, entrega, entregaItem, jornada, pedido, pedidoItem, presentacion, producto, puntoEntrega, reparto } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { dec, sumar } from "@/dominio/dinero/decimal";
@@ -15,8 +17,8 @@ import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { id, numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
-import { configuracionEmpresa, entregaBloqueada, unico, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto } from "./comun";
-import { documentosAlDia, documentosAlDiaDe, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ResultadoEmision } from "./documentos";
+import { PATRON_FECHA, configuracionEmpresa, entregaBloqueada, unico, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto } from "./comun";
+import { documentosAlDia, emitirDocumentosEntrega, lineasOperativas, reemitirSiCorresponde, type ResultadoEmision } from "./documentos";
 
 // Preparación de la mercadería (04 §5.e): RN-111 a RN-119. Ninguna función de este archivo lee
 // precios, costos ni importes (RN-119).
@@ -30,63 +32,84 @@ const MOTIVOS_FALTANTE = ["NO_CONSEGUIDO", "FALTANTE", "RECHAZO_CALIDAD", "ERROR
  * su línea de pedido. Se puede volver a correr: suma lo que llegó tarde (pedido tardío) y actualiza
  * lo pedido en las líneas que todavía no se prepararon.
  */
-async function sincronizarEntregas(tx: Transaccion, c: ContextoUsuario, jornadaId: string): Promise<{ entregasNuevas: number; lineasNuevas: number; sinLugar: number }> {
-  const vivos = await tx
-    .select({
-      itemId: pedidoItem.id,
-      productoId: pedidoItem.productoId,
-      cantidadBase: pedidoItem.cantidadBase,
-      presentacionId: pedidoItem.presentacionId,
-      observacionesItem: pedidoItem.observaciones,
-      clienteId: pedido.clienteId,
-      puntoEntregaId: pedido.puntoEntregaId,
-      producto: producto.nombre,
-      unidad: producto.unidadBase,
-      factor: presentacion.factorABase,
-    })
-    .from(pedidoItem)
-    .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
-    .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
-    .leftJoin(presentacion, eq(presentacion.id, pedidoItem.presentacionId))
-    .where(and(eq(pedido.jornadaId, jornadaId), inArray(pedido.estado, [...ESTADOS_PEDIDO_A_PREPARAR]), eq(pedidoItem.cancelado, false)))
-    .orderBy(asc(pedido.numero), asc(pedidoItem.linea));
-  const entregas = await tx.select().from(entrega).where(and(eq(entrega.jornadaId, jornadaId), ne(entrega.estado, "ANULADA")));
-  const existentes = await tx
-    .select({ id: entregaItem.id, pedidoItemId: entregaItem.pedidoItemId, esSustitucion: entregaItem.esSustitucion, pedida: entregaItem.cantidadPedida, preparada: entregaItem.cantidadPreparada })
-    .from(entregaItem)
-    .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
-    .where(eq(entrega.jornadaId, jornadaId));
+async function sincronizarEntregas(tx: Transaccion, c: ContextoUsuario, jornadaId: string, soloPedidos: ReadonlySet<string> | null = null): Promise<{ entregasNuevas: number; lineasNuevas: number }> {
+  const aPreparar = and(eq(pedido.jornadaId, jornadaId), inArray(pedido.estado, [...ESTADOS_PEDIDO_A_PREPARAR]));
+  // Todo lo que hay que mirar sale junto (una ida a la base).
+  const [vivos, entregas, existentes, notas] = await Promise.all([
+    tx
+      .select({
+        itemId: pedidoItem.id,
+        productoId: pedidoItem.productoId,
+        cantidadBase: pedidoItem.cantidadBase,
+        presentacionId: pedidoItem.presentacionId,
+        observacionesItem: pedidoItem.observaciones,
+        pedidoId: pedido.id,
+        clienteId: pedido.clienteId,
+        puntoEntregaId: pedido.puntoEntregaId,
+        producto: producto.nombre,
+        unidad: producto.unidadBase,
+        factor: presentacion.factorABase,
+      })
+      .from(pedidoItem)
+      .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
+      .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
+      .leftJoin(presentacion, eq(presentacion.id, pedidoItem.presentacionId))
+      .where(and(aPreparar, eq(pedidoItem.cancelado, false)))
+      .orderBy(asc(pedido.numero), asc(pedidoItem.linea)),
+    tx
+      .select({ id: entrega.id, clienteId: entrega.clienteId, puntoEntregaId: entrega.puntoEntregaId, estado: entrega.estado, observaciones: entrega.observaciones, referenciaCliente: entrega.referenciaCliente })
+      .from(entrega)
+      .where(and(eq(entrega.jornadaId, jornadaId), ne(entrega.estado, "ANULADA"))),
+    tx
+      .select({ id: entregaItem.id, entregaId: entregaItem.entregaId, linea: entregaItem.linea, pedidoItemId: entregaItem.pedidoItemId, esSustitucion: entregaItem.esSustitucion, pedida: entregaItem.cantidadPedida, preparada: entregaItem.cantidadPreparada })
+      .from(entregaItem)
+      .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
+      .where(eq(entrega.jornadaId, jornadaId)),
+    // Observaciones y orden de compra de los pedidos que se preparan.
+    tx
+      .select({ clienteId: pedido.clienteId, puntoEntregaId: pedido.puntoEntregaId, observaciones: pedido.observaciones, referencia: pedido.referenciaCliente })
+      .from(pedido)
+      .where(aPreparar)
+      .orderBy(asc(pedido.numero)),
+  ]);
+  const esEditable = (e: { estado: string }) => (EDITABLES as readonly string[]).includes(e.estado);
+  const unir = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => Boolean(x?.trim())))].join(" · ") || null;
+  const notasDe = (e: { clienteId: string; puntoEntregaId: string }) => {
+    const suyas = notas.filter((n) => n.clienteId === e.clienteId && n.puntoEntregaId === e.puntoEntregaId);
+    return { observaciones: unir(suyas.map((n) => n.observaciones)), referenciaCliente: unir(suyas.map((n) => n.referencia)) };
+  };
 
-  let entregasNuevas = 0;
-  let lineasNuevas = 0;
-  let sinLugar = 0;
+  const yaEsta = new Map(existentes.filter((x) => !x.esSustitucion && x.pedidoItemId).map((x) => [x.pedidoItemId!, x]));
+  const ultimaLinea = new Map<string, number>();
+  for (const x of existentes) ultimaLinea.set(x.entregaId, Math.max(ultimaLinea.get(x.entregaId) ?? 0, x.linea));
+  type EntregaAbierta = (typeof entregas)[number] & { nueva?: true };
+  const abiertas: EntregaAbierta[] = [...entregas];
+  const entregasNuevas: EntregaAbierta[] = [];
+  const lineasNuevas: (typeof entregaItem.$inferInsert)[] = [];
+  const cambios: PromiseLike<unknown>[] = [];
+  const vuelvenAPrepararse = new Set<string>();
   for (const v of vivos) {
-    const ya = existentes.find((x) => x.pedidoItemId === v.itemId && !x.esSustitucion);
+    const ya = yaEsta.get(v.itemId);
     if (ya) {
       // Lo pedido cambió y la línea todavía no se preparó: se actualiza.
-      if (ya.preparada === null && !dec(ya.pedida).eq(v.cantidadBase)) await tx.update(entregaItem).set({ cantidadPedida: v.cantidadBase }).where(eq(entregaItem.id, ya.id));
+      if (ya.preparada === null && !dec(ya.pedida).eq(v.cantidadBase)) cambios.push(tx.update(entregaItem).set({ cantidadPedida: v.cantidadBase }).where(eq(entregaItem.id, ya.id)));
       continue;
     }
-    let e = entregas.find((x) => x.clienteId === v.clienteId && x.puntoEntregaId === v.puntoEntregaId);
+    // Al preparar un solo pedido (desde su tarjeta del tablero), los demás no se tocan.
+    if (soloPedidos && !soloPedidos.has(v.pedidoId)) continue;
+    // Si al cliente ya le salió (o se le entregó) lo de ese día, lo que pide después va en otra entrega.
+    let e = abiertas.find((x) => x.clienteId === v.clienteId && x.puntoEntregaId === v.puntoEntregaId && esEditable(x));
     if (!e) {
-      const { numero } = await siguienteNumero(tx, "ENTREGA");
-      [e] = await tx
-        .insert(entrega)
-        .values({ empresaId: c.empresaId, numero, jornadaId, clienteId: v.clienteId, puntoEntregaId: v.puntoEntregaId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
-        .returning();
-      entregas.push(e!);
-      entregasNuevas++;
+      e = { id: randomUUID(), clienteId: v.clienteId, puntoEntregaId: v.puntoEntregaId, estado: "BORRADOR", observaciones: null, referenciaCliente: null, nueva: true };
+      abiertas.push(e);
+      entregasNuevas.push(e);
     }
-    // Un pedido tardío no entra en una entrega que ya salió (04 §5.b.5): va en otra entrega o al día siguiente.
-    if (!(EDITABLES as readonly string[]).includes(e!.estado)) {
-      sinLugar++;
-      continue;
-    }
-    const [ultima] = await tx.select({ n: max(entregaItem.linea) }).from(entregaItem).where(eq(entregaItem.entregaId, e!.id));
-    await tx.insert(entregaItem).values({
+    const linea = (ultimaLinea.get(e.id) ?? 0) + 1;
+    ultimaLinea.set(e.id, linea);
+    lineasNuevas.push({
       empresaId: c.empresaId,
-      entregaId: e!.id,
-      linea: (ultima?.n ?? 0) + 1,
+      entregaId: e.id,
+      linea,
       pedidoItemId: v.itemId,
       productoId: v.productoId,
       presentacionId: v.presentacionId,
@@ -98,32 +121,38 @@ async function sincronizarEntregas(tx: Transaccion, c: ContextoUsuario, jornadaI
       creadoPor: c.usuarioId,
       actualizadoPor: c.usuarioId,
     });
-    lineasNuevas++;
-    if (e!.estado === "PREPARADA") {
-      await tx.update(entrega).set({ estado: "EN_PREPARACION", actualizadoPor: c.usuarioId }).where(eq(entrega.id, e!.id));
-      e!.estado = "EN_PREPARACION";
+    // Una entrega que ya estaba preparada vuelve a quedar en preparación hasta separar lo nuevo.
+    if (e.estado === "PREPARADA") {
+      vuelvenAPrepararse.add(e.id);
+      e.estado = "EN_PREPARACION";
     }
   }
   // Líneas cuyo pedido se canceló o cuya línea se quitó: si no se prepararon, quedan en 0.
   const vivosIds = new Set(vivos.map((v) => v.itemId));
   for (const x of existentes) {
     if (!x.esSustitucion && x.pedidoItemId && !vivosIds.has(x.pedidoItemId) && x.preparada === null && !dec(x.pedida).isZero()) {
-      await tx.update(entregaItem).set({ cantidadPedida: "0" }).where(eq(entregaItem.id, x.id));
+      cambios.push(tx.update(entregaItem).set({ cantidadPedida: "0" }).where(eq(entregaItem.id, x.id)));
     }
   }
-  // Observaciones y orden de compra de los pedidos incluidos.
-  for (const e of entregas.filter((x) => (EDITABLES as readonly string[]).includes(x.estado))) {
-    const pedidos = await tx
-      .selectDistinct({ observaciones: pedido.observaciones, referencia: pedido.referenciaCliente })
-      .from(pedido)
-      .where(and(eq(pedido.jornadaId, jornadaId), eq(pedido.clienteId, e.clienteId), eq(pedido.puntoEntregaId, e.puntoEntregaId), inArray(pedido.estado, [...ESTADOS_PEDIDO_A_PREPARAR])));
-    const unir = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => Boolean(x?.trim())))].join(" · ") || null;
-    await tx
-      .update(entrega)
-      .set({ observaciones: unir(pedidos.map((p) => p.observaciones)), referenciaCliente: unir(pedidos.map((p) => p.referencia)) })
-      .where(eq(entrega.id, e.id));
+  // Observaciones y orden de compra de los pedidos incluidos (solo si cambiaron).
+  for (const e of abiertas.filter((x) => !x.nueva && esEditable(x))) {
+    const n = notasDe(e);
+    const vuelve = vuelvenAPrepararse.has(e.id);
+    if (vuelve || n.observaciones !== e.observaciones || n.referenciaCliente !== e.referenciaCliente) {
+      cambios.push(tx.update(entrega).set({ ...n, ...(vuelve ? { estado: "EN_PREPARACION" as const, actualizadoPor: c.usuarioId } : {}) }).where(eq(entrega.id, e.id)));
+    }
   }
-  return { entregasNuevas, lineasNuevas, sinLugar };
+  // Cada entrega nueva toma su número (salen juntos y en orden) y después se guarda todo de una vez:
+  // primero las entregas, después sus líneas.
+  const numeros = await Promise.all(entregasNuevas.map(() => siguienteNumero(tx, "ENTREGA")));
+  await Promise.all([
+    ...(entregasNuevas.length
+      ? [tx.insert(entrega).values(entregasNuevas.map((e, n) => ({ id: e.id, empresaId: c.empresaId, numero: numeros[n]!.numero, jornadaId, clienteId: e.clienteId, puntoEntregaId: e.puntoEntregaId, ...notasDe(e), creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })))]
+      : []),
+    ...(lineasNuevas.length ? [tx.insert(entregaItem).values(lineasNuevas)] : []),
+    ...cambios,
+  ]);
+  return { entregasNuevas: entregasNuevas.length, lineasNuevas: lineasNuevas.length };
 }
 
 /**
@@ -132,30 +161,34 @@ async function sincronizarEntregas(tx: Transaccion, c: ContextoUsuario, jornadaI
  * comparar y se propone lo pedido; lo mismo con los productos tildados a mano como comprados.
  */
 async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise<void> {
-  const empresa = await configuracionEmpresa(tx);
-  const { compras } = unico(await tx.select({ compras: count() }).from(compra).where(and(eq(compra.jornadaId, jornadaId), eq(compra.estado, "REGISTRADA"))));
-  const comprado = await compradoPorProducto(tx, jornadaId);
-  const tildados = await productosTildados(tx, jornadaId);
-  const lineas = await tx
-    .select({
-      id: entregaItem.id,
-      productoId: entregaItem.productoId,
-      pedida: entregaItem.cantidadPedida,
-      propuesta: entregaItem.cantidadPropuesta,
-      prioridad: cliente.prioridadFaltantes,
-      prioridadPedido: pedido.prioridad,
-      orden: entrega.numero,
-      admiteFraccion: producto.admiteFraccion,
-    })
-    .from(entregaItem)
-    .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
-    .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-    .innerJoin(producto, eq(producto.id, entregaItem.productoId))
-    .leftJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
-    .leftJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
-    .where(and(eq(entrega.jornadaId, jornadaId), eq(entregaItem.esSustitucion, false)));
+  const [empresa, filasCompras, comprado, tildados, lineas] = await Promise.all([
+    configuracionEmpresa(tx),
+    tx.select({ compras: count() }).from(compra).where(and(eq(compra.jornadaId, jornadaId), eq(compra.estado, "REGISTRADA"))),
+    compradoPorProducto(tx, jornadaId),
+    productosTildados(tx, jornadaId),
+    tx
+      .select({
+        id: entregaItem.id,
+        productoId: entregaItem.productoId,
+        pedida: entregaItem.cantidadPedida,
+        propuesta: entregaItem.cantidadPropuesta,
+        prioridad: cliente.prioridadFaltantes,
+        prioridadPedido: pedido.prioridad,
+        orden: entrega.numero,
+        admiteFraccion: producto.admiteFraccion,
+      })
+      .from(entregaItem)
+      .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
+      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+      .innerJoin(producto, eq(producto.id, entregaItem.productoId))
+      .leftJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
+      .leftJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
+      .where(and(eq(entrega.jornadaId, jornadaId), eq(entregaItem.esSustitucion, false))),
+  ]);
+  const { compras } = unico(filasCompras);
   const porProducto = new Map<string, typeof lineas>();
   for (const l of lineas) porProducto.set(l.productoId, [...(porProducto.get(l.productoId) ?? []), l]);
+  const cambios: PromiseLike<unknown>[] = [];
   for (const [productoId, grupo] of porProducto) {
     const propuesta =
       Number(compras) === 0 || tildados.has(productoId)
@@ -168,31 +201,42 @@ async function recalcularPropuestas(tx: Transaccion, jornadaId: string): Promise
           );
     for (const l of grupo) {
       const nueva = propuesta ? propuesta.get(l.id)!.toFixed(3) : null;
-      if (nueva !== l.propuesta) await tx.update(entregaItem).set({ cantidadPropuesta: nueva }).where(eq(entregaItem.id, l.id));
+      if (nueva !== l.propuesta) cambios.push(tx.update(entregaItem).set({ cantidadPropuesta: nueva }).where(eq(entregaItem.id, l.id)));
     }
   }
+  // Las que cambiaron se guardan juntas (una ida).
+  await Promise.all(cambios);
 }
 
 /**
  * "Iniciar preparación" (P-46, RN-038, RN-111): crea las entregas y propone las cantidades; la
- * jornada pasa a PREPARANDO. Volver a correrlo suma los pedidos que llegaron tarde.
+ * jornada pasa a PREPARANDO. Volver a correrlo suma los pedidos que llegaron tarde (si al cliente
+ * ya le salió lo suyo, en una entrega nueva). Con `pedidoIds` se preparan solo esos pedidos (al
+ * pasar una tarjeta a Preparando en el tablero).
  */
-export async function iniciarPreparacion(db: BaseDatos, authUserId: string, fecha: FechaISO): Promise<{ entregasNuevas: number; lineasNuevas: number; sinLugar: number; borradores: number }> {
+export async function iniciarPreparacion(
+  db: BaseDatos,
+  authUserId: string,
+  fecha: FechaISO,
+  opciones: { pedidoIds?: readonly string[] } = {},
+): Promise<{ entregasNuevas: number; lineasNuevas: number; borradores: number }> {
   return ejecutarComoUsuario(db, authUserId, "preparacion.registrar", async (tx, c) => {
-    const j = await jornadaDeFecha(tx, fecha);
+    if (!PATRON_FECHA.test(fecha)) throw new ErrorDeNegocio("VALIDACION", "Elegí el día de entrega.");
+    // El día queda bloqueado hasta terminar: dos personas no arman las entregas a la vez.
+    const [j] = await tx.select().from(jornada).where(eq(jornada.fecha, fecha)).for("update");
     if (!j) throw new ErrorDeNegocio("VALIDACION", "No hay pedidos para ese día.");
     exigirJornadaAbierta(j);
-    await tx.select({ id: jornada.id }).from(jornada).where(eq(jornada.id, j.id)).for("update");
-    const r = await sincronizarEntregas(tx, c, j.id);
+    const r = await sincronizarEntregas(tx, c, j.id, opciones.pedidoIds ? new Set(opciones.pedidoIds) : null);
     await recalcularPropuestas(tx, j.id);
-    if (j.estado === "ABIERTA" || j.estado === "COMPRANDO") {
-      await tx.update(jornada).set({ estado: "PREPARANDO", preparacionIniciadaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
-    }
-    const { borradores } = unico(await tx.select({ borradores: count() }).from(pedido).where(and(eq(pedido.jornadaId, j.id), eq(pedido.estado, "BORRADOR"))));
-    if (j.estado === "ABIERTA" || j.estado === "COMPRANDO" || r.entregasNuevas > 0) {
-      await registrarActividad(tx, c, { accion: "PREPARAR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `empezó a preparar los pedidos del ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}` });
-    }
-    return { ...r, borradores: Number(borradores) };
+    const empieza = j.estado === "ABIERTA" || j.estado === "COMPRANDO";
+    const [filasBorradores] = await Promise.all([
+      tx.select({ borradores: count() }).from(pedido).where(and(eq(pedido.jornadaId, j.id), eq(pedido.estado, "BORRADOR"))),
+      empieza ? tx.update(jornada).set({ estado: "PREPARANDO", preparacionIniciadaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id)) : null,
+      empieza || r.entregasNuevas > 0
+        ? registrarActividad(tx, c, { accion: "PREPARAR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `empezó a preparar los pedidos del ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}` })
+        : null,
+    ]);
+    return { ...r, borradores: Number(unico(filasBorradores).borradores) };
   });
 }
 
@@ -214,7 +258,7 @@ export interface EntregaEnPreparacion {
   /** El remito (lista de entrega) de la versión vigente ya está hecho. */
   remito: boolean;
   /** Lo que hay que separar para el cliente, con lo ya separado tildado y lo que faltó y por qué. */
-  detalle: { producto: string; cantidad: string; hecha: boolean; aviso: string | null; reemplazo: boolean }[];
+  detalle: { id: string; producto: string; grupo: string | null; cantidad: string; hecha: boolean; aviso: string | null; reemplazo: boolean }[];
 }
 
 export interface ProductoEnPreparacion {
@@ -242,52 +286,71 @@ export async function obtenerPreparacion(
   return ejecutarComoUsuario(db, authUserId, "preparacion.ver", async (tx) => {
     const j = await jornadaDeFecha(tx, fecha);
     if (!j) return { jornada: null, hayCompras: false, entregas: [], productos: [], pedidosSinEntrega: 0 };
-    const empresa = await configuracionEmpresa(tx);
-    const filas = await tx
-      .select({
-        id: entrega.id,
-        numero: entrega.numero,
-        cliente: cliente.nombre,
-        punto: puntoEntrega.nombre,
-        desde: puntoEntrega.horarioDesde,
-        hasta: puntoEntrega.horarioHasta,
-        reparto: reparto.numero,
-        orden: entrega.ordenEnReparto,
-        estado: entrega.estado,
-        version: entrega.version,
-        bultos: entrega.cantidadBultos,
-      })
-      .from(entrega)
-      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-      .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
-      .leftJoin(reparto, eq(reparto.id, entrega.repartoId))
-      .where(and(eq(entrega.jornadaId, j.id), ne(entrega.estado, "ANULADA")))
-      .orderBy(sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`, sql`${puntoEntrega.horarioDesde} nulls last`, asc(cliente.nombre));
-    const items = filas.length
-      ? await tx
-          .select({
-            entregaId: entregaItem.entregaId,
-            productoId: entregaItem.productoId,
-            producto: entregaItem.productoNombre,
-            unidad: entregaItem.unidadBase,
-            esSustitucion: entregaItem.esSustitucion,
-            pedida: entregaItem.cantidadPedida,
-            propuesta: entregaItem.cantidadPropuesta,
-            preparada: entregaItem.cantidadPreparada,
-            motivo: entregaItem.motivoFaltante,
-            categoria: producto.categoriaId,
-          })
-          .from(entregaItem)
-          .innerJoin(producto, eq(producto.id, entregaItem.productoId))
-          .where(
-            inArray(
-              entregaItem.entregaId,
-              filas.map((f) => f.id),
-            ),
-          )
-          .orderBy(asc(entregaItem.linea))
-      : [];
-    const alDia = await documentosAlDiaDe(tx, filas);
+    const delDia = and(eq(entrega.jornadaId, j.id), ne(entrega.estado, "ANULADA"));
+    // Todo lo del día sale junto (una ida a la base).
+    const [empresa, filas, items, emitidos, comprado, filasCompras, filasSinEntrega] = await Promise.all([
+      configuracionEmpresa(tx),
+      tx
+        .select({
+          id: entrega.id,
+          numero: entrega.numero,
+          cliente: cliente.nombre,
+          punto: puntoEntrega.nombre,
+          desde: puntoEntrega.horarioDesde,
+          hasta: puntoEntrega.horarioHasta,
+          reparto: reparto.numero,
+          orden: entrega.ordenEnReparto,
+          estado: entrega.estado,
+          version: entrega.version,
+          bultos: entrega.cantidadBultos,
+        })
+        .from(entrega)
+        .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+        .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
+        .leftJoin(reparto, eq(reparto.id, entrega.repartoId))
+        .where(delDia)
+        .orderBy(sql`${reparto.numero} nulls last`, sql`${entrega.ordenEnReparto} nulls last`, sql`${puntoEntrega.horarioDesde} nulls last`, asc(cliente.nombre)),
+      tx
+        .select({
+          id: entregaItem.id,
+          entregaId: entregaItem.entregaId,
+          productoId: entregaItem.productoId,
+          producto: entregaItem.productoNombre,
+          unidad: entregaItem.unidadBase,
+          esSustitucion: entregaItem.esSustitucion,
+          pedida: entregaItem.cantidadPedida,
+          propuesta: entregaItem.cantidadPropuesta,
+          preparada: entregaItem.cantidadPreparada,
+          motivo: entregaItem.motivoFaltante,
+          grupo: categoria.grupo,
+        })
+        .from(entregaItem)
+        .innerJoin(entrega, eq(entrega.id, entregaItem.entregaId))
+        .innerJoin(producto, eq(producto.id, entregaItem.productoId))
+        .leftJoin(categoria, eq(categoria.id, producto.categoriaId))
+        .where(delDia)
+        .orderBy(asc(entregaItem.linea)),
+      // Los remitos ya hechos de las entregas del día (para saber cuáles están al día).
+      tx
+        .select({ entregaId: documentoEmitido.entregaId, version: documentoEmitido.version })
+        .from(documentoEmitido)
+        .innerJoin(entrega, eq(entrega.id, documentoEmitido.entregaId))
+        .where(and(delDia, eq(documentoEmitido.tipo, "DOC_02"), eq(documentoEmitido.evento, "EMISION"))),
+      compradoPorProducto(tx, j.id),
+      tx.select({ compras: count() }).from(compra).where(and(eq(compra.jornadaId, j.id), eq(compra.estado, "REGISTRADA"))),
+      tx
+        .select({ sinEntrega: count() })
+        .from(pedido)
+        .where(
+          and(
+            eq(pedido.jornadaId, j.id),
+            inArray(pedido.estado, ["CONFIRMADO", "EN_COMPRA"]),
+            sql`not exists (select 1 from ${pedidoItem} pi join ${entregaItem} ei on ei.pedido_item_id = pi.id join ${entrega} e on e.id = ei.entrega_id and e.estado <> 'ANULADA' where pi.pedido_id = pedido.id)`,
+          ),
+        ),
+    ]);
+    const hechos = new Set(emitidos.map((d) => `${d.entregaId}:${d.version}`));
+    const alDia = new Set(filas.filter((f) => f.version > 0 && hechos.has(`${f.id}:${f.version}`)).map((f) => f.id));
     const entregas: EntregaEnPreparacion[] = [];
     for (const f of filas) {
       const propias = items.filter((i) => i.entregaId === f.id);
@@ -308,7 +371,9 @@ export async function obtenerPreparacion(
         documentosPendientes: f.estado === "PREPARADA" && !alDia.has(f.id),
         remito: alDia.has(f.id),
         detalle: propias.map((i) => ({
+          id: i.id,
           producto: i.producto,
+          grupo: i.grupo,
           cantidad: formatearCantidad(i.esSustitucion ? (i.preparada ?? i.pedida) : i.pedida, i.unidad as UnidadMedida),
           hecha: i.preparada !== null,
           aviso: i.esSustitucion ? null : avisoDeFaltante({ ...i, unidad: i.unidad as UnidadMedida }),
@@ -316,8 +381,7 @@ export async function obtenerPreparacion(
         })),
       });
     }
-    const comprado = await compradoPorProducto(tx, j.id);
-    const { compras } = unico(await tx.select({ compras: count() }).from(compra).where(and(eq(compra.jornadaId, j.id), eq(compra.estado, "REGISTRADA"))));
+    const { compras } = unico(filasCompras);
     const porProducto = new Map<string, typeof items>();
     for (const i of items) porProducto.set(i.productoId, [...(porProducto.get(i.productoId) ?? []), i]);
     const productos = [...porProducto.entries()]
@@ -339,17 +403,7 @@ export async function obtenerPreparacion(
         };
       })
       .sort((a, b) => a.producto.localeCompare(b.producto, "es"));
-    const { sinEntrega } = unico(await tx
-      .select({ sinEntrega: count() })
-      .from(pedido)
-      .where(
-        and(
-          eq(pedido.jornadaId, j.id),
-          inArray(pedido.estado, ["CONFIRMADO", "EN_COMPRA"]),
-          sql`not exists (select 1 from ${pedidoItem} pi join ${entregaItem} ei on ei.pedido_item_id = pi.id join ${entrega} e on e.id = ei.entrega_id and e.estado <> 'ANULADA' where pi.pedido_id = pedido.id)`,
-        ),
-      ));
-    return { jornada: { id: j.id, estado: j.estado }, hayCompras: Number(compras) > 0, entregas, productos, pedidosSinEntrega: Number(sinEntrega) };
+    return { jornada: { id: j.id, estado: j.estado }, hayCompras: Number(compras) > 0, entregas, productos, pedidosSinEntrega: Number(unico(filasSinEntrega).sinEntrega) };
   });
 }
 
@@ -445,21 +499,28 @@ const esquemaPreparado = z.object({
   confirmar: z.boolean().default(false),
 });
 
+/** La línea con su entrega (bloqueada hasta el final) y su día, en una sola consulta. */
 async function itemEditable(tx: Transaccion, itemId: string) {
-  const [i] = await tx.select().from(entregaItem).where(eq(entregaItem.id, itemId));
-  if (!i) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la línea.");
-  const e = await entregaBloqueada(tx, i.entregaId);
-  if (!(EDITABLES as readonly string[]).includes(e.estado)) throw new ErrorDeNegocio("VALIDACION", "La entrega ya salió o se entregó: se corrige desde el detalle de la entrega.");
-  const [j] = await tx.select().from(jornada).where(eq(jornada.id, e.jornadaId));
-  exigirJornadaAbierta(j);
-  return { i, e, j: j! };
+  const [f] = await tx
+    .select({ i: entregaItem, e: entrega, j: jornada })
+    .from(entregaItem)
+    .innerJoin(entrega, eq(entrega.id, entregaItem.entregaId))
+    .innerJoin(jornada, eq(jornada.id, entrega.jornadaId))
+    .where(eq(entregaItem.id, itemId))
+    .for("update", { of: entrega });
+  if (!f) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la línea.");
+  if (!(EDITABLES as readonly string[]).includes(f.e.estado)) throw new ErrorDeNegocio("VALIDACION", "La entrega ya salió o se entregó: se corrige desde el detalle de la entrega.");
+  exigirJornadaAbierta(f.j);
+  return f;
 }
 
 /** Al empezar a cargar, la entrega y sus pedidos pasan a EN_PREPARACION. */
 async function abrirSiHaceFalta(tx: Transaccion, c: ContextoUsuario, e: { id: string; estado: string }) {
   if (e.estado !== "BORRADOR") return;
-  await tx.update(entrega).set({ estado: "EN_PREPARACION", actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id));
-  await moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA"], "EN_PREPARACION");
+  await Promise.all([
+    tx.update(entrega).set({ estado: "EN_PREPARACION", actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id)),
+    moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA"], "EN_PREPARACION"),
+  ]);
 }
 
 /**
@@ -470,19 +531,24 @@ export async function registrarPreparado(db: BaseDatos, authUserId: string, dato
   const d = validar(esquemaPreparado, datos);
   return ejecutarComoUsuario(db, authUserId, "preparacion.registrar", async (tx, c) => {
     const { i, e, j } = await itemEditable(tx, d.itemId);
-    const empresa = await configuracionEmpresa(tx);
+    const [empresa, comprados, tildados, filasTotal] = await Promise.all([
+      configuracionEmpresa(tx),
+      compradoPorProducto(tx, j.id),
+      productosTildados(tx, j.id),
+      tx
+        .select({ total: sql<string>`coalesce(sum(${entregaItem.cantidadPreparada}), 0)` })
+        .from(entregaItem)
+        .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
+        .where(and(eq(entrega.jornadaId, j.id), eq(entregaItem.productoId, i.productoId), ne(entregaItem.id, i.id))),
+    ]);
     const ev = evaluarPreparado(i.cantidadPedida, d.cantidad, empresa.toleranciaPesoPct);
     if (ev.menor && !d.motivo) throw new ErrorDeNegocio("VALIDACION", `Falta mercadería de ${i.productoNombre}: elegí el motivo (no se consiguió, faltante…).`);
     if (!ev.dentro && !ev.menor && !d.confirmar) {
       throw new ErrorDeNegocio("VALIDACION", `${i.productoNombre}: se preparó ${formatearPorcentaje(ev.diferenciaPct!, 1)} más de lo pedido. Si está bien, tocá "Confirmar".`, { requiereConfirmacion: true });
     }
-    const comprado = dec((await compradoPorProducto(tx, j.id)).get(i.productoId) ?? "0");
-    if (comprado.gt(0) && !d.confirmar && !(await productosTildados(tx, j.id)).has(i.productoId)) {
-      const { total } = unico(await tx
-        .select({ total: sql<string>`coalesce(sum(${entregaItem.cantidadPreparada}), 0)` })
-        .from(entregaItem)
-        .innerJoin(entrega, and(eq(entrega.id, entregaItem.entregaId), ne(entrega.estado, "ANULADA")))
-        .where(and(eq(entrega.jornadaId, j.id), eq(entregaItem.productoId, i.productoId), ne(entregaItem.id, i.id))));
+    const comprado = dec(comprados.get(i.productoId) ?? "0");
+    if (comprado.gt(0) && !d.confirmar && !tildados.has(i.productoId)) {
+      const { total } = unico(filasTotal);
       if (dec(total).plus(d.cantidad).gt(comprado)) {
         throw new ErrorDeNegocio(
           "VALIDACION",
@@ -491,12 +557,44 @@ export async function registrarPreparado(db: BaseDatos, authUserId: string, dato
         );
       }
     }
-    await tx
-      .update(entregaItem)
-      .set({ cantidadPreparada: d.cantidad, motivoFaltante: ev.dentro || !ev.menor ? null : d.motivo, actualizadoPor: c.usuarioId })
-      .where(eq(entregaItem.id, i.id));
-    await abrirSiHaceFalta(tx, c, e);
+    await Promise.all([
+      tx
+        .update(entregaItem)
+        .set({ cantidadPreparada: d.cantidad, motivoFaltante: ev.dentro || !ev.menor ? null : d.motivo, actualizadoPor: c.usuarioId })
+        .where(eq(entregaItem.id, i.id)),
+      abrirSiHaceFalta(tx, c, e),
+    ]);
     return { reemision: e.estado === "PREPARADA" ? await reemitirSiCorresponde(tx, c, e.id) : null };
+  });
+}
+
+/**
+ * El tilde de un producto (en la tarjeta del tablero, en la tarjeta abierta o en la pantalla de
+ * preparación): queda separado con la cantidad propuesta (lo pedido si alcanzó), o vuelve a quedar
+ * sin separar. Para anotar que falta algo y por qué está el detalle de la preparación.
+ */
+export async function separarLinea(db: BaseDatos, authUserId: string, datos: { itemId: string; separado: boolean }): Promise<void> {
+  await ejecutarComoUsuario(db, authUserId, "preparacion.registrar", async (tx, c) => {
+    const { i, e } = await itemEditable(tx, datos.itemId);
+    const cantidad = i.cantidadPropuesta ?? i.cantidadPedida;
+    // La línea y el estado de la entrega se guardan juntos (una ida a la base).
+    await Promise.all([
+      tx
+        .update(entregaItem)
+        .set(
+          datos.separado
+            ? { cantidadPreparada: cantidad, motivoFaltante: dec(cantidad).lt(i.cantidadPedida) ? "FALTANTE" : null, actualizadoPor: c.usuarioId }
+            : { cantidadPreparada: null, motivoFaltante: null, actualizadoPor: c.usuarioId },
+        )
+        .where(eq(entregaItem.id, i.id)),
+      datos.separado
+        ? abrirSiHaceFalta(tx, c, e)
+        : e.estado === "PREPARADA"
+          ? // Ya estaba marcada como preparada: vuelve a quedar en preparación hasta completarla.
+            tx.update(entrega).set({ estado: "EN_PREPARACION", actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id))
+          : null,
+    ]);
+    if (datos.separado && e.estado === "PREPARADA") await reemitirSiCorresponde(tx, c, e.id);
   });
 }
 
@@ -509,20 +607,20 @@ export async function prepararTodoComoPropuesto(db: BaseDatos, authUserId: strin
       .select()
       .from(entregaItem)
       .where(and(eq(entregaItem.entregaId, entregaId), sql`${entregaItem.cantidadPreparada} is null`));
-    let cargadas = 0;
-    for (const l of pendientes) {
-      const cantidad = l.cantidadPropuesta ?? l.cantidadPedida;
-      // Si la propuesta es menor (faltante repartido), queda con motivo FALTANTE hasta que se corrija.
-      const menor = dec(cantidad).lt(l.cantidadPedida);
-      await tx
-        .update(entregaItem)
-        .set({ cantidadPreparada: cantidad, motivoFaltante: menor ? "FALTANTE" : null, actualizadoPor: c.usuarioId })
-        .where(eq(entregaItem.id, l.id));
-      cargadas++;
-    }
-    await abrirSiHaceFalta(tx, c, e);
+    await Promise.all([
+      ...pendientes.map((l) => {
+        const cantidad = l.cantidadPropuesta ?? l.cantidadPedida;
+        // Si la propuesta es menor (faltante repartido), queda con motivo FALTANTE hasta que se corrija.
+        const menor = dec(cantidad).lt(l.cantidadPedida);
+        return tx
+          .update(entregaItem)
+          .set({ cantidadPreparada: cantidad, motivoFaltante: menor ? "FALTANTE" : null, actualizadoPor: c.usuarioId })
+          .where(eq(entregaItem.id, l.id));
+      }),
+      abrirSiHaceFalta(tx, c, e),
+    ]);
     if (e.estado === "PREPARADA") await reemitirSiCorresponde(tx, c, e.id);
-    return cargadas;
+    return pendientes.length;
   });
 }
 
@@ -579,17 +677,23 @@ export async function marcarPreparada(db: BaseDatos, authUserId: string, datos: 
   return ejecutarComoUsuario(db, authUserId, "preparacion.registrar", async (tx, c) => {
     const e = await entregaBloqueada(tx, datos.entregaId);
     if (!(EDITABLES as readonly string[]).includes(e.estado)) throw new ErrorDeNegocio("VALIDACION", "La entrega ya salió.");
-    const { faltan } = unico(await tx
-      .select({ faltan: count() })
-      .from(entregaItem)
-      .where(and(eq(entregaItem.entregaId, e.id), sql`${entregaItem.cantidadPreparada} is null`)));
+    const [filasFaltan, [cli], empresa] = await Promise.all([
+      tx
+        .select({ faltan: count() })
+        .from(entregaItem)
+        .where(and(eq(entregaItem.entregaId, e.id), sql`${entregaItem.cantidadPreparada} is null`)),
+      tx.select({ nombre: cliente.nombre }).from(cliente).where(eq(cliente.id, e.clienteId)),
+      configuracionEmpresa(tx),
+    ]);
+    const { faltan } = unico(filasFaltan);
     if (Number(faltan) > 0) throw new ErrorDeNegocio("VALIDACION", `Faltan cargar ${faltan} ${Number(faltan) === 1 ? "línea" : "líneas"} (0 si no hay).`);
-    await tx.update(entrega).set({ estado: "PREPARADA", cantidadBultos: bultos ?? e.cantidadBultos, actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id));
-    await moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO");
-    if (e.estado === "PREPARADA") return { documentos: await reemitirSiCorresponde(tx, c, e.id) };
-    const [cli] = await tx.select({ nombre: cliente.nombre }).from(cliente).where(eq(cliente.id, e.clienteId));
-    await registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${cli?.nombre ?? "un cliente"}` });
-    const empresa = await configuracionEmpresa(tx);
+    const yaEstaba = e.estado === "PREPARADA";
+    await Promise.all([
+      tx.update(entrega).set({ estado: "PREPARADA", cantidadBultos: bultos ?? e.cantidadBultos, actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id)),
+      moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO"),
+      yaEstaba ? null : registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${cli?.nombre ?? "un cliente"}` }),
+    ]);
+    if (yaEstaba) return { documentos: await reemitirSiCorresponde(tx, c, e.id) };
     if (!empresa.emitirDocumentosAlPreparar) return { documentos: null };
     if (e.version > 0) return { documentos: await reemitirSiCorresponde(tx, c, e.id) };
     return { documentos: await emitirDocumentosEntrega(tx, c, e.id) };

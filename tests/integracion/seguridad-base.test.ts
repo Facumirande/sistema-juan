@@ -35,10 +35,10 @@ describe("estructura de seguridad", () => {
         order by 1`),
     );
     expect(tablas.rows.map((t) => t.tabla)).toEqual([
-      "actividad", "auditoria", "categoria", "cliente", "compra", "compra_item", "documento_emitido", "empresa", "entrega",
+      "actividad", "auditoria", "categoria", "cliente", "cobro_cliente", "compra", "compra_item", "destino_favorito", "documento_emitido", "empresa", "entrega",
       "entrega_item", "factura", "factura_entrega", "historial_precio_compra", "imputacion_pago_proveedor", "jornada", "lista_compra",
-      "lista_compra_item", "movimiento_cuenta_proveedor", "nota", "nota_lectura", "pago_proveedor", "pedido", "pedido_item", "presentacion",
-      "producto", "proveedor", "proveedor_producto", "punto_entrega", "regla_precio", "reparto", "rol", "secuencia",
+      "lista_compra_item", "movimiento_cuenta_proveedor", "movimiento_extra", "nota", "nota_lectura", "pago_proveedor", "parada_extra", "pedido", "pedido_item", "presentacion",
+      "producto", "proveedor", "proveedor_producto", "punto_entrega", "regla_precio", "reparto", "rol", "rubro_gasto", "secuencia",
       "usuario", "usuario_rol",
     ]);
     for (const t of tablas.rows) expect(t, t.tabla).toMatchObject({ rls: true, forzada: true, politica: true });

@@ -1,8 +1,10 @@
 "use server";
 
+import { redirect } from "next/navigation";
+
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
-import { cambiarLineaLista, generarListaCompra, marcarNoConseguido, tildarLinea } from "@/modulos/compras/lista-compra";
+import { cambiarLineaLista, generarListaCompra, marcarNoConseguido, ordenarLista, tildarLinea } from "@/modulos/compras/lista-compra";
 import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
@@ -68,5 +70,39 @@ export async function tildarLineaAccion(_estado: EstadoAccion, datos: FormData):
     const tildado = campo(datos, "tildado") === "true";
     const r = await tildarLinea(db, authUserId, { itemId: campo(datos, "itemId"), tildado });
     return { ok: true, mensaje: tildado ? `Tildado: ${r.producto}.` : `${r.producto} vuelve a estar por comprar.` };
+  });
+}
+
+/** Solo se vuelve a pantallas de la lista de compras (el destino viene del formulario). */
+const destinoSeguro = (texto: string, fecha: string) => (texto.startsWith("/lista-compra") && !texto.includes("//") ? texto : `/lista-compra?fecha=${fecha}`);
+
+/**
+ * La compra guiada, producto por producto: anota la compra y pasa al producto que sigue
+ * ("Guardar y seguir") o vuelve a la lista ("Guardar"). Si algo no se puede, queda en la pantalla
+ * con el motivo.
+ */
+export async function comprarYSeguirAccion(estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  const r = await comprarDeLaListaAccion(estado, datos);
+  if (!r.ok) return r;
+  const fecha = campo(datos, "fecha");
+  redirect(destinoSeguro(campo(datos, campo(datos, "despues") === "seguir" ? "siguiente" : "volver"), fecha));
+}
+
+/** En la compra guiada: tildar sin precio o marcar que no se consiguió, y seguir con el próximo. */
+export async function resolverYSeguirAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  const r = await ejecutarAccion(async ({ db, authUserId }) => {
+    if (campo(datos, "que") === "no") await marcarNoConseguido(db, authUserId, { itemId: campo(datos, "itemId"), motivo: null });
+    else await tildarLinea(db, authUserId, { itemId: campo(datos, "itemId"), tildado: true });
+    return { ok: true, mensaje: null };
+  });
+  if (!r.ok) return r;
+  redirect(destinoSeguro(campo(datos, "siguiente"), campo(datos, "fecha")));
+}
+
+/** El orden puesto a mano en la lista (arrastrando). */
+export async function ordenarListaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await ordenarLista(db, authUserId, { fecha: campo(datos, "fecha"), itemIds: datos.getAll("item").filter((v): v is string => typeof v === "string") });
+    return { ok: true, mensaje: null };
   });
 }

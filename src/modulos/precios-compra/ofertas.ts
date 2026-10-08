@@ -257,11 +257,13 @@ async function aplicarPrecio(tx: Transaccion, c: ContextoUsuario, oferta: FilaOf
     );
   }
 
-  await tx
-    .update(historialPrecioCompra)
-    .set({ vigenteHasta: sql`now()`, actualizadoPor: c.usuarioId })
-    .where(and(eq(historialPrecioCompra.proveedorProductoId, oferta.id), isNull(historialPrecioCompra.vigenteHasta)));
-  await tx.insert(historialPrecioCompra).values({
+  // Todo se guarda junto (una ida a la base): primero se cierra el precio anterior del historial.
+  await Promise.all([
+    tx
+      .update(historialPrecioCompra)
+      .set({ vigenteHasta: sql`now()`, actualizadoPor: c.usuarioId })
+      .where(and(eq(historialPrecioCompra.proveedorProductoId, oferta.id), isNull(historialPrecioCompra.vigenteHasta))),
+    tx.insert(historialPrecioCompra).values({
     empresaId: c.empresaId,
     proveedorProductoId: oferta.id,
     proveedorId: oferta.proveedorId,
@@ -276,8 +278,8 @@ async function aplicarPrecio(tx: Transaccion, c: ContextoUsuario, oferta: FilaOf
     compraItemId: opciones.compraItemId ?? null,
     creadoPor: c.usuarioId,
     actualizadoPor: c.usuarioId,
-  });
-  await tx
+  }),
+  tx
     .update(proveedorProducto)
     .set({
       precioAnterior: oferta.precioVigente,
@@ -288,8 +290,8 @@ async function aplicarPrecio(tx: Transaccion, c: ContextoUsuario, oferta: FilaOf
       disponible: true,
       actualizadoPor: c.usuarioId,
     })
-    .where(eq(proveedorProducto.id, oferta.id));
-  await auditar(tx, {
+    .where(eq(proveedorProducto.id, oferta.id)),
+  auditar(tx, {
     empresaId: c.empresaId,
     usuarioId: c.usuarioId,
     accion: "CAMBIO_PRECIO_COMPRA",
@@ -298,9 +300,10 @@ async function aplicarPrecio(tx: Transaccion, c: ContextoUsuario, oferta: FilaOf
     resumen: `${oferta.producto} en ${oferta.proveedor}: ${formatearMoneda(oferta.precioVigente)} → ${formatearMoneda(cambio.precio)}.`,
     datosAntes: { precio: oferta.precioVigente, costoBase: oferta.costoBase },
     datosDespues: { precio: aNumeric(cambio.precio, 4), costoBase: aNumeric(cambio.costoBase, 4), origen: opciones.origen },
-  });
+  }),
   // Si el precio cambió por una compra, el aviso es el de la compra.
-  if (opciones.origen !== "COMPRA") await registrarActividad(tx, c, { accion: "PRECIO", entidadTipo: "PRODUCTO", entidadId: oferta.productoId, resumen: `cambió el precio de compra de ${oferta.producto} en ${oferta.proveedor}` });
+  opciones.origen !== "COMPRA" ? registrarActividad(tx, c, { accion: "PRECIO", entidadTipo: "PRODUCTO", entidadId: oferta.productoId, resumen: `cambió el precio de compra de ${oferta.producto} en ${oferta.proveedor}` }) : null,
+  ]);
   return { cambio: true as const, variacionPct: cambio.variacionPct?.toFixed(2) ?? null };
 }
 
@@ -631,20 +634,19 @@ export async function actualizarOfertaPorCompra(
   c: ContextoUsuario,
   d: { proveedorId: string; productoId: string; presentacionId: string; precio: string; compraItemId: string; referencia: string },
 ): Promise<{ ofertaId: string; actualizo: boolean }> {
-  const [existente] = await tx
-    .select({ id: proveedorProducto.id, activo: proveedorProducto.activo })
+  // La oferta de ese puesto para ese producto y envase, bloqueada, en una sola consulta.
+  const [f] = await tx
+    .select({ oferta: proveedorProducto, producto: producto.nombre, proveedor: proveedor.nombre, factorABase: presentacion.factorABase })
     .from(proveedorProducto)
-    .where(
-      and(
-        eq(proveedorProducto.proveedorId, d.proveedorId),
-        eq(proveedorProducto.productoId, d.productoId),
-        eq(proveedorProducto.presentacionId, d.presentacionId),
-      ),
-    );
+    .innerJoin(producto, eq(producto.id, proveedorProducto.productoId))
+    .innerJoin(proveedor, eq(proveedor.id, proveedorProducto.proveedorId))
+    .innerJoin(presentacion, eq(presentacion.id, proveedorProducto.presentacionId))
+    .where(and(eq(proveedorProducto.proveedorId, d.proveedorId), eq(proveedorProducto.productoId, d.productoId), eq(proveedorProducto.presentacionId, d.presentacionId)))
+    .for("update", { of: proveedorProducto });
+  const existente = f ? { ...f.oferta, producto: f.producto, proveedor: f.proveedor, factorABase: f.factorABase } : null;
   if (existente) {
     if (!existente.activo) await tx.update(proveedorProducto).set({ activo: true, actualizadoPor: c.usuarioId }).where(eq(proveedorProducto.id, existente.id));
-    const oferta = await ofertaParaCambiar(tx, existente.id);
-    const r = await aplicarPrecio(tx, c, oferta, d.precio, {
+    const r = await aplicarPrecio(tx, c, existente, d.precio, {
       origen: "COMPRA",
       confirmarVariacion: true,
       umbralVariacionPct: "0",

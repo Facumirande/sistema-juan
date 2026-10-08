@@ -127,7 +127,7 @@ describe("el tablero", () => {
     expect(await tomateDe("Hospital San Martín")).toBe("6.000");
     // Al preparar, cada cliente ve qué separar y lo que no alcanzó, en el tablero y en preparación.
     const hospital = entregas.find((e) => e.cliente === "Hospital San Martín")!;
-    expect(hospital.detalle[0]).toEqual({ producto: "Tomate redondo", cantidad: "30 kg", hecha: false, aviso: "Alcanza para 6 kg de 30 kg", reemplazo: false });
+    expect(hospital.detalle[0]).toMatchObject({ producto: "Tomate redondo", cantidad: "30 kg", hecha: false, aviso: "Alcanza para 6 kg de 30 kg", reemplazo: false });
     const tarjeta = (await tableroDePedidos(j.base.db, j.admin, dia)).columnas.flatMap((c) => c.tarjetas).find((x) => x.cliente === "Hospital San Martín")!;
     expect(tarjeta.productos[0]).toMatchObject({ nombre: "Tomate redondo", hecha: false, aviso: "Alcanza para 6 kg de 30 kg" });
     const tomate = (await obtenerEntregaParaPreparar(j.base.db, j.admin, hospital.id)).lineas.find((l) => l.producto === "Tomate redondo")!;

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { and, asc, count, desc, eq, gte, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
@@ -14,19 +16,19 @@ import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { textoOpcional, validar } from "@/modulos/validacion";
 
-import { configuracionEmpresa, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, numeroEntrega, numeroReparto, unico } from "./comun";
-import { documentosAlDia, documentosAlDiaDe, emitirDocumentosEntrega, type ResultadoEmision } from "./documentos";
+import { configuracionEmpresa, exigirJornadaAbierta, jornadaDeFecha, moverPedidosDeEntrega, moverPedidosDeEntregas, numeroEntrega, numeroReparto, unico } from "./comun";
+import { documentosAlDia, documentosAlDiaDe, emitirDocumentosEntrega, entregasConRemito, type ResultadoEmision } from "./documentos";
 
 // Repartos y hoja de ruta (04 §5.f.1): RN-122, RN-123, RN-131. Sin precios.
 
 export type EstadoReparto = "PLANIFICADO" | "EN_CURSO" | "FINALIZADO" | "ANULADO";
 
 async function repartoBloqueado(tx: Transaccion, repartoId: string) {
-  const [r] = await tx.select().from(reparto).where(eq(reparto.id, repartoId)).for("update");
-  if (!r) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el reparto.");
-  const [j] = await tx.select().from(jornada).where(eq(jornada.id, r.jornadaId));
-  exigirJornadaAbierta(j);
-  return { r, j: j! };
+  // El reparto (bloqueado hasta el final) y su día, en una sola consulta.
+  const [f] = await tx.select({ r: reparto, j: jornada }).from(reparto).innerJoin(jornada, eq(jornada.id, reparto.jornadaId)).where(eq(reparto.id, repartoId)).for("update", { of: reparto });
+  if (!f) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el reparto.");
+  exigirJornadaAbierta(f.j);
+  return f;
 }
 
 /** Quien puede manejar un reparto: con `repartos.gestionar`, o el repartidor asignado (RN-131). */
@@ -117,7 +119,7 @@ async function renumerar(tx: Transaccion, ids: string[]) {
 
 async function paradasEnOrden(tx: Transaccion, repartoId: string) {
   return tx
-    .select({ id: entrega.id, orden: entrega.ordenEnReparto, estado: entrega.estado, horarioDesde: puntoEntrega.horarioDesde, localidad: puntoEntrega.localidad })
+    .select({ id: entrega.id, orden: entrega.ordenEnReparto, lugar: entrega.ordenEnRecorrido, estado: entrega.estado, horarioDesde: puntoEntrega.horarioDesde, localidad: puntoEntrega.localidad })
     .from(entrega)
     .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
     .where(and(eq(entrega.repartoId, repartoId), ne(entrega.estado, "ANULADA")))
@@ -140,21 +142,6 @@ export async function quitarDelReparto(db: BaseDatos, authUserId: string, datos:
       tx,
       (await paradasEnOrden(tx, r.id)).map((p) => p.id),
     );
-  });
-}
-
-/** Sube o baja una parada. */
-export async function moverParada(db: BaseDatos, authUserId: string, datos: { repartoId: string; entregaId: string; hacia: "arriba" | "abajo" }): Promise<void> {
-  await ejecutarComoUsuario(db, authUserId, "repartos.gestionar", async (tx) => {
-    const { r } = await repartoBloqueado(tx, datos.repartoId);
-    const ids = (await paradasEnOrden(tx, r.id)).map((p) => p.id);
-    const i = ids.indexOf(datos.entregaId);
-    const j = datos.hacia === "arriba" ? i - 1 : i + 1;
-    if (i < 0 || j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
-    await renumerar(
-      tx,
-      ids);
   });
 }
 
@@ -219,42 +206,46 @@ type ContextoDeSalida = { tx: Transaccion; c: ContextoUsuario };
  */
 async function salirEnTransaccion({ tx, c }: ContextoDeSalida, r: typeof reparto.$inferSelect, j: typeof jornada.$inferSelect): Promise<string[]> {
   if (r.estado !== "PLANIFICADO") throw new ErrorDeNegocio("VALIDACION", "El reparto ya salió.");
-  const paradas = await tx
-    .select({ id: entrega.id, estado: entrega.estado, version: entrega.version, cliente: cliente.nombre })
-    .from(entrega)
-    .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
-    .where(and(eq(entrega.repartoId, r.id), ne(entrega.estado, "ANULADA")))
-    .orderBy(sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre));
+  const delReparto = and(eq(entrega.repartoId, r.id), ne(entrega.estado, "ANULADA"));
+  const [paradas, alDia] = await Promise.all([
+    tx
+      .select({ id: entrega.id, estado: entrega.estado, version: entrega.version, cliente: cliente.nombre })
+      .from(entrega)
+      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+      .where(delReparto)
+      .orderBy(sql`${entrega.ordenEnReparto} nulls last`, asc(cliente.nombre)),
+    entregasConRemito(tx, delReparto),
+  ]);
   const enlace = { href: `/repartos/${r.id}`, texto: `Ver el reparto ${numeroReparto(r.numero)}` };
   if (paradas.length === 0) throw new ErrorDeNegocio("VALIDACION", "El reparto no tiene entregas.");
   const sinPreparar = paradas.filter((p) => p.estado !== "PREPARADA").map((p) => p.cliente);
   if (sinPreparar.length) {
     throw new ErrorDeNegocio("VALIDACION", `El reparto ${numeroReparto(r.numero)} también lleva lo de ${enumerar(sinPreparar)}, que todavía no está preparado: terminá de prepararlo o sacalo del reparto.`, { enlace });
   }
-  const alDia = await documentosAlDiaDe(tx, paradas);
   const sinDocumentos = paradas.filter((p) => !alDia.has(p.id)).map((p) => p.cliente);
   if (sinDocumentos.length) {
     throw new ErrorDeNegocio("VALIDACION", `Falta hacer el remito de ${enumerar(sinDocumentos)} (RN-122): tocá "Hacer los remitos que faltan" en el reparto.`, { enlace });
   }
-  await tx
-    .update(reparto)
-    .set({ estado: "EN_CURSO", salidaEn: sql`now()`, repartidorId: r.repartidorId ?? c.usuarioId, actualizadoPor: c.usuarioId })
-    .where(eq(reparto.id, r.id));
-  for (const p of paradas) {
-    await tx.update(entrega).set({ estado: "EN_REPARTO", actualizadoPor: c.usuarioId }).where(eq(entrega.id, p.id));
-    await moverPedidosDeEntrega(tx, p.id, ["PREPARADO"], "EN_REPARTO");
-  }
-  if (j.estado === "PREPARANDO") {
-    await tx.update(jornada).set({ estado: "REPARTIENDO", repartoIniciadoEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id));
-    j.estado = "REPARTIENDO";
-  }
-  await registrarActividad(tx, c, {
-    accion: "SALIR",
-    entidadTipo: "REPARTO",
-    entidadId: r.id,
-    jornadaId: j.id,
-    resumen: `salió con el reparto ${numeroReparto(r.numero)} (${paradas.length === 1 ? "1 entrega" : `${paradas.length} entregas`})`,
-  });
+  const ids = paradas.map((p) => p.id);
+  const esElPrimero = j.estado === "PREPARANDO";
+  // El reparto, sus entregas, los pedidos y el día se guardan juntos (una ida a la base).
+  await Promise.all([
+    tx
+      .update(reparto)
+      .set({ estado: "EN_CURSO", salidaEn: sql`now()`, repartidorId: r.repartidorId ?? c.usuarioId, actualizadoPor: c.usuarioId })
+      .where(eq(reparto.id, r.id)),
+    tx.update(entrega).set({ estado: "EN_REPARTO", actualizadoPor: c.usuarioId }).where(inArray(entrega.id, ids)),
+    moverPedidosDeEntregas(tx, ids, ["PREPARADO"], "EN_REPARTO"),
+    esElPrimero ? tx.update(jornada).set({ estado: "REPARTIENDO", repartoIniciadoEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id)) : null,
+    registrarActividad(tx, c, {
+      accion: "SALIR",
+      entidadTipo: "REPARTO",
+      entidadId: r.id,
+      jornadaId: j.id,
+      resumen: `salió con el reparto ${numeroReparto(r.numero)} (${paradas.length === 1 ? "1 entrega" : `${paradas.length} entregas`})`,
+    }),
+  ]);
+  if (esElPrimero) j.estado = "REPARTIENDO";
   return paradas.map((p) => p.cliente);
 }
 
@@ -327,24 +318,31 @@ export async function mandarEnCamino(
     if (elegidas.length !== ids.size) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró alguna de las entregas: recargá la página.");
     const jornadas = new Set(elegidas.map((e) => e.jornadaId));
     if (jornadas.size > 1) throw new ErrorDeNegocio("VALIDACION", "Elegí pedidos de un mismo día: cada reparto es de un día.");
-    const [j] = await tx.select().from(jornada).where(eq(jornada.id, elegidas[0]!.jornadaId)).for("update");
+    const pendientes = elegidas.filter((e) => ESTADOS_SIN_SALIR.includes(e.estado));
+    const idsPendientes = pendientes.map((e) => e.id);
+    const repartosDe = [...new Set(pendientes.map((e) => e.repartoId).filter((x): x is string => x !== null))];
+    // Lo que hay que mirar antes de mover nada sale junto (una ida a la base).
+    const [[j], clientes, sinSeparar, alDia, repartosPlanificados] = await Promise.all([
+      tx.select().from(jornada).where(eq(jornada.id, elegidas[0]!.jornadaId)).for("update"),
+      tx.select({ id: cliente.id, nombre: cliente.nombre }).from(cliente).where(inArray(cliente.id, [...new Set(elegidas.map((e) => e.clienteId))])),
+      tx
+        .select({ id: entregaItem.id, entregaId: entregaItem.entregaId, producto: entregaItem.productoNombre, pedida: entregaItem.cantidadPedida, propuesta: entregaItem.cantidadPropuesta })
+        .from(entregaItem)
+        .where(idsPendientes.length ? and(inArray(entregaItem.entregaId, idsPendientes), isNull(entregaItem.cantidadPreparada)) : sql`false`)
+        .orderBy(asc(entregaItem.linea)),
+      documentosAlDiaDe(tx, pendientes),
+      tx
+        .select({ id: reparto.id })
+        .from(reparto)
+        .where(repartosDe.length ? and(inArray(reparto.id, repartosDe), eq(reparto.estado, "PLANIFICADO")) : sql`false`),
+    ]);
     exigirJornadaAbierta(j);
-    const nombres = new Map(
-      (await tx.select({ id: cliente.id, nombre: cliente.nombre }).from(cliente).where(inArray(cliente.id, [...new Set(elegidas.map((e) => e.clienteId))]))).map((x) => [x.id, x.nombre]),
-    );
+    const nombres = new Map(clientes.map((x) => [x.id, x.nombre]));
     const nombre = (e: { clienteId: string }) => nombres.get(e.clienteId) ?? "un cliente";
     const anuladas = elegidas.filter((e) => e.estado === "ANULADA");
     if (anuladas.length) throw new ErrorDeNegocio("VALIDACION", `La entrega de ${enumerar(anuladas.map(nombre))} está anulada.`);
-    const pendientes = elegidas.filter((e) => ESTADOS_SIN_SALIR.includes(e.estado));
 
     // 1. Lo que falta separar: se marca con lo propuesto, solo si la persona lo confirmó.
-    const sinSeparar = pendientes.length
-      ? await tx
-          .select({ id: entregaItem.id, entregaId: entregaItem.entregaId, producto: entregaItem.productoNombre, pedida: entregaItem.cantidadPedida, propuesta: entregaItem.cantidadPropuesta })
-          .from(entregaItem)
-          .where(and(inArray(entregaItem.entregaId, pendientes.map((e) => e.id)), isNull(entregaItem.cantidadPreparada)))
-          .orderBy(asc(entregaItem.linea))
-      : [];
     if (sinSeparar.length) {
       c.permisos.exigir("preparacion.registrar");
       if (!datos.confirmar) {
@@ -357,71 +355,64 @@ export async function mandarEnCamino(
           enlace: { href: `/preparacion/${j!.fecha}/entrega/${primera.id}`, texto: `Ver lo de ${nombre(primera)}` },
         });
       }
-      for (const l of sinSeparar) {
+    }
+    // 2. Preparadas: la entrega y sus pedidos. Se guarda junto con lo separado (una ida).
+    const aPreparar = pendientes.filter((x) => x.estado !== "PREPARADA");
+    if (aPreparar.length) c.permisos.exigir("preparacion.registrar");
+    await Promise.all([
+      ...sinSeparar.map((l) => {
         const cantidad = l.propuesta ?? l.pedida;
-        await tx
+        return tx
           .update(entregaItem)
           .set({ cantidadPreparada: cantidad, motivoFaltante: dec(cantidad).lt(l.pedida) ? "FALTANTE" : null, actualizadoPor: c.usuarioId })
           .where(eq(entregaItem.id, l.id));
-      }
-    }
+      }),
+      aPreparar.length ? tx.update(entrega).set({ estado: "PREPARADA", actualizadoPor: c.usuarioId }).where(inArray(entrega.id, aPreparar.map((e) => e.id))) : null,
+      aPreparar.length ? moverPedidosDeEntregas(tx, aPreparar.map((e) => e.id), ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO") : null,
+      ...aPreparar.map((e) => registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${nombre(e)}` })),
+    ]);
+    for (const e of aPreparar) e.estado = "PREPARADA";
 
-    // 2. Preparadas: la entrega y sus pedidos.
-    for (const e of pendientes.filter((x) => x.estado !== "PREPARADA")) {
-      c.permisos.exigir("preparacion.registrar");
-      await tx.update(entrega).set({ estado: "PREPARADA", actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id));
-      await moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO");
-      await registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${nombre(e)}` });
-      e.estado = "PREPARADA";
-    }
-
-    // 3. Los remitos que falten (lista de entrega y lista contable de la versión vigente).
-    const alDia = await documentosAlDiaDe(tx, pendientes);
-    for (const e of pendientes.filter((x) => !alDia.has(x.id))) {
-      c.permisos.exigir("entregas.emitir_documentos");
-      const r = await emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true });
-      if (r.resultado === "SIN_PRECIO") {
-        const [falta] = await tx
-          .select({ id: entregaItem.productoId })
-          .from(entregaItem)
-          .where(and(eq(entregaItem.entregaId, e.id), eq(entregaItem.productoNombre, r.productos[0]!)))
-          .limit(1);
-        throw new ErrorDeNegocio("PRECIO_SIN_COSTO", `No se puede hacer el remito de ${nombre(e)}: falta el precio de ${enumerar(r.productos)}. Cargale el precio de compra y volvé a mandarlo.`, {
-          enlace: { href: falta ? `/productos/${falta.id}` : "/precios/compra", texto: `Poner el precio de ${r.productos[0]}` },
-        });
-      }
+    // 3. Los remitos que falten (lista de entrega y lista contable de la versión vigente): todos a la vez.
+    const sinRemito = pendientes.filter((x) => !alDia.has(x.id));
+    if (sinRemito.length) c.permisos.exigir("entregas.emitir_documentos");
+    const emisiones = await Promise.all(sinRemito.map((e) => emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true })));
+    for (const [n, r] of emisiones.entries()) {
+      if (r.resultado !== "SIN_PRECIO") continue;
+      const e = sinRemito[n]!;
+      const [falta] = await tx
+        .select({ id: entregaItem.productoId })
+        .from(entregaItem)
+        .where(and(eq(entregaItem.entregaId, e.id), eq(entregaItem.productoNombre, r.productos[0]!)))
+        .limit(1);
+      throw new ErrorDeNegocio("PRECIO_SIN_COSTO", `No se puede hacer el remito de ${nombre(e)}: falta el precio de ${enumerar(r.productos)}. Cargale el precio de compra y volvé a mandarlo.`, {
+        enlace: { href: falta ? `/productos/${falta.id}` : "/precios/compra", texto: `Poner el precio de ${r.productos[0]}` },
+      });
     }
 
     // 4. Los repartos: el armado en el que estaban o uno nuevo con las sueltas.
-    const repartosDe = [...new Set(pendientes.map((e) => e.repartoId).filter((x): x is string => x !== null))];
-    const planificados = new Set(
-      repartosDe.length
-        ? (await tx.select({ id: reparto.id }).from(reparto).where(and(inArray(reparto.id, repartosDe), eq(reparto.estado, "PLANIFICADO")))).map((r) => r.id)
-        : [],
-    );
+    const planificados = new Set(repartosPlanificados.map((r) => r.id));
     const plan = planDeSalida(elegidas.map((e) => ({ id: e.id, repartoPlanificado: e.repartoId && planificados.has(e.repartoId) ? e.repartoId : null, yaSalio: !ESTADOS_SIN_SALIR.includes(e.estado) })));
     const aSalir = [...plan.repartos];
-    if (plan.agregar) {
-      const { n } = unico(await tx.select({ n: count() }).from(entrega).where(eq(entrega.repartoId, plan.agregar.repartoId)));
-      for (const [i, id] of plan.agregar.entregaIds.entries()) {
-        await tx.update(entrega).set({ repartoId: plan.agregar.repartoId, ordenEnReparto: Number(n) + i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, id));
-      }
-    }
-    if (plan.nuevo.length) {
-      const lugares = await tx
-        .select({ id: entrega.id, horarioDesde: puntoEntrega.horarioDesde, localidad: puntoEntrega.localidad })
-        .from(entrega)
-        .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
-        .where(inArray(entrega.id, plan.nuevo));
-      const { numero } = await siguienteNumero(tx, "REPARTO");
-      const [r] = await tx
-        .insert(reparto)
-        .values({ empresaId: c.empresaId, numero, jornadaId: j!.id, repartidorId: c.usuarioId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
-        .returning({ id: reparto.id });
-      for (const [i, l] of ordenarParadas(lugares).entries()) {
-        await tx.update(entrega).set({ repartoId: r!.id, ordenEnReparto: i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, l.id));
-      }
-      aSalir.push(r!.id);
+    if (plan.agregar || plan.nuevo.length) {
+      const [yaTiene, lugares, numeroNuevo] = await Promise.all([
+        plan.agregar ? tx.select({ n: count() }).from(entrega).where(eq(entrega.repartoId, plan.agregar.repartoId)) : null,
+        tx
+          .select({ id: entrega.id, horarioDesde: puntoEntrega.horarioDesde, localidad: puntoEntrega.localidad })
+          .from(entrega)
+          .innerJoin(puntoEntrega, eq(puntoEntrega.id, entrega.puntoEntregaId))
+          .where(plan.nuevo.length ? inArray(entrega.id, plan.nuevo) : sql`false`),
+        plan.nuevo.length ? siguienteNumero(tx, "REPARTO") : null,
+      ]);
+      const repartoNuevo = numeroNuevo ? randomUUID() : null;
+      const desde = yaTiene ? Number(unico(yaTiene).n) : 0;
+      // Primero el reparto nuevo y después sus paradas, todo en una ida.
+      await Promise.all([
+        repartoNuevo ? tx.insert(reparto).values({ id: repartoNuevo, empresaId: c.empresaId, numero: numeroNuevo!.numero, jornadaId: j!.id, repartidorId: c.usuarioId, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId }) : null,
+        ...(plan.agregar?.entregaIds ?? []).map((id, i) => tx.update(entrega).set({ repartoId: plan.agregar!.repartoId, ordenEnReparto: desde + i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, id))),
+        ...(repartoNuevo ? ordenarParadas(lugares).map((l, i) => tx.update(entrega).set({ repartoId: repartoNuevo, ordenEnReparto: i + 1, actualizadoPor: c.usuarioId }).where(eq(entrega.id, l.id))) : []),
+      ]);
+      if (repartoNuevo) aSalir.push(repartoNuevo);
     }
     const salieron: ResultadoSalida["repartos"] = [];
     for (const id of aSalir) {
@@ -446,18 +437,17 @@ export async function regresarDeReparto(db: BaseDatos, authUserId: string, repar
 /** Si todas las paradas se confirmaron, el reparto queda FINALIZADO. */
 export async function finalizarSiCorresponde(tx: Transaccion, c: ContextoUsuario, repartoId: string | null): Promise<void> {
   if (!repartoId) return;
-  const { pendientes } = unico(
-    await tx
-      .select({ pendientes: count() })
-      .from(entrega)
-      .where(and(eq(entrega.repartoId, repartoId), inArray(entrega.estado, ["BORRADOR", "EN_PREPARACION", "PREPARADA", "EN_REPARTO"]))),
-  );
-  if (Number(pendientes) === 0) {
-    await tx
-      .update(reparto)
-      .set({ estado: "FINALIZADO", regresoEn: sql`coalesce(${reparto.regresoEn}, now())`, actualizadoPor: c.usuarioId })
-      .where(and(eq(reparto.id, repartoId), eq(reparto.estado, "EN_CURSO")));
-  }
+  // En una sola consulta: termina si ya no le queda ninguna parada por entregar.
+  await tx
+    .update(reparto)
+    .set({ estado: "FINALIZADO", regresoEn: sql`coalesce(${reparto.regresoEn}, now())`, actualizadoPor: c.usuarioId })
+    .where(
+      and(
+        eq(reparto.id, repartoId),
+        eq(reparto.estado, "EN_CURSO"),
+        sql`not exists (select 1 from ${entrega} e where e.reparto_id = ${repartoId} and e.estado in ('BORRADOR', 'EN_PREPARACION', 'PREPARADA', 'EN_REPARTO'))`,
+      ),
+    );
 }
 
 /** Anular un reparto sin entregas confirmadas: sus entregas quedan sin reparto (03 §15.8). */
@@ -703,12 +693,19 @@ export async function fijarOrdenDeReparto(db: BaseDatos, authUserId: string, dat
     const { r, j } = await repartoBloqueado(tx, datos.repartoId);
     exigirManejo(c, r);
     if (r.estado !== "PLANIFICADO" && r.estado !== "EN_CURSO") throw new ErrorDeNegocio("VALIDACION", "El reparto ya terminó.");
-    const actuales = (await paradasEnOrden(tx, r.id)).map((p) => p.id);
+    const paradas = await paradasEnOrden(tx, r.id);
+    const actuales = paradas.map((p) => p.id);
     const nuevo = [...new Set(datos.orden)];
     if (nuevo.length !== actuales.length || nuevo.some((id) => !actuales.includes(id))) {
       throw new ErrorDeNegocio("VALIDACION", "El orden tiene que incluir todas las paradas del reparto (cambió algo: volvé a calcularlo).");
     }
     await renumerar(tx, nuevo);
+    // El recorrido del día sigue el mismo orden: las paradas del reparto se reparten los lugares que
+    // ya tenían ahí (si alguna todavía no tenía lugar, quedan todas al final, en este orden).
+    const lugares = paradas.flatMap((p) => (p.lugar === null ? [] : [p.lugar])).sort((a, b) => a - b);
+    if (lugares.length > 0) {
+      await Promise.all(nuevo.map((id, i) => tx.update(entrega).set({ ordenEnRecorrido: lugares.length === nuevo.length ? lugares[i]! : null }).where(eq(entrega.id, id))));
+    }
     await registrarActividad(tx, c, { accion: "ORDENAR", entidadTipo: "REPARTO", entidadId: r.id, jornadaId: j.id, resumen: `ordenó las paradas del reparto ${numeroReparto(r.numero)}` });
   });
 }

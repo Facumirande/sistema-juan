@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   COLUMNAS,
+  COLUMNAS_ARRASTRABLES,
+  PASO_ANTERIOR,
+  PASO_SIGUIENTE,
   accionAlMover,
   porQueNoSeMueve,
   columnaDePedido,
@@ -71,20 +74,45 @@ describe("tablero de pedidos", () => {
     expect(accionAlMover("comprados", "pedidos")).toBe("SACAR_DE_LISTA");
     // Soltar en Preparando empieza a preparar el día; de ahí en más avanzan solas.
     expect(["pedidos", "en_lista", "comprados"].map((c) => accionAlMover(c as "pedidos", "preparando"))).toEqual(["PREPARAR", "PREPARAR", "PREPARAR"]);
-    // De Preparando sale a En camino (y a ningún otro lado).
+    // De Preparando sale a En camino; hacia atrás, deja de prepararse (vuelve a donde estaba).
     expect(accionAlMover("preparando", "en_camino")).toBe("SALIR");
-    expect(accionAlMover("preparando", "en_lista")).toBeNull();
+    expect(["pedidos", "en_lista", "comprados"].map((c) => accionAlMover("preparando", c as "pedidos"))).toEqual(["DEJAR_DE_PREPARAR", "DEJAR_DE_PREPARAR", "DEJAR_DE_PREPARAR"]);
+    expect(accionAlMover("preparando", "entregados")).toBeNull();
     expect(accionAlMover("preparando", "preparando")).toBeNull();
     expect(accionAlMover("comprados", "en_camino")).toBeNull();
     expect(COLUMNAS.find((c) => c.clave === "preparando")?.seleccionable).toBe(true);
     expect(accionAlMover("en_lista", "en_camino")).toBeNull();
-    expect(accionAlMover("en_camino", "entregados")).toBeNull();
+    // De En camino se pasa a Entregados, o se vuelve a Preparando (no salió); más atrás, de a un paso.
+    expect(accionAlMover("en_camino", "entregados")).toBe("ENTREGAR");
+    expect(accionAlMover("en_camino", "preparando")).toBe("VOLVER_DE_CAMINO");
+    expect(accionAlMover("en_camino", "comprados")).toBeNull();
+    // De Entregados solo se vuelve a En camino (no se entregó).
+    expect(accionAlMover("entregados", "en_camino")).toBe("DESHACER_ENTREGA");
+    expect(accionAlMover("entregados", "preparando")).toBeNull();
+    expect(accionAlMover("entregados", "entregados")).toBeNull();
     expect(accionAlMover("pedidos", "pedidos")).toBeNull();
   });
 
+  it("cada columna tiene su paso siguiente (el botón verde de la tarjeta), y Entregados es el final", () => {
+    const camino = ["pedidos", "en_lista", "comprados", "preparando", "en_camino", "entregados"] as const;
+    expect(camino.map((c) => PASO_SIGUIENTE[c]?.hacia ?? null)).toEqual(["en_lista", "comprados", "preparando", "en_camino", "entregados", null]);
+    // El botón de cada paso hace algo de verdad: mover la tarjeta ahí está permitido.
+    for (const c of camino) if (PASO_SIGUIENTE[c]) expect(accionAlMover(c, PASO_SIGUIENTE[c].hacia)).not.toBeNull();
+    // Todas las tarjetas se arrastran: también hacia atrás, por si se pasaron por accidente.
+    expect(COLUMNAS_ARRASTRABLES).toHaveLength(6);
+    expect(camino.map((c) => PASO_ANTERIOR[c]?.hacia ?? null)).toEqual([null, "pedidos", "pedidos", "comprados", "preparando", "en_camino"]);
+    for (const c of camino) if (PASO_ANTERIOR[c]) expect(accionAlMover(c, PASO_ANTERIOR[c].hacia)).not.toBeNull();
+    // El subtítulo de cada columna dice qué hay que hacer.
+    expect(COLUMNAS.every((c) => c.ayuda.length > 10)).toBe(true);
+  });
+
   it("lo que no se mueve arrastrando dice dónde se hace", () => {
-    expect(porQueNoSeMueve("en_camino", "entregados")).toMatchObject({ ir: "viaje" });
     expect(porQueNoSeMueve("preparando", "entregados")).toMatchObject({ ir: "viaje" });
+    expect(porQueNoSeMueve("preparando", "entregados").mensaje).toContain("Todavía no salió a entregar");
+    expect(porQueNoSeMueve("entregados", "preparando").mensaje).toContain("vuelve de a un paso");
+    expect(porQueNoSeMueve("entregados", "pedidos")).toMatchObject({ ir: "viaje" });
+    expect(porQueNoSeMueve("en_camino", "comprados").mensaje).toContain("primero en “Preparando”");
+    expect(porQueNoSeMueve("en_camino", "pedidos")).toMatchObject({ ir: "preparacion" });
     expect(porQueNoSeMueve("preparando", "pedidos")).toMatchObject({ ir: "preparacion" });
     expect(porQueNoSeMueve("en_lista", "en_camino").mensaje).toContain("primero hay que prepararlo");
     expect(porQueNoSeMueve("pedidos", "entregados")).toMatchObject({ ir: "preparacion" });

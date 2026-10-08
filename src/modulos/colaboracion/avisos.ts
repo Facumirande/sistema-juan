@@ -1,8 +1,10 @@
-import { and, count, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 
 import { actividad, nota, usuario } from "@/db/esquema";
 import type { BaseDatos } from "@/db/tipos";
 import { agruparAvisos } from "@/dominio/colaboracion/avisos";
+import { hoyEnEmpresa } from "@/dominio/fechas/fechas";
+import { productosParaRevisar } from "@/modulos/catalogo/revision";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 
 import { tiposVisibles } from "./actividad";
@@ -41,7 +43,12 @@ export interface BandejaDeAvisos {
   avisos: AvisoVisible[];
   /** Las demás personas, para dejarles un aviso. */
   personas: PersonaVisible[];
+  /** Productos con algo esencial para arreglar (sin precio de compra, o vendidos por debajo de lo que cuestan). */
+  paraRevisar: { id: string; producto: string; problemas: string[]; href: string }[];
 }
+
+/** Cuántos productos para revisar se listan en la campanita como mucho. */
+const MAXIMO_PARA_REVISAR = 20;
 
 /** Sin haber abierto nunca la campanita, es nuevo lo de las últimas 24 horas (no todo lo que pasó antes de entrar). */
 const PRIMERA_VEZ_MS = 24 * 60 * 60 * 1000;
@@ -49,22 +56,27 @@ const PRIMERA_VEZ_MS = 24 * 60 * 60 * 1000;
 export async function avisosPara(db: BaseDatos, authUserId: string, limite = 15): Promise<BandejaDeAvisos> {
   return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     const tipos = tiposVisibles(c);
-    const personas = await personasDelNegocio(tx);
+    const hayTipos = tipos.length > 0;
+    const deOtros = and(ne(actividad.usuarioId, c.usuarioId), hayTipos ? inArray(actividad.entidadTipo, tipos) : sql`false`);
+    const notasParaVer = and(sinLeerPara(c), hayTipos ? inArray(nota.entidadTipo, tipos) : sql`false`);
+    // "Nuevo" es lo que pasó después de la última vez que abrió la campanita (o en el último día, si
+    // nunca la abrió). Va dentro de la consulta para que todo salga junto, en una sola ida a la base.
+    const desdeCuando = sql`coalesce((select u.avisos_vistos_en from ${usuario} u where u.id = ${c.usuarioId}), now() - interval '24 hours')`;
+    const [personas, revisar, [yo], acciones, [actividadNueva], notas, [notasNuevas]] = await Promise.all([
+      personasDelNegocio(tx),
+      productosParaRevisar(tx, c, hoyEnEmpresa(new Date(), c.zonaHoraria)),
+      tx.select({ vistos: usuario.avisosVistosEn }).from(usuario).where(eq(usuario.id, c.usuarioId)),
+      tx.select().from(actividad).where(deOtros).orderBy(desc(actividad.ocurridaEn)).limit(limite * 3),
+      tx.select({ n: count() }).from(actividad).where(and(deOtros, sql`${actividad.ocurridaEn} > ${desdeCuando}`)),
+      tx.select().from(nota).where(notasParaVer).orderBy(desc(nota.creadoEn)).limit(limite),
+      tx.select({ n: count() }).from(nota).where(notasParaVer),
+    ]);
     const otras = personas.filter((p) => p.activa && p.id !== c.usuarioId).map(soloVisible);
-    if (tipos.length === 0) return { nuevos: 0, notasSinLeer: 0, avisos: [], personas: otras };
+    const paraRevisar = revisar.slice(0, MAXIMO_PARA_REVISAR).map((p) => ({ id: p.productoId, producto: p.producto, problemas: p.problemas, href: `/productos/${p.productoId}` }));
+    if (!hayTipos) return { nuevos: 0, notasSinLeer: 0, avisos: [], personas: otras, paraRevisar };
     const porId = new Map(personas.map((p) => [p.id, soloVisible(p)]));
     const persona = (id: string | null): PersonaVisible => porId.get(id ?? "") ?? { id: id ?? "", nombre: "Alguien", color: "#46505e" };
-
-    const [yo] = await tx.select({ vistos: usuario.avisosVistosEn }).from(usuario).where(eq(usuario.id, c.usuarioId));
     const desde = yo?.vistos ?? new Date(Date.now() - PRIMERA_VEZ_MS);
-    const deOtros = and(ne(actividad.usuarioId, c.usuarioId), inArray(actividad.entidadTipo, tipos));
-
-    const [acciones, [actividadNueva], notas, [notasNuevas]] = await Promise.all([
-      tx.select().from(actividad).where(deOtros).orderBy(desc(actividad.ocurridaEn)).limit(limite * 3),
-      tx.select({ n: count() }).from(actividad).where(and(deOtros, gt(actividad.ocurridaEn, desde))),
-      tx.select().from(nota).where(and(sinLeerPara(c), inArray(nota.entidadTipo, tipos))).orderBy(desc(nota.creadoEn)).limit(limite),
-      tx.select({ n: count() }).from(nota).where(and(sinLeerPara(c), inArray(nota.entidadTipo, tipos))),
-    ]);
 
     const mezcla = [
       ...acciones.map((a) => ({
@@ -99,6 +111,7 @@ export async function avisosPara(db: BaseDatos, authUserId: string, limite = 15)
       nuevos: Number(actividadNueva?.n ?? 0) + Number(notasNuevas?.n ?? 0),
       notasSinLeer: Number(notasNuevas?.n ?? 0),
       personas: otras,
+      paraRevisar,
       avisos: agrupados.map((m) => {
         const e = m.ref ? entidades.get(claveDeReferencia(m.ref)) : undefined;
         return {

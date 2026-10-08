@@ -266,8 +266,13 @@ export function GraficoBarras({
   );
 }
 
-/** Ranking en barras horizontales (HTML): etiqueta, barra y valor escrito al final. */
-export function BarrasHorizontales({ filas }: { filas: { etiqueta: string; valor: number; texto: string; detalle?: string | null }[] }) {
+/**
+ * Ranking en barras horizontales (HTML): etiqueta, barra y valor escrito al final. Con `rayadas`,
+ * las barras van rayadas: así se dibuja la plata pendiente (a cobrar, a pagar), para que no se
+ * distinga de la real solo por el color.
+ */
+export function BarrasHorizontales({ filas, color = "serie-1", rayadas = false }: { filas: { etiqueta: string; valor: number; texto: string; detalle?: string | null }[]; color?: "serie-1" | "serie-2"; rayadas?: boolean }) {
+  const relleno = rayadas ? `repeating-linear-gradient(135deg, var(--${color}) 0 5px, color-mix(in srgb, var(--${color}) 30%, transparent) 5px 10px)` : `var(--${color})`;
   const maximo = Math.max(...filas.map((f) => f.valor), 1);
   return (
     <ul className="flex flex-col gap-3">
@@ -278,7 +283,7 @@ export function BarrasHorizontales({ filas }: { filas: { etiqueta: string; valor
             <span className="shrink-0 text-sm font-medium tabular-nums">{f.texto}</span>
           </div>
           <div className="h-3 w-full">
-            <div className="h-3 rounded-r-[4px] bg-serie-1" style={{ width: `${Math.max(0.5, (Math.max(f.valor, 0) / maximo) * 100)}%` }} />
+            <div className="h-3 rounded-r-[4px]" style={{ width: `${Math.max(0.5, (Math.max(f.valor, 0) / maximo) * 100)}%`, background: relleno }} />
           </div>
           {f.detalle && <span className="text-right text-xs text-texto-suave tabular-nums">{f.detalle}</span>}
         </li>

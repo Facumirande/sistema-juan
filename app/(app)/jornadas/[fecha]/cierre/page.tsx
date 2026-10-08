@@ -38,7 +38,7 @@ export default async function CierreDeJornada({ params }: PageProps<"/jornadas/[
     ["Margen sobre lo vendido", formatearMoneda(r.margen) + pct(r.margenPct), ""],
     ["Sobrantes y devoluciones (al costo)", formatearMoneda(r.sobrantesCosto), r.sobrantes.map((s) => `${s.producto} ${formatearCantidad(s.cantidad, s.unidad as UnidadMedida)} ${formatearMoneda(s.costo)}`).join(" · ")],
     ["Resultado del día (vendido − comprado)", formatearMoneda(r.resultado) + pct(r.resultadoPct), ""],
-    ["Deuda con proveedores al cierre", formatearMoneda(r.saldoProveedores), r.saldosPorProveedor.map((s) => `${s.proveedor} ${formatearMoneda(s.saldo)}`).join(" · ")],
+    ["A pagar a los proveedores al cierre", formatearMoneda(r.saldoProveedores), r.saldosPorProveedor.map((s) => `${s.proveedor} ${formatearMoneda(s.saldo)}`).join(" · ")],
     ["Pedidos", `${r.pedidos.entregados} entregados · ${r.pedidos.cancelados} cancelados`, r.entregasConDiferencias ? `${r.entregasConDiferencias} con diferencias` : ""],
   ];
 
@@ -135,7 +135,7 @@ export default async function CierreDeJornada({ params }: PageProps<"/jornadas/[
           <summary className="cursor-pointer font-semibold">Reabrir el día</summary>
           <FormularioAccion accion={reabrirJornadaAccion} boton="Reabrir" variante="secundario">
             {oculto}
-            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. corregir una entrega" />
+            <Campo etiqueta="Por qué" name="motivo" placeholder="Ej. corregir una entrega" required />
           </FormularioAccion>
         </details>
       )}

@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { formatearNumero } from "@/dominio/dinero/formato";
+import { dec } from "@/dominio/dinero/decimal";
+import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { CATEGORIAS_PREELEGIDAS, SIN_CATEGORIA } from "@/dominio/catalogo/categorias";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { obtenerProducto } from "@/modulos/catalogo/productos";
 import { notasDe } from "@/modulos/colaboracion/notas";
-import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
+import { historialDeOferta, listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { listarProveedores } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
@@ -18,7 +20,8 @@ import { AreaTexto, Campo, CampoNumero, Casilla, Encabezado, Estado, Selector, T
 import { HiloDeNotas } from "../../actividad/notas";
 import { crearOfertaAccion } from "../../precios/compra/acciones";
 import { permisosOfertas } from "../../precios/compra/tabla-ofertas";
-import { TarjetasDeOfertas } from "../../precios/compra/tarjetas-ofertas";
+import { TarjetasDeOfertas, type PrecioAnterior } from "../../precios/compra/tarjetas-ofertas";
+import { recargoAccion } from "../../precios/venta/acciones";
 import {
   agregarPresentacionAccion,
   cambiarEstadoPresentacionAccion,
@@ -47,6 +50,24 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
   ]);
 
   const unidad = UNIDADES_CORTAS[p.unidadBase] ?? "";
+  // El historial de precios de cada puesto (para el desplegable): los últimos cambios.
+  const COMO: Readonly<Record<string, string>> = { COMPRA: "al anotar una compra", MANUAL: "cargado a mano", IMPORTACION: "desde una planilla" };
+  const historiales: Record<string, PrecioAnterior[]> = Object.fromEntries(
+    await Promise.all(
+      ofertas.map(async (o) => {
+        const movimientos = await historialDeOferta(db, sesion.authUserId, o.id);
+        const dia = (v: Date | string) => (typeof v === "string" ? v : v.toISOString()).slice(0, 10);
+        return [o.id, movimientos.slice(0, 30).map((m): PrecioAnterior => ({ desde: dia(m.vigenteDesde), precio: m.precio, variacionPct: m.variacionPct, como: COMO[m.origen] ?? "cambio de precio", quien: m.usuario }))] as const;
+      }),
+    ),
+  );
+  // A cuánto se vende: lo que cuesta (el puesto preferido o el más barato) más la ganancia que le toca.
+  const verVenta = verCostos && sesion.permisos.includes("precios.ver_margenes");
+  const referencia = ofertas.find((o) => o.esPreferido && o.disponible) ?? ofertas.find((o) => o.esMejor) ?? ofertas[0] ?? null;
+  const gananciaPct = p.ganancia.propia ?? p.ganancia.categoria ?? p.ganancia.general;
+  const deDonde = p.ganancia.propia !== null ? "la propia de este producto" : p.ganancia.categoria !== null ? `la de su categoría (${p.categoria})` : "la general del negocio";
+  const venta = referencia ? dec(referencia.costoBase).times(dec(1).plus(dec(gananciaPct).div(100))) : null;
+  const enPorcentaje = (v: string) => formatearNumero(v, { decimales: 2, recortarCeros: true });
   const activas = p.presentaciones.filter((pr) => pr.activo);
   const deCompra = activas.filter((pr) => pr.usableEnCompra).map((pr) => ({ valor: pr.id, etiqueta: pr.nombre }));
   const deVenta = activas.filter((pr) => pr.usableEnVenta).map((pr) => ({ valor: pr.id, etiqueta: pr.nombre }));
@@ -63,26 +84,81 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
             Los puestos del mercado que venden {p.nombre.toLowerCase()} y el precio de cada uno. Con esto la lista de compras te dice dónde conviene y se calcula el precio de venta. El precio también se actualiza solo cada vez que anotás una compra.
           </p>
           {ofertas.length === 0 ? (
-            <p className="rounded-xl bg-fondo p-3">Todavía no cargaste ningún puesto para este producto. Agregá uno acá abajo, o se carga solo con la primera compra que anotes.</p>
+            <p className="rounded-xl bg-fondo p-3">Todavía no cargaste ningún puesto para este producto. Agregalo acá abajo, o se carga solo la primera vez que anotes su compra (en la lista de compras, con “💲 Precio y puesto”).</p>
           ) : (
-            <TarjetasDeOfertas ofertas={ofertas} permisos={permisosOfertas(sesion.permisos)} />
+            <TarjetasDeOfertas ofertas={ofertas} permisos={permisosOfertas(sesion.permisos)} historiales={historiales} />
           )}
           {puedeCrearOferta && p.activo && (
-            <details>
-              <summary className="min-h-11 cursor-pointer py-2 font-semibold">＋ Agregar otro puesto que lo vende</summary>
+            <details open={ofertas.length === 0}>
+              <summary className="min-h-11 cursor-pointer py-2 font-semibold">{ofertas.length === 0 ? "＋ Agregar puesto que lo vende" : "＋ Agregar otro puesto que lo vende"}</summary>
               {deCompra.length === 0 ? (
                 <p className="text-texto-suave">Primero agregá, más abajo, el envase en que se compra (por ejemplo Cajón 18 kg).</p>
               ) : (
                 <FormularioAccion accion={crearOfertaAccion} boton="Agregar el puesto">
                   <input type="hidden" name="productoId" value={p.id} />
                   <div className="grid gap-4 sm:grid-cols-3">
-                    <Selector etiqueta="¿Qué puesto?" name="proveedorId" opciones={proveedores.map((pv) => ({ valor: pv.id, etiqueta: pv.nombre }))} />
-                    <Selector etiqueta="¿En qué envase lo vende?" name="presentacionId" opciones={deCompra} defaultValue={p.presentacionCompraDefaultId ?? undefined} />
-                    <CampoNumero etiqueta="¿A cuánto cada envase?" name="precio" placeholder="Ej. 21.600" />
+                    <Selector etiqueta="¿Qué puesto?" name="proveedorId" opciones={proveedores.map((pv) => ({ valor: pv.id, etiqueta: pv.nombre }))} vacia="Elegí el puesto…" required />
+                    <Selector etiqueta="¿En qué envase lo vende?" name="presentacionId" opciones={deCompra} defaultValue={p.presentacionCompraDefaultId ?? undefined} required />
+                    <CampoNumero etiqueta="¿A cuánto cada envase?" name="precio" placeholder="Ej. 21.600" required />
                   </div>
                 </FormularioAccion>
               )}
             </details>
+          )}
+        </Tarjeta>
+      )}
+
+      {verVenta && (
+        <Tarjeta titulo="💰 ¿A cuánto se vende?">
+          {referencia && venta ? (
+            <>
+              <div className="grid items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1.2fr]">
+                <p className="flex flex-col rounded-xl bg-fondo p-3">
+                  <span className="text-sm text-texto-suave">Cuesta (en {referencia.proveedor})</span>
+                  <b className="text-2xl tabular-nums">{formatearMoneda(referencia.costoBase)}</b>
+                  <span className="text-sm text-texto-suave">el {unidad}</span>
+                </p>
+                <span aria-hidden className="self-center text-center text-2xl font-bold text-texto-suave">
+                  +
+                </span>
+                <p className="flex flex-col rounded-xl bg-fondo p-3">
+                  <span className="text-sm text-texto-suave">Ganancia</span>
+                  <b className="text-2xl tabular-nums">{enPorcentaje(gananciaPct)} %</b>
+                  <span className="text-sm text-texto-suave">{deDonde}</span>
+                </p>
+                <span aria-hidden className="self-center text-center text-2xl font-bold text-texto-suave">
+                  =
+                </span>
+                <p className={`flex flex-col rounded-xl p-3 ${dec(gananciaPct).lt(0) ? "bg-error/15 text-error" : "bg-[var(--pastel-verde)] text-[var(--pastel-verde-texto)]"}`}>
+                  <span className="text-sm font-semibold">Se vende a</span>
+                  <b className="text-3xl tabular-nums">{formatearMoneda(venta.toString())}</b>
+                  <span className="text-sm">el {unidad}</span>
+                </p>
+              </div>
+              {dec(gananciaPct).lt(0) && <p className="rounded-xl bg-error/15 p-3 font-bold text-error">⚠ Con una ganancia negativa se vende por debajo de lo que cuesta: se pierde plata en cada venta.</p>}
+            </>
+          ) : (
+            <p className="rounded-xl border-2 border-amber-500 p-3 font-semibold">⚠ Todavía no tiene precio de compra. Cargalo arriba (en “¿Dónde se compra y a cuánto?”) y acá vas a ver a cuánto se vende.</p>
+          )}
+          <p className="text-sm text-texto-suave">
+            El precio de venta se calcula solo: cada vez que cambia el precio de compra, cambia el de venta. Si a un cliente se le cobra un precio pactado, se carga en{" "}
+            <Link href="/precios/venta" className="font-medium underline underline-offset-2">
+              Precios de venta
+            </Link>
+            .
+          </p>
+          {sesion.permisos.includes("precios.editar_reglas") && p.activo && (
+            <FormularioAccion accion={recargoAccion} boton="Guardar la ganancia" enLinea>
+              <input type="hidden" name="ambito" value="PRODUCTO" />
+              <input type="hidden" name="id" value={p.id} />
+              <CampoNumero
+                etiqueta="Ganancia de este producto (%)"
+                name="valor"
+                defaultValue={p.ganancia.propia !== null ? enPorcentaje(p.ganancia.propia) : ""}
+                placeholder={`Vacío = ${enPorcentaje(p.ganancia.categoria ?? p.ganancia.general)} % (${p.ganancia.categoria !== null ? "la de su categoría" : "la general"})`}
+                ayuda="Escribí solo el número: 30 quiere decir que se le suma un 30 % a lo que cuesta. Dejalo vacío para usar la de su categoría o la general."
+              />
+            </FormularioAccion>
           )}
         </Tarjeta>
       )}

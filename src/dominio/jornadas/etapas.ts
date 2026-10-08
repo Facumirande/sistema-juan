@@ -51,7 +51,7 @@ export function etapasDelMenu(d: DatosDelDia, pasos: PasosDelDia): EtapaDelMenu[
     {
       clave: "preparacion",
       estado: estadoDe(pasos, ["preparacion"], "preparacion"),
-      detalle: e.total ? `${e.preparadas} de ${e.total} listos` : null,
+      detalle: e.total ? `${e.preparadas} de ${e.total} listos${d.sinPreparar ? ` · ${plural(d.sinPreparar, "pedido", "pedidos")} sin empezar` : ""}` : null,
     },
     {
       clave: "remitos",

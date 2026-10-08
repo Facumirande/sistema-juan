@@ -16,6 +16,8 @@ export interface DatosDelDia {
   /** Estado de la jornada; nulo si todavía no hay pedidos. */
   jornada: string | null;
   pedidos: { confirmados: number; borradores: number };
+  /** Pedidos cargados que todavía no se empezaron a preparar (se prepara de a un pedido: pueden quedar otros esperando). */
+  sinPreparar: number;
   /** `fueraDeLista`: pedidos confirmados que todavía no se agregaron a la lista armada. */
   lista: { armada: boolean; desactualizada: boolean; lineas: number; resueltas: number; fueraDeLista: number };
   compras: number;
@@ -48,10 +50,11 @@ function estadoPropio(clave: ClavePaso, d: DatosDelDia): EstadoPropio {
     case "compras":
       return segun(d.lista.lineas > 0 && d.lista.resueltas === d.lista.lineas, d.compras > 0 || d.lista.resueltas > 0);
     case "preparacion":
-      // Terminada cuando todos los clientes están preparados y con sus remitos hechos.
-      return segun(hay && e.preparadas === e.total && e.conDocumentos === e.total, hay);
+      // Terminada cuando todos los clientes están preparados y con sus remitos hechos, y no queda
+      // ningún pedido esperando para empezar a prepararse.
+      return segun(hay && d.sinPreparar === 0 && e.preparadas === e.total && e.conDocumentos === e.total, hay);
     case "entregas":
-      return segun(hay && e.entregadas === e.total, d.repartos > 0 || e.enCamino > 0);
+      return segun(hay && d.sinPreparar === 0 && e.entregadas === e.total, d.repartos > 0 || e.enCamino > 0);
     case "cierre":
       return segun(d.jornada === "CERRADA", false);
   }

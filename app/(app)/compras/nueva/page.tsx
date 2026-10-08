@@ -109,7 +109,7 @@ export default async function NuevaCompra({ searchParams }: PageProps<"/compras/
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-borde bg-superficie p-3">
           <SemaforoCredito semaforo={cuenta.indicadores.semaforo} usoPct={cuenta.indicadores.usoPct?.toString()} />
           <span>
-            Se le debe <b>{formatearMoneda(cuenta.indicadores.saldoPendiente)}</b>
+            Le debemos <b>{formatearMoneda(cuenta.indicadores.saldoPendiente)}</b>
             {cuenta.indicadores.disponible !== null && ` · todavía se le puede deber ${formatearMoneda(cuenta.indicadores.disponible)}`}
             {cuenta.indicadores.saldoAFavor.gt(0) && ` · a favor ${formatearMoneda(cuenta.indicadores.saldoAFavor)}`}
           </span>

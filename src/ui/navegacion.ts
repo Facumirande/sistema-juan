@@ -10,8 +10,11 @@ export interface ItemMenu {
   permisos: readonly Permiso[];
   /** No se muestra a quien tiene alguno de estos (ej. "Mi reparto" no hace falta a quien maneja todos los repartos). */
   ocultarCon?: readonly Permiso[];
-  /** Se muestra como botón (la acción más usada). */
-  destacado?: true;
+  /**
+   * Se muestra como botón: "principal" es el tablero (la pantalla del día, en verde lleno) y
+   * "secundario", debajo, la acción más usada (también llamativa, con borde verde).
+   */
+  destacado?: "principal" | "secundario";
   /** Pantalla todavía no construida (se muestra deshabilitada). */
   enConstruccion?: true;
   /**
@@ -41,8 +44,8 @@ export const MENU: readonly GrupoMenu[] = [
   {
     grupo: "Día de trabajo",
     items: [
-      { pantalla: "P-41", etiqueta: "Nuevo pedido", icono: "＋", ruta: "/pedidos/nuevo", permisos: ["pedidos.crear"], destacado: true },
-      { pantalla: "P-02", etiqueta: "Tablero de pedidos", icono: "📋", ruta: "/inicio", permisos: [] },
+      { pantalla: "P-02", etiqueta: "Tablero de pedidos", icono: "📋", ruta: "/inicio", permisos: [], destacado: "principal" },
+      { pantalla: "P-41", etiqueta: "Nuevo pedido", icono: "＋", ruta: "/pedidos/nuevo", permisos: ["pedidos.crear"], destacado: "secundario" },
       // Etapas: con un día en curso van agrupadas debajo del tablero, cada una con su avance.
       { pantalla: "P-50", etiqueta: "Lista de compras", icono: "🛒", ruta: "/lista-compra", permisos: ["lista_compra.ver"], etapa: true },
       { pantalla: "P-70", etiqueta: "Preparación", icono: "📦", ruta: "/preparacion", permisos: ["preparacion.ver"], etapa: true },
@@ -57,6 +60,8 @@ export const MENU: readonly GrupoMenu[] = [
     items: [
       { pantalla: "P-15", etiqueta: "Clientes", icono: "👥", ruta: "/clientes", permisos: ["clientes.ver"] },
       { pantalla: "P-10", etiqueta: "Productos", icono: "🥕", ruta: "/productos", permisos: ["productos.ver"] },
+      // Los precios del mercado cambian todos los días: a mano para cambiarlos rápido.
+      { pantalla: "P-27", etiqueta: "Precios de hoy", icono: "💲", ruta: "/precios/hoy", permisos: ["precios.ver_costos"] },
       { pantalla: "P-20", etiqueta: "Proveedores", icono: "🏪", ruta: "/proveedores", permisos: ["proveedores.ver"] },
     ],
   },
@@ -64,7 +69,10 @@ export const MENU: readonly GrupoMenu[] = [
     grupo: "Cuentas",
     items: [
       { pantalla: "P-91", etiqueta: "Balance", icono: "📈", ruta: "/balance", permisos: ["reportes.ver"] },
-      { pantalla: "P-60", etiqueta: "Deudas con proveedores", icono: "💰", ruta: "/cuentas-proveedores", permisos: ["pagos.ver"] },
+      // Lo que todavía no se movió: lo entregado sin cobrar y lo retirado sin pagar.
+      { pantalla: "P-65", etiqueta: "A cobrar", icono: "🤝", ruta: "/cuentas-clientes", permisos: ["cobranzas.ver"] },
+      { pantalla: "P-60", etiqueta: "A pagar", icono: "📤", ruta: "/cuentas-proveedores", permisos: ["pagos.ver"] },
+      { pantalla: "P-66", etiqueta: "Gastos e ingresos", icono: "💸", ruta: "/gastos", permisos: ["pagos.ver"] },
       { pantalla: "P-85", etiqueta: "Facturación", icono: "🧾", ruta: "/facturacion", permisos: ["facturacion.ver"] },
     ],
   },

@@ -35,8 +35,8 @@ export default async function ImprimirRemitos({ searchParams }: PageProps<"/entr
         <Link href={`/entregas/remitos?fecha=${fecha}`} className="text-texto-suave hover:underline">
           ← Remitos del día
         </Link>
-        <p className="font-semibold">
-          {contable ? "Listas contables" : "Remitos"} del {fechaConDia(fecha)}: {documentos.length}
+        <p className="text-2xl font-extrabold">
+          {contable ? "Listas contables" : "Remitos"} del {fechaConDia(fecha)} <span className="text-base font-semibold">· {documentos.length}</span>
         </p>
         <div className="flex flex-wrap items-center gap-3">
           {!contable && (

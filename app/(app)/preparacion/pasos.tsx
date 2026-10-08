@@ -1,13 +1,14 @@
 // Los tres pasos de la preparación, siempre a la vista (pedido del usuario, 06/10/2026: que se
 // entienda qué hacer): separar lo de cada cliente, marcarlo preparado (se hace el remito) y que
-// salga (pasa a En camino). El paso en el que se está va resaltado.
+// salga (pasa a En camino). El paso en el que se está va resaltado. Cada paso lleva una sola frase
+// corta (pedido del usuario, 07/10/2026: menos texto y más preciso).
 
 export type PasoDePreparacion = "separar" | "preparado" | "sale";
 
 const PASOS: readonly { clave: PasoDePreparacion; icono: string; titulo: string; ayuda: string }[] = [
-  { clave: "separar", icono: "📦", titulo: "Separar", ayuda: "Tildá cada producto: “✓ Está todo” o “Falta algo” con el motivo." },
-  { clave: "preparado", icono: "🧾", titulo: "Marcar preparado", ayuda: "Con todo tildado, “Marcar como preparado”: el remito se hace solo." },
-  { clave: "sale", icono: "🚚", titulo: "Sale", ayuda: "“🚚 Sale ahora” cuando se va a entregar: pasa a En camino." },
+  { clave: "separar", icono: "📦", titulo: "Separar", ayuda: "Tildá cada producto." },
+  { clave: "preparado", icono: "🧾", titulo: "Marcar preparado", ayuda: "Se hace el remito." },
+  { clave: "sale", icono: "🚚", titulo: "Sale", ayuda: "Pasa a En camino." },
 ];
 
 export function PasosDePreparacion({ actual }: { actual: PasoDePreparacion | null }) {

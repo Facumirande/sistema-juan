@@ -22,7 +22,8 @@ function Cabecera({ c, titulo, zona }: { c: ContenidoListaEntrega | ContenidoLis
         <p>
           N° {c.numero} · versión {c.version}
         </p>
-        <p>Entrega: {fechaConDia(c.fechaEntrega)}</p>
+        <p className="mt-1 text-xs font-bold tracking-wide uppercase">Fecha de entrega</p>
+        <p className="text-2xl leading-tight font-extrabold first-letter:uppercase">{fechaConDia(c.fechaEntrega)}</p>
         {c.version > 1 && <p className="text-sm">Versión {c.version} — reemplaza a la versión {c.version - 1}</p>}
         <p className="text-xs">Emitido {formatearFechaHora(new Date(c.emitido.en), zona)} por {c.emitido.por}</p>
       </div>

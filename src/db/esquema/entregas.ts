@@ -77,6 +77,8 @@ export const entrega = pgTable(
     puntoEntregaId: uuid("punto_entrega_id").notNull(),
     repartoId: uuid("reparto_id"),
     ordenEnReparto: smallint("orden_en_reparto"),
+    /** Lugar en el recorrido del día (compartido con los destinos extra, `parada_extra.orden`). Nulo = sin ordenar. */
+    ordenEnRecorrido: integer("orden_en_recorrido"),
     estado: estadoEntrega("estado").notNull().default("BORRADOR"),
     conDiferencias: boolean("con_diferencias").notNull().default(false),
     estadoFacturacion: estadoFacturacion("estado_facturacion").notNull().default("SIN_FACTURAR"),
@@ -109,8 +111,9 @@ export const entrega = pgTable(
     index("entrega_jornada_estado").on(t.empresaId, t.jornadaId, t.estado),
     index("entrega_reparto").on(t.repartoId),
     index("entrega_cliente").on(t.empresaId, t.clienteId),
-    // Una entrega vigente por cliente, punto y jornada (RN-111).
-    uniqueIndex("entrega_cliente_punto_jornada").on(t.empresaId, t.jornadaId, t.clienteId, t.puntoEntregaId).where(sql`${t.estado} <> 'ANULADA'`),
+    // Una sola entrega abierta por cliente, punto y jornada (RN-111). Si ya salió o se entregó, lo que el
+    // cliente pide después ese mismo día va en otra entrega.
+    uniqueIndex("entrega_cliente_punto_jornada").on(t.empresaId, t.jornadaId, t.clienteId, t.puntoEntregaId).where(sql`${t.estado} in ('BORRADOR', 'EN_PREPARACION', 'PREPARADA')`),
     foreignKey({ name: "entrega_jornada_fk", columns: [t.empresaId, t.jornadaId], foreignColumns: [jornada.empresaId, jornada.id] }),
     foreignKey({ name: "entrega_cliente_fk", columns: [t.empresaId, t.clienteId], foreignColumns: [cliente.empresaId, cliente.id] }),
     foreignKey({

@@ -16,6 +16,8 @@ import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { BarrasHorizontales, GraficoBarras } from "@/ui/graficos";
 import { parametro } from "@/ui/parametros";
 
+import { BalanceDelDinero, ComprasYVentas, GastosPorRubro, PendientesPorNombre } from "./dinero";
+
 export const metadata: Metadata = { title: "Balance · Sistema Repartos" };
 
 const PATRON = /^\d{4}-\d{2}-\d{2}$/;
@@ -143,8 +145,8 @@ function nombreDelDia(fecha: string, hoy: string): string {
 const conMayuscula = (texto: string) => texto.charAt(0).toUpperCase() + texto.slice(1);
 
 /**
- * Balance: lo vendido, lo comprado, lo ganado y lo que se les debe a los proveedores, de un día o
- * de un período, con gráficos de barras. Con un solo día elegido es el "balance del día": los
+ * Balance: lo vendido, las compras, lo ganado, lo que falta cobrar y lo que falta pagar, de un día o
+ * de un período, con gráficos de barras; y el dinero real, el pendiente y el total (`dinero.tsx`). Con un solo día elegido es el "balance del día": los
  * números de ese día y, para comparar, las barras de ese día junto a los seis anteriores.
  */
 export default async function PaginaBalance({ searchParams }: PageProps<"/balance">) {
@@ -280,7 +282,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
             )}
             {t.comprado !== null && (
               <>
-                {t.entregas === 0 ? ";" : ","} se compraron <b>{plata(t.comprado)}</b> de mercadería
+                {t.entregas === 0 ? ";" : ","} las compras fueron de <b>{plata(t.comprado)}</b>
               </>
             )}
             {t.entregas > 0 && t.ganancia !== null && (
@@ -294,7 +296,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
         )
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {b.ver.venta && (
           <Dato
             titulo="Se vendió"
@@ -306,7 +308,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
           />
         )}
         {t.comprado !== null && (
-          <Dato titulo="Se compró" icono="🧺" color="naranja" valor={plata(t.comprado)} cambio={<Cambio actual={t.comprado} anterior={ta.comprado} subirEsBueno={false} contra={contra} />} detalle="Mercadería del mercado" />
+          <Dato titulo="Compras" icono="🧺" color="naranja" valor={plata(t.comprado)} cambio={<Cambio actual={t.comprado} anterior={ta.comprado} subirEsBueno={false} contra={contra} />} detalle={b.compras ? `Pagado ${plata(b.compras.pagado)} · quedó a pagar ${plata(b.compras.aPagar)}` : "Mercadería retirada del mercado"} />
         )}
         {b.ver.costo && (
           <Dato
@@ -318,7 +320,8 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
             detalle={t.gananciaPct !== null ? `${formatearNumero(t.gananciaPct, { decimales: 0 })} de cada 100 pesos vendidos` : "Lo vendido menos lo que costó"}
           />
         )}
-        {t.deuda !== null && <Dato titulo="Se les debe a los proveedores" icono="🏪" color="rosa" valor={plata(t.deuda)} enlace="/cuentas-proveedores" detalle="Hoy, en total · ver las cuentas →" />}
+        {b.dinero && <Dato titulo="A cobrar" icono="🤝" color="azul" valor={plata(b.dinero.aCobrar)} enlace="/cuentas-clientes" detalle="Entregado y sin cobrar, hoy · ver →" />}
+        {t.deuda !== null && <Dato titulo="A pagar" icono="📤" color="rosa" valor={plata(t.deuda)} enlace="/cuentas-proveedores" detalle="Retirado y sin pagar, hoy · ver →" />}
       </div>
 
       {(t.pagado !== null || t.sinFacturar !== null) && (
@@ -345,22 +348,27 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
         </section>
       )}
 
+      {b.dinero && <BalanceDelDinero d={b.dinero} unDia={unDia} />}
+      <ComprasYVentas compras={b.compras} ventas={b.ventas} unDia={unDia} />
+      {b.dinero && <PendientesPorNombre aCobrar={b.aCobrarPorCliente} aPagar={b.aPagarPorProveedor} total={{ aCobrar: b.dinero.aCobrar, aPagar: b.dinero.aPagar }} />}
+      {b.ver.dinero && <GastosPorRubro rubros={b.gastosPorRubro} unDia={unDia} />}
+
       {unDia && <h2 className="text-xl font-semibold">Ese día comparado con los 6 anteriores</h2>}
 
       {/* Un gráfico por renglón: cada uno ocupa todo el ancho de la pantalla. */}
       <div className="flex flex-col gap-4">
         {(g.ver.venta || g.totales.comprado !== null) && (
           <Grafico
-            titulo="Lo que se vendió y lo que se compró"
+            titulo="Lo que se vendió y las compras"
             icono="📊"
-            descripcion={`Cada ${cadaCuanto}, una barra por lo vendido y otra por lo comprado.`}
+            descripcion={`Cada ${cadaCuanto}, una barra por lo vendido (lo que se entregó) y otra por las compras (lo que se retiró del mercado).`}
             tabla={
               <Tabla>
                 <thead>
                   <tr>
                     <th>{conMayuscula(cadaCuanto)}</th>
                     {g.ver.venta && <th className="text-right">Vendido</th>}
-                    {g.totales.comprado !== null && <th className="text-right">Comprado</th>}
+                    {g.totales.comprado !== null && <th className="text-right">Compras</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -380,7 +388,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               etiquetas={etiquetas}
               series={[
                 ...(g.ver.venta ? [{ nombre: "Vendido", color: "serie-1" as const, puntos: g.series.map((s) => punto(s.valores.vendido)) }] : []),
-                ...(g.totales.comprado !== null ? [{ nombre: "Comprado", color: "serie-2" as const, puntos: g.series.map((s) => punto(s.valores.comprado)) }] : []),
+                ...(g.totales.comprado !== null ? [{ nombre: "Compras", color: "serie-2" as const, puntos: g.series.map((s) => punto(s.valores.comprado)) }] : []),
               ]}
             />
           </Grafico>
@@ -416,17 +424,54 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
           </Grafico>
         )}
 
-        {g.ver.deuda && (
+        {g.ver.dinero && (
           <Grafico
-            titulo="Lo que se les debe a los proveedores"
-            icono="🏪"
-            descripcion={`Cuánto se debía al terminar cada ${cadaCuanto}. Si las barras suben, la deuda crece.`}
+            titulo="La plata que entró y la que salió"
+            icono="💵"
+            descripcion={`El dinero real de cada ${cadaCuanto}: lo que pagaron los clientes y otros ingresos, y lo que se les pagó a los proveedores y los gastos.`}
             tabla={
               <Tabla>
                 <thead>
                   <tr>
                     <th>{conMayuscula(cadaCuanto)}</th>
-                    <th className="text-right">Deuda</th>
+                    <th className="text-right">Entró</th>
+                    <th className="text-right">Salió</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.series.map((s) => (
+                    <tr key={s.periodo}>
+                      <td>{s.etiqueta}</td>
+                      <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.entro)}</td>
+                      <td className="text-right whitespace-nowrap">{formatearMoneda(s.valores.salio)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabla>
+            }
+          >
+            <GraficoBarras
+              descripcion={`Lo que entró y lo que salió por ${cadaCuanto}`}
+              etiquetas={etiquetas}
+              series={[
+                { nombre: "Entró", color: "serie-1", puntos: g.series.map((s) => punto(s.valores.entro)) },
+                { nombre: "Salió", color: "serie-2", puntos: g.series.map((s) => punto(s.valores.salio)) },
+              ]}
+            />
+          </Grafico>
+        )}
+
+        {g.ver.deuda && (
+          <Grafico
+            titulo="Lo que queda a pagar a los proveedores"
+            icono="🏪"
+            descripcion={`Lo retirado y todavía sin pagar al terminar cada ${cadaCuanto}. Si las barras suben, se debe más.`}
+            tabla={
+              <Tabla>
+                <thead>
+                  <tr>
+                    <th>{conMayuscula(cadaCuanto)}</th>
+                    <th className="text-right">A pagar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -440,7 +485,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               </Tabla>
             }
           >
-            <GraficoBarras descripcion={`Deuda con proveedores al terminar cada ${cadaCuanto}`} etiquetas={g.deuda.map((s) => s.etiqueta)} series={[{ nombre: "Deuda", color: "serie-2", puntos: g.deuda.map((s) => punto(s.valores.saldo)) }]} />
+            <GraficoBarras descripcion={`A pagar a los proveedores al terminar cada ${cadaCuanto}`} etiquetas={g.deuda.map((s) => s.etiqueta)} series={[{ nombre: "A pagar", color: "serie-2", puntos: g.deuda.map((s) => punto(s.valores.saldo)) }]} />
           </Grafico>
         )}
       </div>

@@ -11,6 +11,7 @@ import { crearClienteSupabaseServidor } from "@/lib/supabase/servidor";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 
 import { ejecutarComoUsuario } from "./contexto";
+import { olvidarSesiones, recordarSesion, sesionRecordada } from "./memoria-sesion";
 
 /** Datos de la sesión que se pueden mostrar en pantalla: nunca incluye datos de otras personas ni de negocio. */
 export interface SesionVisible {
@@ -44,8 +45,10 @@ export const obtenerAuthUserId = cache(async (): Promise<string | null> => {
 export const obtenerSesion = cache(async (): Promise<SesionVisible | null> => {
   const authUserId = await obtenerAuthUserId();
   if (!authUserId) return null;
+  const recordada = sesionRecordada<SesionVisible>(authUserId);
+  if (recordada) return recordada;
   try {
-    return await ejecutarComoUsuario(obtenerBaseDatos(), authUserId, null, async (_tx, c) => ({
+    const sesion = await ejecutarComoUsuario(obtenerBaseDatos(), authUserId, null, async (_tx, c): Promise<SesionVisible> => ({
       usuarioId: c.usuarioId,
       nombre: c.nombre,
       color: c.color,
@@ -56,7 +59,11 @@ export const obtenerSesion = cache(async (): Promise<SesionVisible | null> => {
       permisos: c.permisos.lista(),
       debeCambiarClave: c.debeCambiarClave,
     }));
+    // Mientras tenga que elegir su clave no se recuerda: apenas la cambia tiene que poder entrar.
+    if (!sesion.debeCambiarClave) recordarSesion(authUserId, sesion);
+    return sesion;
   } catch (error) {
+    olvidarSesiones();
     if (esErrorDeNegocio(error, "NO_AUTENTICADO")) return null;
     throw error;
   }

@@ -8,6 +8,7 @@ import { pasosDelDia, type DatosDelDia } from "@/dominio/jornadas/pasos";
 const vacio: DatosDelDia = {
   jornada: "ABIERTA",
   pedidos: { confirmados: 0, borradores: 0 },
+  sinPreparar: 0,
   lista: { armada: false, desactualizada: false, lineas: 0, resueltas: 0, fueraDeLista: 0 },
   compras: 0,
   entregas: { total: 0, preparadas: 0, conDocumentos: 0, enCamino: 0, entregadas: 0 },
@@ -56,6 +57,11 @@ describe("etapas del día en el menú", () => {
     expect(etapas({ jornada: "PREPARANDO", entregas: { total: 2, preparadas: 1, conDocumentos: 1, enCamino: 0, entregadas: 0 } }).remitos).toEqual(["en_curso", "1 hecho"]);
     expect(etapas({ jornada: "REPARTIENDO", entregas: { total: 2, preparadas: 2, conDocumentos: 2, enCamino: 2, entregadas: 2 } }).viaje).toEqual(["hecho", "2 entregados"]);
     expect(etapas({ jornada: "REPARTIENDO", entregas: { total: 2, preparadas: 2, conDocumentos: 2, enCamino: 2, entregadas: 0 } }).viaje?.[1]).toBe("2 en camino");
+    // Se preparó un pedido solo: los que esperan se cuentan aparte y la etapa no figura terminada.
+    const unoSolo = etapas({ jornada: "REPARTIENDO", entregas: { total: 1, preparadas: 1, conDocumentos: 1, enCamino: 1, entregadas: 1 }, repartos: 1, sinPreparar: 2 });
+    expect(unoSolo.preparacion).toEqual(["en_curso", "1 de 1 listos · 2 pedidos sin empezar"]);
+    expect(unoSolo.viaje?.[0]).toBe("actual");
+    expect(etapas({ jornada: "PREPARANDO", entregas: { total: 1, preparadas: 0, conDocumentos: 0, enCamino: 0, entregadas: 0 }, sinPreparar: 1 }).preparacion?.[1]).toBe("0 de 1 listos · 1 pedido sin empezar");
   });
 
   it("lo que quedó a medias antes de la etapa actual queda en curso", () => {

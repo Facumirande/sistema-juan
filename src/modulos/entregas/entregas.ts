@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
@@ -151,11 +151,37 @@ async function cabecera(tx: Transaccion, entregaId: string) {
  */
 export async function entregaParaConfirmar(db: BaseDatos, authUserId: string, entregaId: string) {
   return ejecutarComoUsuario(db, authUserId, "entregas.confirmar", async (tx, c) => {
-    const cab = await cabecera(tx, entregaId);
+    const [cab, lineas, recibieronAntes] = await Promise.all([cabecera(tx, entregaId), lineasOperativas(tx, entregaId), quienesRecibieron(tx, entregaId)]);
     if (soloSusRepartos(c) && cab.repartidorId !== c.usuarioId) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la entrega.");
-    const lineas = await lineasOperativas(tx, entregaId);
-    return { ...cab, lineas };
+    return { ...cab, lineas, recibieronAntes };
   });
+}
+
+/** Lo que queda anotado cuando no se dijo quién recibió (no sirve como historial). */
+const RECIBIO_SIN_NOMBRE = "El cliente (marcado desde el tablero)";
+const NADIE_RECIBIO = "Nadie (no recibió)";
+
+/**
+ * Quiénes recibieron las últimas entregas de ese cliente (nombre y cargo), del más reciente al más
+ * viejo: al confirmar se eligen con un toque en vez de escribirlos cada vez.
+ */
+async function quienesRecibieron(tx: Transaccion, entregaId: string): Promise<{ nombre: string; cargo: string | null }[]> {
+  const ultima = sql`max(${entrega.recibidoEn})`;
+  const filas = await tx
+    .select({ nombre: entrega.recibidoPor, cargo: entrega.recibidoCargo })
+    .from(entrega)
+    .where(
+      and(
+        eq(entrega.estado, "ENTREGADA"),
+        sql`${entrega.clienteId} = (select e.cliente_id from ${entrega} e where e.id = ${entregaId})`,
+        sql`${entrega.recibidoPor} is not null`,
+        notInArray(entrega.recibidoPor, [RECIBIO_SIN_NOMBRE, NADIE_RECIBIO]),
+      ),
+    )
+    .groupBy(entrega.recibidoPor, entrega.recibidoCargo)
+    .orderBy(desc(ultima))
+    .limit(6);
+  return filas.flatMap((f) => (f.nombre ? [{ nombre: f.nombre, cargo: f.cargo }] : []));
 }
 
 /** P-80 Detalle de entrega: con precios congelados solo si el usuario puede verlos. */
@@ -244,10 +270,9 @@ const esquemaConfirmacion = z.object({
   observaciones: textoOpcional(500),
 });
 
-/** Aplica las cantidades entregadas (RN-126): nunca más de lo preparado; menos, con motivo. */
-async function aplicarEntregado(tx: Transaccion, c: ContextoUsuario, entregaId: string, d: z.output<typeof esquemaConfirmacion>) {
-  const items = await tx.select().from(entregaItem).where(eq(entregaItem.entregaId, entregaId));
-  for (const i of items) {
+/** Las cantidades entregadas de cada línea (RN-126): nunca más de lo preparado; menos, con motivo. No guarda nada. */
+function entregadoPorLinea(items: readonly (typeof entregaItem.$inferSelect)[], d: z.output<typeof esquemaConfirmacion>) {
+  return items.map((i) => {
     const preparada = dec(i.cantidadPreparada ?? "0");
     let entregada = preparada;
     let motivo: MotivoDiferencia | null = null;
@@ -273,15 +298,24 @@ async function aplicarEntregado(tx: Transaccion, c: ContextoUsuario, entregaId: 
         }
       }
     }
-    await tx
-      .update(entregaItem)
-      .set({ cantidadEntregada: entregada.toFixed(3), motivoDiferencia: motivo, detalleDiferencia: detalle, actualizadoPor: c.usuarioId })
-      .where(eq(entregaItem.id, i.id));
-  }
-  const empresa = await configuracionEmpresa(tx);
-  const despues = await tx.select().from(entregaItem).where(eq(entregaItem.entregaId, entregaId));
+    return { item: i, entregada: entregada.toFixed(3), motivo, detalle };
+  });
+}
+
+/** Aplica las cantidades entregadas (RN-126) y dice si la entrega quedó con diferencias. */
+async function aplicarEntregado(tx: Transaccion, c: ContextoUsuario, entregaId: string, d: z.output<typeof esquemaConfirmacion>) {
+  const [items, empresa] = await Promise.all([tx.select().from(entregaItem).where(eq(entregaItem.entregaId, entregaId)), configuracionEmpresa(tx)]);
+  const lineas = entregadoPorLinea(items, d);
+  await Promise.all(
+    lineas.map((l) =>
+      tx
+        .update(entregaItem)
+        .set({ cantidadEntregada: l.entregada, motivoDiferencia: l.motivo, detalleDiferencia: l.detalle, actualizadoPor: c.usuarioId })
+        .where(eq(entregaItem.id, l.item.id)),
+    ),
+  );
   return entregaConDiferencias(
-    despues.map((i) => ({ pedida: i.cantidadPedida, preparada: i.cantidadPreparada ?? "0", entregada: i.cantidadEntregada ?? "0", esSustitucion: i.esSustitucion })),
+    lineas.map((l) => ({ pedida: l.item.cantidadPedida, preparada: l.item.cantidadPreparada ?? "0", entregada: l.entregada, esSustitucion: l.item.esSustitucion })),
     empresa.toleranciaPesoPct,
   );
 }
@@ -299,40 +333,56 @@ export async function confirmarEntrega(
   const d = validar(esquemaConfirmacion, datos);
   return ejecutarComoUsuario(db, authUserId, "entregas.confirmar", async (tx, c) => {
     const e = await entregaBloqueada(tx, d.entregaId);
-    const cab = await cabecera(tx, e.id);
+    // Lo que hay que leer sale junto (una ida a la base).
+    const [cab, items, empresa] = await Promise.all([cabecera(tx, e.id), tx.select().from(entregaItem).where(eq(entregaItem.entregaId, e.id)), configuracionEmpresa(tx)]);
     if (soloSusRepartos(c) && cab.repartidorId !== c.usuarioId) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la entrega.");
     exigirJornadaAbierta({ estado: cab.jornadaEstado });
     if (e.estado === "ENTREGADA") throw new ErrorDeNegocio("VALIDACION", "Esta entrega ya está confirmada.");
     if (!transicionEntregaPermitida(e.estado, "ENTREGADA")) throw new ErrorDeNegocio("VALIDACION", "La entrega todavía no está preparada.");
     // Si no recibió nadie (cliente cerrado), queda anotado así (RN-134).
-    if (d.modo === "NO_RECIBIO" && !d.recibidoPor) d.recibidoPor = "Nadie (no recibió)";
+    if (d.modo === "NO_RECIBIO" && !d.recibidoPor) d.recibidoPor = NADIE_RECIBIO;
     if (!d.recibidoPor) throw new ErrorDeNegocio("VALIDACION", "Escribí quién recibió (RN-125).");
-    const conDiferencias = await aplicarEntregado(tx, c, e.id, d);
-    await tx
-      .update(entrega)
-      .set({
-        estado: "ENTREGADA",
-        conDiferencias,
-        recibidoPor: d.recibidoPor,
-        recibidoCargo: d.recibidoCargo,
-        recibidoEn: sql`now()`,
-        observacionesRecepcion: d.observaciones,
-        confirmadaPor: c.usuarioId,
-        actualizadoPor: c.usuarioId,
-      })
-      .where(eq(entrega.id, e.id));
-    await moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO", "EN_REPARTO"], "ENTREGADO");
+    const lineas = entregadoPorLinea(items, d);
+    const conDiferencias = entregaConDiferencias(
+      lineas.map((l) => ({ pedida: l.item.cantidadPedida, preparada: l.item.cantidadPreparada ?? "0", entregada: l.entregada, esSustitucion: l.item.esSustitucion })),
+      empresa.toleranciaPesoPct,
+    );
+    // Las líneas, la entrega y sus pedidos se guardan juntos (una ida).
+    await Promise.all([
+      ...lineas.map((l) =>
+        tx
+          .update(entregaItem)
+          .set({ cantidadEntregada: l.entregada, motivoDiferencia: l.motivo, detalleDiferencia: l.detalle, actualizadoPor: c.usuarioId })
+          .where(eq(entregaItem.id, l.item.id)),
+      ),
+      tx
+        .update(entrega)
+        .set({
+          estado: "ENTREGADA",
+          conDiferencias,
+          recibidoPor: d.recibidoPor,
+          recibidoCargo: d.recibidoCargo,
+          recibidoEn: sql`now()`,
+          observacionesRecepcion: d.observaciones,
+          confirmadaPor: c.usuarioId,
+          actualizadoPor: c.usuarioId,
+        })
+        .where(eq(entrega.id, e.id)),
+      moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO", "EN_REPARTO"], "ENTREGADO"),
+    ]);
     // Con diferencias, los documentos se reemiten con lo entregado (RN-128, RN-129). Si nunca se
     // habían emitido (confirmación desde la oficina), se emiten ahora.
     let documentos: ResultadoEmision | null = null;
     if (e.version === 0) documentos = await emitirDocumentosEntrega(tx, c, e.id, { confirmaMargenNegativo: true });
     else if (conDiferencias) documentos = await reemitirSiCorresponde(tx, c, e.id);
-    await finalizarSiCorresponde(tx, c, e.repartoId);
-    // Clientes que facturan por entrega: el comprobante sale solo (RN-143).
-    const factura = await facturarAlConfirmar(tx, c, e.id);
-    const [cli] = await tx.select({ nombre: cliente.nombre }).from(cliente).where(eq(cliente.id, e.clienteId));
     const como = d.modo === "NO_RECIBIO" ? " (no recibió)" : conDiferencias ? " con diferencias" : "";
-    await registrarActividad(tx, c, { accion: "ENTREGAR", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `entregó el pedido de ${cli?.nombre ?? "un cliente"}${como}` });
+    // El reparto (si era su última parada), el comprobante de los clientes que facturan por entrega
+    // (RN-143) y el registro de quién entregó van a la vez.
+    const [, factura] = await Promise.all([
+      finalizarSiCorresponde(tx, c, e.repartoId),
+      facturarAlConfirmar(tx, c, e.id),
+      registrarActividad(tx, c, { accion: "ENTREGAR", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `entregó el pedido de ${cab.cliente}${como}` }),
+    ]);
     return { documentos, conDiferencias, factura };
   });
 }
@@ -536,4 +586,28 @@ export async function documentosDelDia(
       .filter((f) => !soloSusRepartos(c) || f.repartidorId === c.usuarioId)
       .map((f) => ({ tipo: datos.tipo, contenido: f.contenido, estado: "VIGENTE", version: f.version, vigente: f.version }) as DocumentoDeEntrega);
   });
+}
+
+/**
+ * "✅ Ya se entregó" en la tarjeta del tablero: confirma completa la entrega en camino de ese
+ * pedido (todo lo preparado, sin diferencias). Si hubo diferencias o no lo recibieron, se anota
+ * desde Logística con el detalle.
+ */
+export async function entregarPedido(db: BaseDatos, authUserId: string, pedidoId: string): Promise<{ cliente: string }> {
+  const entregas = await ejecutarComoUsuario(db, authUserId, "entregas.confirmar", (tx) =>
+    tx
+      .selectDistinct({ id: entrega.id, estado: entrega.estado, cliente: cliente.nombre })
+      .from(entregaItem)
+      .innerJoin(entrega, eq(entrega.id, entregaItem.entregaId))
+      .innerJoin(cliente, eq(cliente.id, entrega.clienteId))
+      .innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
+      .where(and(eq(pedidoItem.pedidoId, pedidoId), ne(entrega.estado, "ANULADA"))),
+  );
+  const enCamino = entregas.filter((e) => e.estado === "EN_REPARTO");
+  if (enCamino.length === 0) {
+    if (entregas.some((e) => e.estado === "ENTREGADA")) throw new ErrorDeNegocio("VALIDACION", "Este pedido ya figura como entregado. Recargá la página para verlo en su columna.");
+    throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no salió a entregar: primero pasalo a “En camino” (el botón “🚚 Sale ahora” de su tarjeta) y después marcalo entregado.");
+  }
+  for (const e of enCamino) await confirmarEntrega(db, authUserId, { entregaId: e.id, modo: "COMPLETA", recibidoPor: RECIBIO_SIN_NOMBRE });
+  return { cliente: enCamino[0]!.cliente };
 }

@@ -82,6 +82,8 @@ export const listaCompraItem = pgTable(
     motivoNoConseguido: text("motivo_no_conseguido"),
     /** Tildado a mano como comprado (en la tarjeta del tablero o en la lista), sin anotar la compra. */
     tildado: boolean("tildado").notNull().default(false),
+    /** Lugar en la lista cuando se ordena a mano (arrastrando); nulo = el orden de siempre. */
+    ordenManual: integer("orden_manual"),
     sinPedido: boolean("sin_pedido").notNull().default(false),
     alertas: text("alertas").array().notNull().default(sql`'{}'::text[]`),
     compradorAsignadoId: uuid("comprador_asignado_id").references((): AnyPgColumn => usuario.id),

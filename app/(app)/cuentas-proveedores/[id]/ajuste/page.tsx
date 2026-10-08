@@ -27,7 +27,7 @@ export default async function AjusteDeCuenta({ params }: PageProps<"/cuentas-pro
       <Encabezado
         titulo={`Ajustar la cuenta de ${c.proveedor.nombre}`}
         volver={{ ruta: `/cuentas-proveedores/${id}`, texto: "Cuenta del proveedor" }}
-        descripcion={c.indicadores.saldoAFavor.gt(0) ? `Hoy tenemos ${formatearMoneda(c.indicadores.saldoAFavor)} a favor.` : `Hoy se le debe ${formatearMoneda(c.indicadores.saldoPendiente)}.`}
+        descripcion={c.indicadores.saldoAFavor.gt(0) ? `Hoy tenemos ${formatearMoneda(c.indicadores.saldoAFavor)} a favor.` : `Hoy le debemos ${formatearMoneda(c.indicadores.saldoPendiente)}.`}
       />
 
       <Tarjeta titulo="Ajuste">
@@ -46,11 +46,11 @@ export default async function AjusteDeCuenta({ params }: PageProps<"/cuentas-pro
                 { valor: "AJUSTE_DEBITO", etiqueta: "Sube la deuda (a favor del proveedor)" },
               ]}
             />
-            <CampoNumero etiqueta="Importe" name="monto" placeholder="Ej. 32.400" />
+            <CampoNumero etiqueta="Importe" name="monto" placeholder="Ej. 32.400" required />
             <Selector etiqueta="Compra relacionada (opcional)" name="compraId" opciones={compras} vacia="—" />
             <Campo etiqueta="Vence (solo si sube la deuda)" name="vencimiento" type="date" />
           </div>
-          <Campo etiqueta="Motivo" name="motivo" placeholder="Ej. 2 cajones de tomate podridos" />
+          <Campo etiqueta="Motivo" name="motivo" placeholder="Ej. 2 cajones de tomate podridos" required />
         </FormularioAccion>
       </Tarjeta>
 
@@ -59,7 +59,7 @@ export default async function AjusteDeCuenta({ params }: PageProps<"/cuentas-pro
         <FormularioAccion accion={saldoInicialAccion} boton="Cargar deuda">
           <input type="hidden" name="proveedorId" value={id} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <CampoNumero etiqueta="Cuánto se le debía" name="monto" placeholder="Ej. 120.000" />
+            <CampoNumero etiqueta="Cuánto se le debía" name="monto" placeholder="Ej. 120.000" required />
             <Campo etiqueta="Fecha de la boleta" name="fecha" type="date" max={hoy} />
             <Campo etiqueta="Vence (opcional)" name="vencimiento" type="date" />
             <Campo etiqueta="N.º de boleta (opcional)" name="referencia" />

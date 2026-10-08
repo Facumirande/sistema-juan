@@ -85,7 +85,7 @@ export default async function FichaDeProveedor({ params, searchParams }: PagePro
                   </>
                 ) : (
                   <>
-                    Se le debe <b>{formatearMoneda(cuenta.indicadores.saldoPendiente)}</b>
+                    Le debemos <b>{formatearMoneda(cuenta.indicadores.saldoPendiente)}</b>
                   </>
                 )}
                 {cuenta.indicadores.disponible !== null && ` · disponible ${formatearMoneda(cuenta.indicadores.disponible)}`}

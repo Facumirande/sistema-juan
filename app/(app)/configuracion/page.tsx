@@ -69,7 +69,7 @@ export default async function Configuracion() {
             />
           </Grupo>
 
-          <Grupo titulo="Deudas con proveedores" ayuda="El color de cada proveedor según cuánto de su límite de crédito se usa, y los avisos de vencimiento.">
+          <Grupo titulo="A pagar a los proveedores" ayuda="El color de cada proveedor según cuánto de su límite de crédito se usa, y los avisos de vencimiento.">
             <CampoNumero etiqueta="Amarillo desde (% del límite)" name="semaforoAmarilloPct" defaultValue={c.semaforoAmarilloPct} />
             <CampoNumero etiqueta="Rojo desde (% del límite)" name="semaforoRojoPct" defaultValue={c.semaforoRojoPct} />
             <CampoNumero

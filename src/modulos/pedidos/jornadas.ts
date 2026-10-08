@@ -1,6 +1,7 @@
 import { and, asc, count, eq, gte, inArray, sql, sum } from "drizzle-orm";
 
 import { empresa, jornada, pedido } from "@/db/esquema";
+import { enOrden } from "@/db/transaccion";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { hoyEnEmpresa, jornadaSugerida, sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
@@ -29,6 +30,12 @@ export async function hoyYSugerida(tx: Transaccion): Promise<{ hoy: FechaISO; su
   return { hoy: hoyEnEmpresa(ahora, e.zona), sugerida: jornadaSugerida(ahora, e.zona, e.corte), zonaHoraria: e.zona };
 }
 
+/** Lo mismo que `hoyYSugerida`, sin ir a la base: la zona y la hora de corte ya vienen con quien hace la acción. */
+export function hoyYSugeridaDe(c: { zonaHoraria: string; horaCortePedidos: string | null }): { hoy: FechaISO; sugerida: FechaISO } {
+  const ahora = new Date();
+  return { hoy: hoyEnEmpresa(ahora, c.zonaHoraria), sugerida: jornadaSugerida(ahora, c.zonaHoraria, c.horaCortePedidos) };
+}
+
 /**
  * Jornada de una fecha, creándola si no existe (RN-035). No se cargan pedidos para fechas
  * pasadas ni jornadas cerradas (RN-031); en preparación o reparto hace falta
@@ -36,14 +43,18 @@ export async function hoyYSugerida(tx: Transaccion): Promise<{ hoy: FechaISO; su
  */
 export async function jornadaParaPedidos(tx: Transaccion, c: ContextoUsuario, fecha: string) {
   if (!PATRON_FECHA.test(fecha)) throw new ErrorDeNegocio("VALIDACION", "Elegí la fecha de entrega.");
-  const { hoy } = await hoyYSugerida(tx);
+  // Todo sale junto (una ida a la base): la fecha de hoy, el día (se crea si no estaba) y cómo quedó.
+  const [{ hoy }, , [j]] = await Promise.all([
+    hoyYSugerida(tx),
+    enOrden(
+      tx
+        .insert(jornada)
+        .values({ empresaId: c.empresaId, fecha, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
+        .onConflictDoNothing({ target: [jornada.empresaId, jornada.fecha] }),
+    ),
+    enOrden(tx.select().from(jornada).where(eq(jornada.fecha, fecha))),
+  ]);
   if (fecha < hoy) throw new ErrorDeNegocio("VALIDACION", "Ese día ya pasó: los pedidos se cargan para hoy o para un día siguiente (RN-031).");
-
-  await tx
-    .insert(jornada)
-    .values({ empresaId: c.empresaId, fecha, creadoPor: c.usuarioId, actualizadoPor: c.usuarioId })
-    .onConflictDoNothing({ target: [jornada.empresaId, jornada.fecha] });
-  const [j] = await tx.select().from(jornada).where(eq(jornada.fecha, fecha));
   if (!j) throw new Error("No se pudo crear la jornada.");
   if (j.estado === "CERRADA") {
     throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: elegí otro día. Si de verdad hace falta agregarle algo, primero reabrilo desde “Cierre del día” (RN-031).");

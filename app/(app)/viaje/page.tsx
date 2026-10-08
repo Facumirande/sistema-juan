@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { sumarDias } from "@/dominio/fechas/fechas";
+import { hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { viajeDelDia } from "@/modulos/entregas/viaje";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { fechaConDia } from "@/ui/etiquetas";
 import { BotonAccion } from "@/ui/boton-accion";
+import { fechaConDia } from "@/ui/etiquetas";
+import { FechaGrande } from "@/ui/fecha-grande";
 import { Encabezado, Tarjeta, clasesBoton } from "@/ui/formularios";
 import { FlechaNavegacion } from "@/ui/iconos";
 import { parametro } from "@/ui/parametros";
@@ -15,68 +16,98 @@ import { parametro } from "@/ui/parametros";
 import { salirAccion } from "../repartos/acciones";
 
 import { ubicarPuntoAccion, ubicarSalidaAccion } from "./acciones";
-import { paradasDelDia } from "./paradas";
-import { PlanificadorDeViaje } from "./planificador";
+import { Recorrido, type Destino } from "./recorrido";
 import { MarcarUbicacion } from "./ubicacion";
 
 export const metadata: Metadata = { title: "Logística · Sistema Repartos" };
 
 /**
- * P-78b Logística (el viaje de entrega): las entregas del día que falta llevar, el mejor recorrido (eligiendo cuál
- * va primero si se quiere) y el GPS para ir. Con las que no están en un reparto se arma uno.
+ * P-78b Logística: el recorrido del día en una sola lista (lo que está en camino y los destinos que
+ * se le suman), con su orden, los kilómetros, el GPS y el botón para entregar. Lo que todavía no
+ * salió queda aparte, plegado.
  */
 export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">) {
   const sesion = await sesionParaPantalla("repartos.ver");
   const db = obtenerBaseDatos();
   const pedida = parametro((await searchParams).fecha);
   const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await jornadaEnCurso(db, sesion.authUserId);
-  const { salida, paradas } = await viajeDelDia(db, sesion.authUserId, fecha);
-  const sueltas = paradas.filter((p) => !p.repartoId);
-  const enCamino = paradas.filter((p) => p.estado === "EN_REPARTO").sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99));
-  // Los lugares a los que hay que ir y todavía no tienen su ubicación marcada, cada uno una sola vez.
-  const sinUbicar = [...new Map(paradas.filter((p) => !p.coordenada).map((p) => [p.puntoId, p])).values()];
+  const { salida, paradas, recorrido, favoritos, cerrado } = await viajeDelDia(db, sesion.authUserId, fecha);
+  const puedeGestionar = sesion.permisos.includes("repartos.gestionar") && !cerrado;
+  const puedeEntregar = sesion.permisos.includes("entregas.confirmar");
+  const aca = `/viaje?fecha=${fecha}`;
+
+  const destinos: Destino[] = recorrido.map((d) => ({
+    clave: d.clave,
+    tipo: d.tipo,
+    id: d.id,
+    nombre: d.nombre,
+    punto: d.punto,
+    direccion: d.direccion,
+    localidad: d.localidad,
+    horario: d.horario,
+    coordenada: d.coordenada,
+    telefono: d.telefono,
+    hecha: d.hecha,
+    entregar: d.tipo === "ENTREGA" && !d.hecha && puedeEntregar ? `/repartos/mios/entrega/${d.id}?volver=${encodeURIComponent(aca)}` : null,
+    enlaces: d.tipo === "ENTREGA" && d.numero ? [{ texto: d.numero, href: `/entregas/${d.id}` }] : [],
+    favorito: d.favoritoId !== null,
+    quitar: d.tipo === "EXTRA" && puedeGestionar ? "extra" : null,
+  }));
+
+  // Lo que todavía no salió: las entregas que se están preparando, con o sin reparto armado.
+  const sinSalir = paradas.filter((p) => p.estado !== "EN_REPARTO");
+  const sueltas: Destino[] = sinSalir
+    .filter((p) => !p.repartoId)
+    .map((p) => ({ clave: p.entregaId, tipo: "ENTREGA", id: p.entregaId, nombre: p.cliente, punto: p.punto, direccion: p.direccion, localidad: p.localidad, horario: p.horario, coordenada: p.coordenada, telefono: p.telefono, hecha: false }));
   const repartos = [...new Map(paradas.filter((p) => p.repartoId).map((p) => [p.repartoId!, p.reparto!])).entries()].map(([id, numero]) => {
     const suyas = paradas.filter((p) => p.repartoId === id);
     return { id, numero, paradas: suyas, enCamino: suyas.some((p) => p.estado === "EN_REPARTO"), listo: suyas.every((p) => p.estado === "PREPARADA") };
   });
-  const puedeSalir = sesion.permisos.includes("repartos.gestionar");
+  // Los lugares a los que hay que ir y todavía no tienen su ubicación marcada, cada uno una sola vez.
+  const sinUbicar = [...new Map(paradas.filter((p) => !p.coordenada).map((p) => [p.puntoId, p])).values()];
 
   return (
-    <section className="flex max-w-4xl flex-col gap-6">
-      <Encabezado
-        titulo="Logística"
-        descripcion={`El viaje de entrega del ${fechaConDia(fecha)}: lo que falta llevar, en qué orden conviene (el de menos kilómetros) y el GPS para ir a cada parada. Cuando sale un reparto, sus pedidos pasan a En camino.`}
-      >
-        <Link href={`/inicio?fecha=${fecha}`} className={clasesBoton("secundario")}>
-          Volver al tablero
+    <section className="flex max-w-4xl flex-col gap-5">
+      <Encabezado titulo="Logística" descripcion={`El recorrido del ${fechaConDia(fecha)}: a dónde hay que ir, en qué orden y el GPS para llegar.`}>
+        <Link href={`/inicio?fecha=${fecha}`} className={clasesBoton("principal")}>
+          ← Volver al tablero
         </Link>
       </Encabezado>
-      <nav aria-label="Día" className="flex gap-2">
-        <Link href={`/viaje?fecha=${sumarDias(fecha, -1)}`} className={clasesBoton("secundario")} aria-label="Día anterior">
-          ←
-        </Link>
-        <Link href={`/viaje?fecha=${sumarDias(fecha, 1)}`} className={clasesBoton("secundario")} aria-label="Día siguiente">
-          →
-        </Link>
-      </nav>
+      <div className="flex flex-wrap items-center gap-2">
+        <FechaGrande fecha={fecha} hoy={hoyEnEmpresa(new Date(), sesion.zonaHoraria)} />
+        <nav aria-label="Día" className="flex gap-2">
+          <Link href={`/viaje?fecha=${sumarDias(fecha, -1)}`} className={clasesBoton("secundario")} aria-label="Día anterior">
+            ←
+          </Link>
+          <Link href={`/viaje?fecha=${sumarDias(fecha, 1)}`} className={clasesBoton("secundario")} aria-label="Día siguiente">
+            →
+          </Link>
+        </nav>
+      </div>
 
-      {sesion.permisos.includes("configuracion.editar") && (
-        <details className="rounded-2xl border border-borde bg-superficie p-4" open={!salida.coordenada}>
-          <summary className="cursor-pointer text-lg font-semibold">
-            🏬 De dónde salen los repartos (depósito o mercado) {salida.coordenada ? <span className="font-normal text-texto-suave">· {salida.direccion ?? "marcado"} · cambiar</span> : <span className="text-error">· falta marcarlo</span>}
-          </summary>
-          <div className="mt-3 flex flex-col gap-3">
-            <p className="text-texto-suave">Es el lugar desde donde arranca el recorrido. Se marca una sola vez y sirve para calcular los kilómetros y el mejor orden de todos los días.</p>
-            <MarcarUbicacion accion={ubicarSalidaAccion} campos={{}} actual={salida.coordenada} direccion={salida.direccion ?? ""} titulo="Lugar de salida" guardaDireccion />
-          </div>
-        </details>
-      )}
+      <div id="recorrido">
+        <Tarjeta
+          titulo={
+            <span className="flex items-center gap-2 text-xl">
+              <FlechaNavegacion /> Recorrido
+            </span>
+          }
+        >
+          <Recorrido
+            destinos={destinos}
+            salida={salida}
+            guardar={puedeGestionar ? { tipo: "dia", fecha } : null}
+            agregar={puedeGestionar ? { fecha, favoritos } : null}
+            vacio={cerrado ? "Ese día no tuvo recorrido." : "Todavía no hay nada en camino: cuando un pedido sale, aparece acá."}
+          />
+        </Tarjeta>
+      </div>
 
       {sinUbicar.length > 0 && (
-        <div className="color-amarillo flex flex-col gap-3 rounded-2xl bg-[var(--col)] p-4 text-[var(--col-texto)]">
-          <p className="text-lg font-bold">📍 {sinUbicar.length === 1 ? "Hay 1 lugar sin la ubicación marcada" : `Hay ${sinUbicar.length} lugares sin la ubicación marcada`}</p>
-          <p className="font-medium">Sin eso no se pueden calcular los kilómetros hasta ahí y quedan al final del recorrido (el GPS igual busca la dirección escrita). Tocá cada uno para marcarlo:</p>
-          <ul className="flex flex-col gap-2">
+        <details className="color-amarillo rounded-2xl bg-[var(--col)] p-4 text-[var(--col-texto)]">
+          <summary className="cursor-pointer text-lg font-bold">📍 {sinUbicar.length === 1 ? "Falta marcar la ubicación de 1 lugar" : `Falta marcar la ubicación de ${sinUbicar.length} lugares`}</summary>
+          <p className="mt-2 font-medium">Sin eso no se calculan los kilómetros hasta ahí (el GPS igual busca la dirección escrita). Tocá cada uno:</p>
+          <ul className="mt-3 flex flex-col gap-2">
             {sinUbicar.map((p) => (
               <li key={p.puntoId}>
                 <details className="rounded-xl bg-superficie p-3 text-texto">
@@ -97,69 +128,59 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
-      {enCamino.length > 0 && (
-        <Tarjeta titulo="🚚 En camino">
-          <p className="text-texto-suave">Al dejar cada pedido, tocá Entregar y anotá quién lo recibió (y si faltó o devolvieron algo).</p>
-          <ul className="flex flex-col gap-2">
-            {enCamino.map((p) => (
-              <li key={p.entregaId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-borde p-3">
-                <span className="min-w-0">
-                  <span className="block font-semibold">
-                    {p.orden ? `${p.orden}. ` : ""}
-                    {p.cliente}
-                  </span>
-                  <span className="block text-sm text-texto-suave">
-                    {p.direccion}
-                    {p.horario && ` · recibe ${p.horario}`}
-                  </span>
-                </span>
-                {sesion.permisos.includes("entregas.confirmar") && (
-                  <Link href={`/repartos/mios/entrega/${p.entregaId}?volver=${encodeURIComponent(`/viaje?fecha=${fecha}`)}`} className={clasesBoton("principal")}>
-                    ✅ Entregar
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Tarjeta>
+      {(repartos.length > 0 || sueltas.length > 0) && (
+        <details className="rounded-2xl border border-borde bg-superficie p-4" open={recorrido.length === 0 && sinSalir.length > 0}>
+          <summary className="cursor-pointer text-lg font-semibold">
+            {sinSalir.length > 0 ? `📦 Todavía no ${sinSalir.length === 1 ? "salió 1 entrega" : `salieron ${sinSalir.length} entregas`}` : `Repartos del día (${repartos.length})`}
+          </summary>
+          <div className="mt-3 flex flex-col gap-4">
+            {repartos.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {repartos.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-borde p-3">
+                    <span className="min-w-0">
+                      <span className="block font-semibold">
+                        {r.numero} · {r.paradas.length === 1 ? "1 parada" : `${r.paradas.length} paradas`} · {r.enCamino ? "🚚 en camino" : r.listo ? "✓ listo para salir" : "preparándose"}
+                      </span>
+                      <span className="block text-sm text-texto-suave">{r.paradas.map((p) => p.cliente).join(", ")}</span>
+                    </span>
+                    <span className="flex flex-wrap gap-2">
+                      {!r.enCamino && r.listo && puedeGestionar && (
+                        <BotonAccion accion={salirAccion} datos={{ repartoId: r.id }} confirmar="¿Sale el reparto? Sus pedidos pasan a En camino." className={clasesBoton("principal")}>
+                          🚚 Salir
+                        </BotonAccion>
+                      )}
+                      <Link href={`/repartos/${r.id}`} className={clasesBoton("secundario")}>
+                        Abrir el reparto
+                      </Link>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {sueltas.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="font-semibold">Entregas sin reparto: se les puede armar uno con este orden (o mandarlas desde el tablero con “Sale ahora”).</p>
+                <Recorrido destinos={sueltas} salida={salida} guardar={puedeGestionar ? { tipo: "armar", fecha } : null} />
+              </div>
+            )}
+          </div>
+        </details>
       )}
 
-      {repartos.length > 0 && (
-        <Tarjeta titulo="Repartos armados">
-          <ul className="flex flex-col gap-2">
-            {repartos.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-borde p-3">
-                <span className="min-w-0">
-                  <span className="block font-semibold">
-                    {r.numero} · {r.paradas.length === 1 ? "1 parada" : `${r.paradas.length} paradas`} · {r.enCamino ? "🚚 en camino" : r.listo ? "✓ listo para salir" : "preparándose"}
-                  </span>
-                  <span className="block text-sm text-texto-suave">{r.paradas.map((p) => p.cliente).join(", ")}</span>
-                </span>
-                <span className="flex flex-wrap gap-2">
-                  {!r.enCamino && r.listo && puedeSalir && (
-                    <BotonAccion accion={salirAccion} datos={{ repartoId: r.id }} mostrarExito confirmar="¿Sale el reparto? Sus pedidos pasan a En camino." className={clasesBoton("principal")}>
-                      🚚 Salir
-                    </BotonAccion>
-                  )}
-                  <Link href={`/repartos/${r.id}#recorrido`} className={`${clasesBoton("secundario")} gap-2`}>
-                    <FlechaNavegacion /> Ver el recorrido
-                  </Link>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Tarjeta>
-      )}
-
-      {sueltas.length === 0 ? (
-        paradas.length === 0 && <p className="text-texto-suave">No hay entregas para llevar este día: se arman al empezar a preparar.</p>
-      ) : (
-        <Tarjeta titulo={repartos.length ? "Entregas sin reparto" : "Entregas para llevar"}>
-          <PlanificadorDeViaje paradas={paradasDelDia(sueltas)} salida={salida} guardar={sesion.permisos.includes("repartos.gestionar") ? { tipo: "armar", fecha } : null} />
-        </Tarjeta>
+      {sesion.permisos.includes("configuracion.editar") && (
+        <details className="rounded-2xl border border-borde bg-superficie p-4" open={!salida.coordenada}>
+          <summary className="cursor-pointer text-lg font-semibold">
+            🏬 De dónde salen los repartos {salida.coordenada ? <span className="font-normal text-texto-suave">· {salida.direccion ?? "marcado"} · cambiar</span> : <span className="text-error">· falta marcarlo</span>}
+          </summary>
+          <div className="mt-3 flex flex-col gap-3">
+            <p className="text-texto-suave">El depósito o el mercado. Se marca una sola vez y sirve para calcular los kilómetros y el mejor orden de todos los días.</p>
+            <MarcarUbicacion accion={ubicarSalidaAccion} campos={{}} actual={salida.coordenada} direccion={salida.direccion ?? ""} titulo="Lugar de salida" guardaDireccion />
+          </div>
+        </details>
       )}
     </section>
   );

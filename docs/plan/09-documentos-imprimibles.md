@@ -173,7 +173,7 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 | Elemento | Contenido |
 |---|---|
 | Encabezado izquierdo | Logo, `empresa.nombre`, identificación y condición fiscal, dirección y teléfono (si están cargados). |
-| Encabezado derecho | Nombre del documento en mayúsculas, número visible y versión, fecha principal (jornada, período o fecha de emisión). |
+| Encabezado derecho | Nombre del documento en mayúsculas, número visible y versión, fecha principal (jornada, período o fecha de emisión). En los documentos del día (lista de compras, remito, lista contable, hoja de preparación) la **fecha de entrega va en letra grande y en negrita**, con el día de la semana ("Jueves 24/09"), para leerla de un vistazo. |
 | Pie | Fecha y hora de emisión (zona de la empresa), usuario, página X de Y, leyendas del documento. |
 | Marca de agua | `REEMPLAZADO — ver versión N` al reimprimir una versión vieja; `ANULADO` en documentos anulados; `VISTA PREVIA` cuando se imprime algo que todavía no se emitió (p. ej. una entrega en preparación). |
 

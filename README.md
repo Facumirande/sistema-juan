@@ -1,6 +1,6 @@
 # Sistema Repartos
 
-Sistema de gestión para distribuidores de frutas y verduras: pedidos (tablero tipo Trello), lista de compras para el mercado, compras y deudas con proveedores, preparación por cliente, viaje de entrega, facturación interna y balance. El plan completo está en [`docs/plan/`](docs/plan/README.md) y las decisiones fijas en [`PARAMETROS-DEL-PROYECTO.md`](PARAMETROS-DEL-PROYECTO.md).
+Sistema de gestión para distribuidores de frutas y verduras: pedidos (tablero tipo Trello), lista de compras para el mercado, compras y lo que queda a pagar a los proveedores, preparación por cliente, recorrido de entrega con GPS, lo que queda a cobrar a los clientes, gastos e ingresos generales, facturación interna y balance (dinero real, pendiente y total). El plan completo está en [`docs/plan/`](docs/plan/README.md) y las decisiones fijas en [`PARAMETROS-DEL-PROYECTO.md`](PARAMETROS-DEL-PROYECTO.md).
 
 ## Requisitos
 
@@ -32,7 +32,7 @@ Primer uso: `pnpm dev` y abrir `http://localhost:3000`. Mientras el sistema no e
 app/                 Rutas de Next.js (pantallas)
 src/dominio/         Cálculos puros con pruebas: dinero, precios, compras y crédito, entregas, pedidos, pasos del día
 src/seguridad/       Catálogo de permisos y roles de sistema (02)
-src/db/              Esquema Drizzle, migraciones, transacción con empresa fijada, numeración, auditoría
+src/db/              Esquema Drizzle, migraciones, conexión afinada para ir pocas veces a la base, transacción con empresa fijada, numeración, auditoría
 src/modulos/         Casos de uso por módulo (pedidos, compras, entregas, facturación, reportes…)
 src/lib/supabase/    Clientes de Supabase Auth, cuentas (clave secreta) y proxy de sesión
 src/ui/              Navegación y componentes compartidos

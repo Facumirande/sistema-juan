@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -88,21 +90,27 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
     if (d.claveIdempotencia) {
       const [ya] = await tx.select({ id: compra.id, numero: compra.numero, total: compra.total, proveedorId: compra.proveedorId }).from(compra).where(eq(compra.claveIdempotencia, d.claveIdempotencia));
       if (ya) {
-        const [p] = await tx.select({ limite: proveedor.limiteCredito }).from(proveedor).where(eq(proveedor.id, ya.proveedorId));
-        return { compraId: ya.id, numero: numeroCompra(ya.numero), total: ya.total, advertencia: null, credito: indicadoresCredito(await saldoNeto(tx, ya.proveedorId), p?.limite ?? null, await umbralesSemaforo(tx)) };
+        const [[p], saldo, umbrales] = await Promise.all([tx.select({ limite: proveedor.limiteCredito }).from(proveedor).where(eq(proveedor.id, ya.proveedorId)), saldoNeto(tx, ya.proveedorId), umbralesSemaforo(tx)]);
+        return { compraId: ya.id, numero: numeroCompra(ya.numero), total: ya.total, advertencia: null, credito: indicadoresCredito(saldo, p?.limite ?? null, umbrales) };
       }
     }
-    const j = await jornadaParaCompras(tx, c, d.fecha);
-    const prov = await proveedorBloqueado(tx, d.proveedorId);
+    // Lo que hay que mirar sale junto (una ida a la base). El proveedor queda bloqueado antes de leer
+    // su saldo: las funciones salen en el orden en que se las llama.
+    const [j, prov, [e], presentaciones, vigentes, saldoActual, umbrales] = await Promise.all([
+      jornadaParaCompras(tx, c, d.fecha),
+      proveedorBloqueado(tx, d.proveedorId),
+      tx.select().from(empresa),
+      // Ítems: presentación de compra del producto (RN-055), cantidades en unidad base (RN-057)
+      tx
+        .select({ id: presentacion.id, productoId: presentacion.productoId, factor: presentacion.factorABase, compra: presentacion.usableEnCompra, activa: presentacion.activo, nombre: presentacion.nombre, producto: producto.nombre, admiteFraccion: producto.admiteFraccion, productoActivo: producto.activo })
+        .from(presentacion)
+        .innerJoin(producto, eq(producto.id, presentacion.productoId))
+        .where(inArray(presentacion.id, d.items.map((i) => i.presentacionId))),
+      preciosVigentes(tx, d.proveedorId),
+      saldoNeto(tx, d.proveedorId),
+      umbralesSemaforo(tx),
+    ]);
     if (!prov.activo) throw new ErrorDeNegocio("VALIDACION", `${prov.nombre} está desactivado.`);
-    const [e] = await tx.select().from(empresa);
-
-    // Ítems: presentación de compra del producto (RN-055), cantidades en unidad base (RN-057)
-    const presentaciones = await tx
-      .select({ id: presentacion.id, productoId: presentacion.productoId, factor: presentacion.factorABase, compra: presentacion.usableEnCompra, activa: presentacion.activo, nombre: presentacion.nombre, producto: producto.nombre, admiteFraccion: producto.admiteFraccion, productoActivo: producto.activo })
-      .from(presentacion)
-      .innerJoin(producto, eq(producto.id, presentacion.productoId))
-      .where(inArray(presentacion.id, d.items.map((i) => i.presentacionId)));
     const items = d.items.map((i) => {
       const pr = presentaciones.find((x) => x.id === i.presentacionId && x.productoId === i.productoId);
       if (!pr) throw new ErrorDeNegocio("VALIDACION", "Hay una presentación que no corresponde al producto.");
@@ -110,6 +118,7 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
       if (!pr.productoActivo) throw new ErrorDeNegocio("VALIDACION", `${pr.producto} está desactivado.`);
       return {
         ...i,
+        id: randomUUID(),
         producto: pr.producto,
         presentacion: pr.nombre,
         factor: pr.factor,
@@ -121,16 +130,16 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
     const total = sumar(items.map((i) => i.subtotal));
 
     // Variación brusca contra el precio vigente del proveedor (RN-058)
-    const vigentes = await preciosVigentes(tx, prov.id);
     const bruscas = items.flatMap((i) => {
       const v = vigentes.find((x) => x.productoId === i.productoId && x.presentacionId === i.presentacionId);
       const variacion = v ? variacionPorcentual(v.precio, i.precio) : null;
       return variacion && variacion.abs().gt(dec(e!.variacionBruscaPct)) && !dec(i.precio).isZero()
-        ? [`${i.producto}: vigente ${formatearMoneda(v!.precio)} → ${formatearMoneda(i.precio)} (${variacion.gt(0) ? "+" : ""}${formatearPorcentaje(variacion, 2)})`]
+        ? [`${i.producto} estaba a ${formatearMoneda(v!.precio)} y ahora ponés ${formatearMoneda(i.precio)} (${variacion.gt(0) ? "+" : ""}${formatearPorcentaje(variacion, 0)})`]
         : [];
     });
     if (bruscas.length > 0 && !d.confirmarVariacion) {
-      throw new ErrorDeNegocio("VALIDACION", `Revisá estos precios, cambian mucho: ${bruscas.join(" · ")}. Si están bien, tocá "Confirmar".`, { requiereConfirmacion: true });
+      const uno = bruscas.length === 1;
+      throw new ErrorDeNegocio("VALIDACION", `Revisá ${uno ? "este precio, cambia" : "estos precios, cambian"} mucho: ${bruscas.join(" · ")}. Si ${uno ? "está" : "están"} bien, tocá "Confirmar".`, { requiereConfirmacion: true });
     }
 
     // Pago en el momento (RN-062)
@@ -142,7 +151,6 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
     }
 
     // Límite de crédito con el saldo del proveedor bloqueado (RN-063, RN-109)
-    const saldoActual = await saldoNeto(tx, prov.id);
     const control = verificarLimite({ limite: prov.limiteCredito, saldoActual, totalCompra: total, pagadoEnElActo: pagado, rojoPct: e!.semaforoRojoPct });
     let excede = false;
     if (control.resultado === "BLOQUEO") {
@@ -154,10 +162,22 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
     }
 
     const hoy = hoyEnEmpresa(new Date(), e!.zonaHoraria);
-    const { numero, visible } = await siguienteNumero(tx, "COMPRA");
-    const [nueva] = await tx
-      .insert(compra)
-      .values({
+    // Los números de la compra y de su pago, y los renglones de la lista del día, salen juntos.
+    const [{ numero, visible }, np, lineasLista] = await Promise.all([
+      siguienteNumero(tx, "COMPRA"),
+      pagado.gt(0) ? siguienteNumero(tx, "PAGO_PROVEEDOR") : null,
+      tx
+        .select({ id: listaCompraItem.id, productoId: listaCompraItem.productoId, necesidad: listaCompraItem.necesidadBase })
+        .from(listaCompraItem)
+        .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
+        .where(eq(listaCompra.jornadaId, j.id)),
+    ]);
+    const compraId = randomUUID();
+    const fechaVencimiento = prov.plazoPagoDias !== null ? sumarDias(hoy, prov.plazoPagoDias) : null;
+    // La compra y sus ítems se guardan juntos (una ida): primero la compra.
+    await Promise.all([
+      tx.insert(compra).values({
+        id: compraId,
         empresaId: c.empresaId,
         numero,
         jornadaId: j.id,
@@ -166,7 +186,7 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
         total: aNumeric(total, 2),
         montoPagadoEnElActo: aNumeric(pagado, 2),
         medioPagoEnElActo: pagado.gt(0) ? d.medioPago : null,
-        fechaVencimiento: prov.plazoPagoDias !== null ? sumarDias(hoy, prov.plazoPagoDias) : null,
+        fechaVencimiento,
         numeroComprobanteProveedor: d.numeroComprobante,
         excedeLimite: excede,
         motivoExcesoLimite: excede ? d.motivoExceso : null,
@@ -175,53 +195,43 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
         claveIdempotencia: d.claveIdempotencia ?? null,
         creadoPor: c.usuarioId,
         actualizadoPor: c.usuarioId,
-      })
-      .returning({ id: compra.id, fechaVencimiento: compra.fechaVencimiento });
-
-    const [lista] = await tx.select({ id: listaCompra.id }).from(listaCompra).where(eq(listaCompra.jornadaId, j.id));
-    const lineasLista = lista
-      ? await tx.select({ id: listaCompraItem.id, productoId: listaCompraItem.productoId, necesidad: listaCompraItem.necesidadBase }).from(listaCompraItem).where(eq(listaCompraItem.listaCompraId, lista.id))
-      : [];
-    for (const [n, i] of items.entries()) {
-      const linea = lineasLista.find((l) => l.productoId === i.productoId);
-      // El ítem de compra no se modifica después: si el precio va a cambiar la oferta, se sabe antes.
-      const vigente = vigentes.find((x) => x.productoId === i.productoId && x.presentacionId === i.presentacionId);
-      const cambiaPrecio = dec(i.precio).gt(0) && (!vigente || !dec(vigente.precio).eq(i.precio));
-      const [ci] = await tx
-        .insert(compraItem)
-        .values({
-          empresaId: c.empresaId,
-          compraId: nueva!.id,
-          linea: n + 1,
-          productoId: i.productoId,
-          presentacionId: i.presentacionId,
-          factorABase: aNumeric(i.factor, 3),
-          cantidad: aNumeric(i.cantidad, 3),
-          cantidadBase: aNumeric(i.cantidadBase, 3),
-          precioUnitario: aNumeric(i.precio, 4),
-          costoBase: aNumeric(i.costoBase, 4),
-          subtotal: aNumeric(i.subtotal, 2),
-          listaCompraItemId: linea?.id ?? null,
-          sinPedido: !linea || dec(linea.necesidad).isZero(),
-          proveedorProductoId: vigente?.ofertaId ?? null,
-          actualizoPrecioLista: cambiaPrecio,
-          observaciones: i.observaciones,
-          creadoPor: c.usuarioId,
-          actualizadoPor: c.usuarioId,
-        })
-        .returning({ id: compraItem.id });
-      // El precio pagado pasa a ser el vigente del proveedor (RN-059); una bonificación no.
-      if (dec(i.precio).gt(0)) {
-        await actualizarOfertaPorCompra(tx, c, {
-          proveedorId: prov.id,
-          productoId: i.productoId,
-          presentacionId: i.presentacionId,
-          precio: aNumeric(i.precio, 4),
-          compraItemId: ci!.id,
-          referencia: visible,
-        });
-      }
-    }
+      }),
+      tx.insert(compraItem).values(
+        items.map((i, n) => {
+          const linea = lineasLista.find((l) => l.productoId === i.productoId);
+          // El ítem de compra no se modifica después: si el precio va a cambiar la oferta, se sabe antes.
+          const vigente = vigentes.find((x) => x.productoId === i.productoId && x.presentacionId === i.presentacionId);
+          return {
+            id: i.id,
+            empresaId: c.empresaId,
+            compraId,
+            linea: n + 1,
+            productoId: i.productoId,
+            presentacionId: i.presentacionId,
+            factorABase: aNumeric(i.factor, 3),
+            cantidad: aNumeric(i.cantidad, 3),
+            cantidadBase: aNumeric(i.cantidadBase, 3),
+            precioUnitario: aNumeric(i.precio, 4),
+            costoBase: aNumeric(i.costoBase, 4),
+            subtotal: aNumeric(i.subtotal, 2),
+            listaCompraItemId: linea?.id ?? null,
+            sinPedido: !linea || dec(linea.necesidad).isZero(),
+            proveedorProductoId: vigente?.ofertaId ?? null,
+            actualizoPrecioLista: dec(i.precio).gt(0) && (!vigente || !dec(vigente.precio).eq(i.precio)),
+            observaciones: i.observaciones,
+            creadoPor: c.usuarioId,
+            actualizadoPor: c.usuarioId,
+          };
+        }),
+      ),
+    ]);
+    // El precio pagado pasa a ser el vigente del proveedor (RN-059); una bonificación no. Los ítems
+    // de productos distintos van a la vez; si se repite un producto en la compra, uno después del otro.
+    const conPrecio = items.filter((i) => dec(i.precio).gt(0));
+    const alPrecioVigente = (i: (typeof items)[number]) =>
+      actualizarOfertaPorCompra(tx, c, { proveedorId: prov.id, productoId: i.productoId, presentacionId: i.presentacionId, precio: aNumeric(i.precio, 4), compraItemId: i.id, referencia: visible });
+    if (new Set(conPrecio.map((i) => `${i.productoId}:${i.presentacionId}`)).size === conPrecio.length) await Promise.all(conPrecio.map(alPrecioVigente));
+    else for (const i of conPrecio) await alPrecioVigente(i);
 
     // Cuenta corriente: cargo por el total y, si se pagó algo, el pago imputado a esta compra (06 §3)
     if (total.gt(0)) {
@@ -230,76 +240,77 @@ export async function registrarCompra(db: BaseDatos, authUserId: string, datos: 
         tipo: "CARGO_COMPRA",
         importe: aNumeric(total, 2),
         descripcion: `Compra ${visible}`,
-        compraId: nueva!.id,
-        fechaVencimiento: nueva!.fechaVencimiento,
+        compraId,
+        fechaVencimiento,
       });
     }
-    if (pagado.gt(0)) {
-      const np = await siguienteNumero(tx, "PAGO_PROVEEDOR");
-      const [pago] = await tx
-        .insert(pagoProveedor)
-        .values({
+    if (pagado.gt(0) && np) {
+      const pagoId = randomUUID();
+      await Promise.all([
+        tx.insert(pagoProveedor).values({
+          id: pagoId,
           empresaId: c.empresaId,
           numero: np.numero,
           proveedorId: prov.id,
           monto: aNumeric(pagado, 2),
           medioPago: d.medioPago,
           origen: "EN_COMPRA",
-          compraId: nueva!.id,
+          compraId,
           creadoPor: c.usuarioId,
           actualizadoPor: c.usuarioId,
-        })
-        .returning({ id: pagoProveedor.id });
-      await tx.insert(imputacionPagoProveedor).values({
-        empresaId: c.empresaId,
-        proveedorId: prov.id,
-        pagoProveedorId: pago!.id,
-        compraId: nueva!.id,
-        monto: aNumeric(pagado, 2),
-        creadoPor: c.usuarioId,
-        actualizadoPor: c.usuarioId,
-      });
+        }),
+        tx.insert(imputacionPagoProveedor).values({
+          empresaId: c.empresaId,
+          proveedorId: prov.id,
+          pagoProveedorId: pagoId,
+          compraId,
+          monto: aNumeric(pagado, 2),
+          creadoPor: c.usuarioId,
+          actualizadoPor: c.usuarioId,
+        }),
+      ]);
       await registrarMovimiento(tx, c, {
         proveedorId: prov.id,
         tipo: "PAGO",
         importe: aNumeric(pagado.neg(), 2),
         descripcion: `Pago ${np.visible} (${d.medioPago.toLowerCase()}) de la compra ${visible}`,
-        pagoProveedorId: pago!.id,
+        pagoProveedorId: pagoId,
       });
     }
     // Lo que se tenía a favor con el proveedor cancela la parte a crédito (RN-098)
     if (d.condicion !== "CONTADO") await aplicarSaldoAFavor(tx, c, prov.id);
-    if (excede) {
-      await auditar(tx, {
-        empresaId: c.empresaId,
-        usuarioId: c.usuarioId,
-        accion: "EXCESO_LIMITE",
-        entidad: "compra",
-        entidadId: nueva!.id,
-        resumen: `${visible} a ${prov.nombre} supera el límite de ${formatearMoneda(prov.limiteCredito!)}.`,
-        motivo: d.motivoExceso,
-        datosAntes: { saldo: saldoActual, limite: prov.limiteCredito },
-        datosDespues: { compra: aNumeric(total, 2), pagado: aNumeric(pagado, 2) },
-      });
-    }
 
-    // Lista de compra y precios estimados con el costo real (RN-080, RN-088)
-    await actualizarComprado(tx, c.empresaId, j.id);
-    await recalcularPedidosPendientes(tx, { productoIds: [...new Set(items.map((i) => i.productoId))] });
-
-    const credito = indicadoresCredito(await saldoNeto(tx, prov.id), prov.limiteCredito, await umbralesSemaforo(tx));
-    await registrarActividad(tx, c, { accion: "COMPRAR", entidadTipo: "COMPRA", entidadId: nueva!.id, jornadaId: j.id, resumen: `registró la compra ${visible} a ${prov.nombre}` });
+    // Lista de compra y precios estimados con el costo real (RN-080, RN-088), el saldo como quedó
+    // y el registro de quién compró: todo a la vez.
+    const [saldoFinal] = await Promise.all([
+      saldoNeto(tx, prov.id),
+      actualizarComprado(tx, c.empresaId, j.id),
+      recalcularPedidosPendientes(tx, { productoIds: [...new Set(items.map((i) => i.productoId))] }),
+      excede
+        ? auditar(tx, {
+            empresaId: c.empresaId,
+            usuarioId: c.usuarioId,
+            accion: "EXCESO_LIMITE",
+            entidad: "compra",
+            entidadId: compraId,
+            resumen: `${visible} a ${prov.nombre} supera el límite de ${formatearMoneda(prov.limiteCredito!)}.`,
+            motivo: d.motivoExceso,
+            datosAntes: { saldo: saldoActual, limite: prov.limiteCredito },
+            datosDespues: { compra: aNumeric(total, 2), pagado: aNumeric(pagado, 2) },
+          })
+        : null,
+      registrarActividad(tx, c, { accion: "COMPRAR", entidadTipo: "COMPRA", entidadId: compraId, jornadaId: j.id, resumen: `registró la compra ${visible} a ${prov.nombre}` }),
+    ]);
     return {
-      compraId: nueva!.id,
+      compraId,
       numero: visible,
       total: aNumeric(total, 2),
       advertencia: control.resultado === "ADVERTENCIA" ? `${prov.nombre} queda en ${formatearPorcentaje(control.usoProyectadoPct, 1)} de su límite.` : null,
-      credito,
+      credito: indicadoresCredito(saldoFinal, prov.limiteCredito, umbrales),
     };
   });
 }
 
-/** La jornada de la compra: no CERRADA (RN-054). Se crea si no existe (compras sin pedidos, RN-060). */
 async function jornadaParaCompras(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO) {
   const [j] = await tx.select().from(jornada).where(eq(jornada.fecha, fecha));
   if (j) {

@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# respaldos de datos hechos a mano antes de un reinicio (no se suben)
+/.respaldos/

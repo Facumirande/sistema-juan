@@ -12,6 +12,7 @@ import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import type { ServicioCuentas } from "@/modulos/seguridad/cuentas";
 import { validar } from "@/modulos/validacion";
 import { interpretarIdentificador, LARGO_MINIMO_CLAVE, MENSAJE_IDENTIFICADOR_INVALIDO } from "@/seguridad/identificacion";
+import { olvidarSesiones } from "@/modulos/seguridad/memoria-sesion";
 
 // P-96 Usuarios (02 §10). Sin invitaciones por correo: el ADMIN crea cada cuenta con un
 // nombre de usuario y una contraseña. La pantalla no muestra roles (todos son ADMIN); los
@@ -177,6 +178,8 @@ export async function crearUsuario(
   authUserId: string,
   datos: z.input<typeof esquemaNuevoUsuario>,
 ): Promise<{ usuarioId: string; identificador: string; clave: string }> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   const d = validar(esquemaNuevoUsuario, datos);
   const identificador = interpretarIdentificador(d.identificador);
   if (!identificador) throw new ErrorDeNegocio("VALIDACION", MENSAJE_IDENTIFICADOR_INVALIDO);
@@ -238,6 +241,8 @@ export async function cambiarRolesDeUsuario(
   authUserId: string,
   datos: { usuarioId: string; roles: string[] },
 ): Promise<void> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   const codigosPedidos = validar(esquemaRoles, datos.roles);
   await ejecutarComoUsuario(db, authUserId, "usuarios.administrar", async (tx, c) => {
     await bloquearUsuarios(tx);
@@ -288,6 +293,8 @@ export async function cambiarEstadoDeUsuario(
   authUserId: string,
   datos: { usuarioId: string; activo: boolean },
 ): Promise<void> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   await ejecutarComoUsuario(db, authUserId, "usuarios.administrar", async (tx, c) => {
     await bloquearUsuarios(tx);
     const objetivo = await buscarUsuario(tx, datos.usuarioId);
@@ -331,6 +338,8 @@ export async function restablecerClaveDeUsuario(
   authUserId: string,
   datos: { usuarioId: string; clave?: string },
 ): Promise<{ clave: string }> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   const clave = validar(esquemaClaveOpcional, datos.clave) ?? generarClave();
   return ejecutarComoUsuario(db, authUserId, "usuarios.administrar", async (tx, c) => {
     const objetivo = await buscarUsuario(tx, datos.usuarioId);
@@ -351,6 +360,8 @@ export async function restablecerClaveDeUsuario(
 
 /** La persona ya eligió su propia contraseña (primer ingreso, o cambio en "Mi cuenta"). */
 export async function marcarClavePropia(db: BaseDatos, authUserId: string): Promise<void> {
+  // Cambia lo que la sesión muestra (o quién puede entrar): que no quede recordado lo viejo.
+  olvidarSesiones();
   await ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     if (!c.debeCambiarClave) return;
     await tx.update(usuario).set({ debeCambiarClave: false, actualizadoPor: c.usuarioId }).where(eq(usuario.id, c.usuarioId));

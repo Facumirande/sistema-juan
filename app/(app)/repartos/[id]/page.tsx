@@ -17,19 +17,16 @@ import {
   agregarParadaAccion,
   anularRepartoAccion,
   emitirPendientesAccion,
-  moverParadaAccion,
   proponerOrdenAccion,
-  quitarParadaAccion,
   regresarAccion,
   salirAccion,
 } from "../acciones";
 
-import { paradasDeReparto } from "../../viaje/paradas";
-import { PlanificadorDeViaje } from "../../viaje/planificador";
+import { Recorrido, type Destino } from "../../viaje/recorrido";
 
 export const metadata: Metadata = { title: "Reparto · Sistema Repartos" };
 
-/** P-76 Armar reparto: quién, en qué, qué paradas y en qué orden. */
+/** P-76 Reparto: quién lo hace, en qué, y el recorrido (las paradas en orden, con el GPS y el botón para entregar). */
 export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]">) {
   const sesion = await sesionParaPantalla(null);
   const id = idDeRuta((await params).id);
@@ -43,6 +40,27 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
   const sinPreparar = r.paradas.filter((p) => ["BORRADOR", "EN_PREPARACION"].includes(p.estado));
   const hora = (d: Date | null) => (d ? formatearFechaHora(d, sesion.zonaHoraria).slice(11) : "");
   const oculto = (nombre: string, valor: string) => <input type="hidden" name={nombre} value={valor} />;
+  const destinos: Destino[] = r.paradas.map((p) => ({
+    clave: p.id,
+    tipo: "ENTREGA",
+    id: p.id,
+    nombre: p.cliente,
+    punto: p.punto,
+    direccion: p.direccion,
+    localidad: p.localidad,
+    horario: p.horario,
+    coordenada: p.latitud !== null && p.longitud !== null ? { lat: Number(p.latitud), lng: Number(p.longitud) } : null,
+    telefono: p.telefono,
+    hecha: p.estado === "ENTREGADA",
+    entregar: p.estado === "EN_REPARTO" && sesion.permisos.includes("entregas.confirmar") ? `/repartos/mios/entrega/${p.id}?volver=${encodeURIComponent(`/repartos/${r.id}`)}` : null,
+    detalle: [p.bultos !== null && `${p.bultos} bultos`, ESTADOS_ENTREGA[p.estado]].filter(Boolean).join(" · "),
+    enlaces: [
+      { texto: p.numero, href: `/entregas/${p.id}` },
+      ...(p.documentosAlDia && sesion.permisos.includes("documentos.imprimir_entrega") ? [{ texto: "🧾 remito", href: `/entregas/${p.id}/documento/lista-entrega` }] : []),
+    ],
+    falta: !p.documentosAlDia && p.estado !== "ENTREGADA" ? "sin remito" : null,
+    quitar: puedeGestionar && planificado ? "reparto" : null,
+  }));
 
   return (
     <section className="flex max-w-4xl flex-col gap-6">
@@ -108,85 +126,22 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
         </Tarjeta>
       )}
 
-      {r.paradas.length > 0 && r.estado !== "ANULADO" && (
-        <div id="recorrido">
-          <Tarjeta
-            titulo={
-              <span className="flex items-center gap-2">
-                <FlechaNavegacion /> Recorrido y GPS
-              </span>
-            }
-          >
-            <PlanificadorDeViaje paradas={paradasDeReparto(r.paradas)} salida={salida} guardar={puedeOrdenar ? { tipo: "reparto", repartoId: r.id } : null} />
-          </Tarjeta>
-        </div>
-      )}
-
-      <Tarjeta titulo={`Paradas (${r.paradas.length})`}>
-        {r.paradas.length === 0 ? (
-          <p className="text-texto-suave">Todavía no tiene entregas: agregalas abajo.</p>
-        ) : (
-          <ol className="flex flex-col">
-            {r.paradas.map((p, i) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-borde py-2 first:border-t-0">
-                <div>
-                  <p className="font-semibold">
-                    {i + 1}. {p.cliente} <span className="font-normal text-texto-suave">· {p.punto}</span>
-                  </p>
-                  <p className="text-sm text-texto-suave">
-                    {p.direccion}
-                    {p.localidad && `, ${p.localidad}`}
-                    {p.horario && ` · recibe ${p.horario}`}
-                    {p.bultos !== null && ` · ${p.bultos} bultos`} ·{" "}
-                    <Link href={`/entregas/${p.id}`} className="underline-offset-4 hover:underline">
-                      {p.numero}
-                    </Link>
-                    {" · "}
-                    {ESTADOS_ENTREGA[p.estado]}
-                    {!p.documentosAlDia && p.estado !== "ENTREGADA" && <b className="text-error"> · sin remito</b>}
-                    {p.documentosAlDia && sesion.permisos.includes("documentos.imprimir_entrega") && (
-                      <>
-                        {" · "}
-                        <Link href={`/entregas/${p.id}/documento/lista-entrega`} className="font-medium underline-offset-4 hover:underline">
-                          🧾 remito
-                        </Link>
-                      </>
-                    )}
-                  </p>
-                </div>
-                {p.estado === "EN_REPARTO" && sesion.permisos.includes("entregas.confirmar") && (
-                  <Link href={`/repartos/mios/entrega/${p.id}?volver=${encodeURIComponent(`/repartos/${r.id}`)}`} className={clasesBoton("principal")}>
-                    ✅ Entregar
-                  </Link>
-                )}
-                {puedeGestionar && planificado && (
-                  <div className="flex gap-1">
-                    <FormularioAccion accion={moverParadaAccion} boton="↑" variante="secundario" enLinea>
-                      {oculto("repartoId", r.id)}
-                      {oculto("entregaId", p.id)}
-                      {oculto("hacia", "arriba")}
-                    </FormularioAccion>
-                    <FormularioAccion accion={moverParadaAccion} boton="↓" variante="secundario" enLinea>
-                      {oculto("repartoId", r.id)}
-                      {oculto("entregaId", p.id)}
-                      {oculto("hacia", "abajo")}
-                    </FormularioAccion>
-                    <FormularioAccion accion={quitarParadaAccion} boton="Quitar" variante="secundario" enLinea>
-                      {oculto("repartoId", r.id)}
-                      {oculto("entregaId", p.id)}
-                    </FormularioAccion>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-        {puedeGestionar && planificado && r.paradas.length > 1 && (
-          <FormularioAccion accion={proponerOrdenAccion} boton="Ordenar por horario" variante="secundario">
-            {oculto("repartoId", r.id)}
-          </FormularioAccion>
-        )}
-      </Tarjeta>
+      <div id="recorrido">
+        <Tarjeta
+          titulo={
+            <span className="flex items-center gap-2 text-xl">
+              <FlechaNavegacion /> Recorrido ({r.paradas.length === 1 ? "1 parada" : `${r.paradas.length} paradas`})
+            </span>
+          }
+        >
+          <Recorrido destinos={destinos} salida={salida} guardar={puedeOrdenar ? { tipo: "reparto", repartoId: r.id } : null} vacio="Todavía no tiene entregas: agregalas abajo." />
+          {puedeGestionar && planificado && r.paradas.length > 1 && (
+            <FormularioAccion accion={proponerOrdenAccion} boton="Ordenar por horario" variante="secundario">
+              {oculto("repartoId", r.id)}
+            </FormularioAccion>
+          )}
+        </Tarjeta>
+      </div>
 
       {puedeGestionar && planificado && pendientes.length > 0 && (
         <Tarjeta titulo="Entregas sin reparto">
@@ -210,7 +165,6 @@ export default async function ArmarReparto({ params }: PageProps<"/repartos/[id]
           </ul>
         </Tarjeta>
       )}
-
 
       {puedeGestionar && r.estado !== "ANULADO" && !r.paradas.some((p) => p.estado === "ENTREGADA") && (
         <details className="rounded-lg border border-borde bg-superficie p-4">

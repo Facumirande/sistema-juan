@@ -17,6 +17,7 @@
    - [5.f Sistema de entregas](#5f-sistema-de-entregas)
    - [5.g Venta, facturación y contabilidad](#5g-venta-facturación-y-contabilidad)
    - [5.h Cierre de jornada](#5h-cierre-de-jornada)
+   - [5.i La plata: a cobrar, a pagar, gastos y balance](#5i-la-plata-a-cobrar-a-pagar-gastos-y-balance)
 6. [Referencias cruzadas](#6-referencias-cruzadas)
 
 ---
@@ -126,7 +127,7 @@ flowchart TD
 | 3 | Los pedidos generan las cantidades a comprar | **🛒 Mandar a la lista de compras** (desde el tablero, con los pedidos elegidos o todos): consolida por producto en unidad base y convierte a envases de compra (algoritmo en 5.c). | ADMIN | `lista_compra`, `lista_compra_item`, `pedido` | ítems `PENDIENTE` · pedidos `EN_COMPRA` · jornada `COMPRANDO` |
 | 4 | Se consulta qué proveedores tienen los productos y a qué precio | La **Lista de compras**, todo junto o por puesto, dice en qué puesto conviene cada producto (por costo y crédito disponible) y cuánto se calcula gastar; se imprime `DOC-01`, y `DOC-06` es la lista general de precios. | ADMIN | Ninguna (consulta). | Sin cambio de estado |
 | 5 | Se registran las compras | En la lista de compras, **✓ Lo compré** en cada producto: puesto, cuántos y a cuánto; o una compra suelta con varios productos de un puesto. Actualiza el precio del puesto y su historial; cuando está todo lo de un pedido, su tarjeta pasa a **Comprado**. | ADMIN | `compra`, `compra_item`, `proveedor_producto`, `historial_precio_compra`, `lista_compra_item` | compra `REGISTRADA` · ítems `PARCIAL`/`COMPRADO` |
-| 6 | Se pagan en el momento o a crédito | Condición de pago de la compra: `CONTADO` genera un pago automático por el total; `CREDITO` deja todo pendiente; `MIXTA` registra el pago parcial. Pagos posteriores desde la cuenta corriente. | ADMIN (en el momento o después, desde Deudas con proveedores) | `pago_proveedor`, `imputacion_pago_proveedor` | estado de pago de la compra `PAGADA`, `PARCIAL` o `PENDIENTE` |
+| 6 | Se pagan en el momento o a crédito | Condición de pago de la compra: `CONTADO` genera un pago automático por el total; `CREDITO` deja todo pendiente; `MIXTA` registra el pago parcial. Pagos posteriores desde la cuenta corriente. | ADMIN (en el momento o después, desde **A pagar**) | `pago_proveedor`, `imputacion_pago_proveedor` | estado de pago de la compra `PAGADA`, `PARCIAL` o `PENDIENTE` |
 | 7 | Se actualiza lo adeudado a cada proveedor | Cada compra genera un movimiento `CARGO_COMPRA`; cada pago un movimiento `PAGO`. Se recalculan saldo pendiente, crédito disponible y semáforo (ver `06-creditos-y-pagos.md`). | Sistema (automático) | `movimiento_cuenta_proveedor` | Semáforo `VERDE`/`AMARILLO`/`ROJO`/`EXCEDIDO` |
 | 8 | Se prepara la mercadería de cada cliente | **Empezar a preparar**: se crea una `entrega` por cliente y punto de entrega con lo que hay que separarle; si lo comprado no alcanza, se reparte por prioridad. Por cada producto: **✓ Está todo** o **Falta algo** (cuánto se manda y por qué). | ADMIN | `entrega`, `entrega_item` (`cantidad_preparada`), `pedido` | jornada `PREPARANDO` · entrega `EN_PREPARACION` → `PREPARADA` · pedidos `EN_PREPARACION` → `PREPARADO` |
 | 9 | Se genera la lista de entrega sin precios | **📦 Marcar como preparado**: congela precios en `entrega_item` y hace, de la misma entrega y versión, `DOC-02` Lista de entrega (sin precios) y `DOC-03` Lista contable. | ADMIN | `entrega_item` (precios congelados), `documento_emitido` ×2 | Documentos versión 1 |
@@ -190,7 +191,7 @@ stateDiagram-v2
 | `ABIERTA` o `COMPRANDO` → `PREPARANDO` | **📦 Empezar a preparar**, con `preparacion.registrar` | Se puede aunque falte comprar algo (RN-038) | Crea una `entrega` por cliente y punto de entrega y propone las cantidades (5.e); registra `preparacion_iniciada_en` |
 | `PREPARANDO` → `REPARTIENDO` | Automático cuando sale el primer reparto (RN-039) | El reparto tiene los remitos al día (RN-122) | Registra `reparto_iniciado_en` |
 | `PREPARANDO` o `REPARTIENDO` → `CERRADA` | **🔒 Cerrar el día**, con `jornada.cerrar` | Validaciones de 5.h (RN-040) | Guarda el resumen del día; queda de solo lectura (RN-041) |
-| `CERRADA` → `REPARTIENDO` | "Reabrir el día", con `jornada.reabrir` | Motivo obligatorio | Registro en `auditoria` (`REAPERTURA_JORNADA`) |
+| `CERRADA` → `REPARTIENDO` | "Reabrir el día", con `jornada.reabrir`: desde la pantalla de cierre o con un toque en el cartel del tablero | El motivo se escribe en el cierre; desde el tablero queda "Reabierto desde el tablero" | Registro en `auditoria` (`REAPERTURA_JORNADA`) |
 
 ### 4.3 Qué se puede hacer en cada estado
 
@@ -213,14 +214,14 @@ Ejemplo con la jornada del jueves 24/09 (la hora de corte es configurable).
 
 | Momento | Qué pasa | Estado de la jornada 24/09 |
 |---|---|---|
-| Mié 23/09, 08:00–19:30 | Llegan pedidos por WhatsApp y teléfono; se cargan en **Nuevo pedido** ("Lo que suele pedir", "Repetir su último pedido"). Quedan en la columna **Pedidos** del tablero. | `ABIERTA` |
+| Mié 23/09, 08:00–19:30 | Llegan pedidos por WhatsApp y teléfono; se cargan en **Nuevo pedido** (los productos frecuentes del cliente arriba, y su historial de pedidos). Quedan en la columna **Pedidos** del tablero. | `ABIERTA` |
 | Mié 23/09, 20:00 | Hora de corte. Desde el tablero se mandan los pedidos a la **Lista de compras** (se puede imprimir, `DOC-01`). | `COMPRANDO` |
 | Mié 23/09, 21:30 | Pedido tardío: el restaurante agrega 10 kg de cebolla. La lista avisa que quedó desactualizada y se vuelve a calcular mostrando la diferencia. | `COMPRANDO` |
-| Jue 24/09, 04:30–06:00 | Compra en el mercado con la lista en el celular: **✓ Lo compré** en cada producto (o, sin anotar precios, se tilda en la tarjeta o se arrastra la tarjeta a Comprado, 5.d.5b). La lista se va tachando, el semáforo de cada proveedor se actualiza y los pedidos con todo comprado pasan a **Comprado**. Lo que no hubo se marca "No lo conseguí". | `COMPRANDO` |
-| Jue 24/09, 06:00–07:30 | **Empezar a preparar**: cada cliente con su lista, siguiendo los tres pasos a la vista (separar → marcar preparado → sale). "✓ Está todo" o "Falta algo" con el motivo; al **marcar como preparado** se hacen `DOC-02` y `DOC-03`. Los remitos se ven e imprimen en **Remitos** (menú). | `PREPARANDO` |
+| Jue 24/09, 04:30–06:00 | Compra en el mercado con la lista en el celular: en cada renglón, **💲 Precio y puesto** (a quién se le compró, a cuánto y si quedó a cuenta) o la compra producto por producto (o, sin anotar precios, se tilda en la tarjeta o se arrastra la tarjeta a Comprado, 5.d.5b). La lista se va tachando, el semáforo de cada proveedor se actualiza y los pedidos con todo comprado pasan a **Comprado**. Lo que no hubo se marca "No lo conseguí". | `COMPRANDO` |
+| Jue 24/09, 06:00–07:30 | **Empezar a preparar**: cada cliente con su lista, siguiendo los tres pasos a la vista (separar → marcar preparado → sale). Se tilda ✓ cada producto separado, en la tarjeta del tablero o en Preparación (es el mismo checklist), o se anota lo que falta con el motivo; al **marcar como preparado** se hacen `DOC-02` y `DOC-03`. Los remitos se ven e imprimen en **Remitos** (menú). | `PREPARANDO` |
 | Jue 24/09, 07:00 | **Viaje de entrega**: el mejor orden de las paradas, se arma el reparto, se imprimen los remitos y la hoja de ruta `DOC-04` y sale ("Salir" en el reparto, o arrastrando las tarjetas de Preparando a En camino en el tablero: "🚚 Sale ahora"). | `REPARTIENDO` |
-| Jue 24/09, 07:15–11:00 | Entregas: confirmación en el celular con quién recibió y las diferencias. Si hay diferencias se rehacen los remitos. | `REPARTIENDO` |
-| Jue 24/09, 14:00–16:00 | Pagos a proveedores, comprobantes de los clientes que facturan por entrega (salen solos) y **cierre del día** con su resumen. | `CERRADA` |
+| Jue 24/09, 07:15–11:00 | Entregas: "✅ Ya se entregó" en la tarjeta del tablero (entrega completa) o la confirmación en el celular con quién recibió y las diferencias. Si hay diferencias se rehacen los remitos. | `REPARTIENDO` |
+| Jue 24/09, 14:00–16:00 | Lo que pagaron los clientes se anota en **A cobrar**, lo que se les pagó a los proveedores en **A pagar** y la nafta del reparto en **Gastos e ingresos** (5.i); los comprobantes de los clientes que facturan por entrega salen solos; **cierre del día** con su resumen. | `CERRADA` |
 
 ---
 
@@ -307,7 +308,7 @@ Meta de diseño: un pedido de 10 productos en menos de dos minutos desde el celu
 
 1. **¿Para quién es?** Recuadros de clientes con buscador; si tiene varios lugares de entrega se elige uno.
 2. **¿Para qué día?** Los próximos 7 días; se propone mañana (o pasado mañana después de la hora de corte). Si el cliente ya tiene un pedido ese día y lugar, se avisa y se ofrece sumarle los productos (RN-022).
-3. **¿Qué lleva?** Recuadros de productos por categoría, "Lo que suele pedir" y "Repetir su último pedido"; cantidades con − y + o escritas, por kilo o por envase, y una nota por producto. El sistema muestra la equivalencia en unidad base ("3 bolsas = 75 kg").
+3. **¿Qué lleva?** Una sola lista de productos: arriba los **productos frecuentes** del cliente y, debajo, todos los demás del más reciente al menos reciente; además, su historial de pedidos para repetir uno. La cantidad se cambia con − y + o escribiéndola. Va en la medida del producto; solo si el producto tiene varias (por kilo y además por cajón o bolsa) se elige en cuál, y entonces el sistema la pasa a unidad base ("3 bolsas = 75 kg"). Una nota por producto.
 4. Prioridad, horario y nota del pedido.
 5. **✓ Guardar el pedido** guarda todo junto, directamente en `CONFIRMADO` (RN-018, RN-018b): nunca queda un pedido vacío. No hay borradores a mano; un pedido queda `BORRADOR` solo si algo impidió completarlo (por ejemplo, le falta la orden de compra), y se completa solo al mandarlo a la lista o al empezar a preparar si ya tiene productos.
 
@@ -570,7 +571,7 @@ Si la regeneración ocurre después de haber comprado (por ejemplo, ya se compra
 
 #### 5.d.1 Registro rápido en el mercado
 
-**Desde la lista de compras (lo habitual):** en cada producto, **✓ Lo compré** → el puesto (los que lo venden, u "Otro puesto…"), cuántos envases y a cuánto cada uno, y **📒 Queda a cuenta** o **💵 Le pagué en efectivo** → **Anotar la compra**. Es una compra de un producto (`CREDITO` o `CONTADO`) con todos los efectos de abajo (pasos 3, 5 y 6); la línea pasa a "Ya resuelto" y, cuando está todo lo de un pedido, su tarjeta pasa a **Comprado** en el tablero.
+**Desde la lista de compras (lo habitual):** a la derecha de cada renglón, **💲 Precio y puesto** → el puesto en una lista (primero los que lo venden; se puede elegir cualquier otro), cuántos envases y a cuánto cada uno, y **Pagado** o **A cuenta** → **✓ Guardar la compra**. La misma carga se puede hacer producto por producto, a pantalla completa, con **🛒 Empezar la compra**. Es una compra de un producto (`CREDITO` o `CONTADO`) con todos los efectos de abajo (pasos 3, 5 y 6); la línea pasa a "Ya resuelto" y, cuando está todo lo de un pedido, su tarjeta pasa a **Comprado** en el tablero.
 
 **Compra suelta con varios productos de un puesto:**
 
@@ -710,9 +711,9 @@ stateDiagram-v2
 1. Al tocar **Empezar a preparar** el sistema completa los pedidos sin terminar que tienen productos y crea una `entrega` `BORRADOR` por cada combinación cliente + punto de entrega con pedidos `CONFIRMADO` o `EN_COMPRA` en la jornada (RN-111); en el tablero esos pedidos pasan a **Preparando**. Cada `entrega_item` referencia su `pedido_item` y copia `cantidad_pedida` (en unidad base). Dos pedidos del mismo cliente y punto van a la misma entrega.
 2. Para cada producto el sistema calcula **disponible** = comprado en la jornada y lo compara con la necesidad (si en la jornada no se registró ninguna compra, se propone lo pedido: no hay con qué comparar). Si alcanza, propone `cantidad_preparada` = `cantidad_pedida`; si no, aplica el algoritmo de faltantes (5.e.1).
 3. Se trabaja en una de dos vistas (sin precios):
-   - **Por cliente**: cada cliente es una tarjeta con todo lo que hay que separarle (✓ separado, ⬜ por separar) y lo que no alcanzó. Se abre el pedido del hospital, luego el del restaurante, etc. Se puede imprimir `DOC-07` Hoja de preparación por cliente.
+   - **Por cliente**: cada cliente es una tarjeta con todo lo que hay que separarle en un checklist (se tilda ✓ ahí mismo; es el mismo que se ve y se tilda en la tarjeta del tablero) y lo que no alcanzó. Se abre el pedido del hospital, luego el del restaurante, etc. Se puede imprimir `DOC-07` Hoja de preparación por cliente.
    - **Por producto**: pesa todo el tomate y lo reparte entre los clientes (más rápido con productos a granel).
-4. En cada producto: **✓ Está todo** (un toque, con lo propuesto) o **Falta algo o pesa distinto**: la **cantidad real** (peso de la balanza o unidades contadas, RN-112) y, si falta, **por qué** (no se consiguió, no alcanzó lo comprado, estaba en mal estado, error al preparar, el cliente lo sacó, otro). Lo que falta queda a la vista en la tarjeta del cliente y en el tablero ("Va 30 kg de 36 kg · no se consiguió") para avisarle. Si la diferencia con lo pedido está dentro de la tolerancia (3 % por defecto) no se considera diferencia (RN-113); si está fuera, pide confirmación y la línea queda marcada.
+4. En cada producto: el tilde **✓** (un toque: queda separado con lo propuesto) o, en el pedido del cliente, **Falta algo o pesa distinto**: la **cantidad real** (peso de la balanza o unidades contadas, RN-112) y, si falta, **por qué** (no se consiguió, no alcanzó lo comprado, estaba en mal estado, error al preparar, el cliente lo sacó, otro). Lo que falta queda a la vista en la tarjeta del cliente y en el tablero ("Va 30 kg de 36 kg · no se consiguió") para avisarle. Si la diferencia con lo pedido está dentro de la tolerancia (3 % por defecto) no se considera diferencia (RN-113); si está fuera, pide confirmación y la línea queda marcada.
 5. Registra sustituciones si corresponde (5.e.2).
 6. Cuando todas las líneas tienen cantidad preparada (0 con motivo si no hay), marca la entrega `PREPARADA` (RN-118). Los pedidos pasan a `PREPARADO`. En ese momento se **emiten los documentos** de la entrega (5.f.2); si falta un precio, quedan pendientes hasta completarlo.
 7. **🚚 Sale ahora** (RN-153): cuando el pedido se va a entregar, desde la preparación, la tarjeta abierta o arrastrando la tarjeta de Preparando a En camino en el tablero, pasa a `EN_REPARTO` en un paso (5.f.1). Si todavía hay productos sin tildar, primero pide confirmar que salen con lo propuesto.
@@ -798,14 +799,14 @@ función distribuirFaltante(producto, disponible, lineas):
 | Disparador | Entregas `PREPARADA`. |
 | Precondiciones | Jornada `PREPARANDO` o `REPARTIENDO`; según el paso: `repartos.gestionar` (armar repartos), `entregas.gestionar` (armar entregas y pasarlas a `EN_REPARTO`), `entregas.emitir_documentos` (emitir y reemitir `DOC-02` y `DOC-03`), `documentos.imprimir_entrega` (`DOC-02`, `DOC-04`, `DOC-07`), `documentos.imprimir_contable` (`DOC-03`), `entregas.confirmar`, `entregas.corregir`, `entregas.anular`. |
 
-#### 5.f.1 Viaje de entrega y armado del reparto
+#### 5.f.1 El recorrido y el reparto
 
-1. **Viaje de entrega**: muestra las entregas del día que faltan llevar y calcula el orden con menos kilómetros desde el depósito o el mercado (o desde donde está el celular), empezando por la parada que se elija o por la más cómoda.
-2. **Armar el reparto con este orden**: crea el reparto `REP-xxxxxx` a cargo de quien lo arma, con las paradas en ese orden. Una entrega está en un solo reparto a la vez (RN-123).
-3. Desde "Repartos armados" se abre el reparto: se cambia el orden si hace falta, se hacen los remitos que falten y se imprime `DOC-04` Hoja de ruta (orden, cliente, dirección, horario, contacto, instrucciones, bultos; sin precios).
-4. **Salir** (en el reparto o en "Repartos armados" del viaje): exige que todas las entregas del reparto estén preparadas y tengan los remitos de su versión vigente (RN-122); si no se eligió quién lo hace, queda a cargo de quien toca Salir. Reparto → `EN_CURSO` (registra `salida_en`), entregas y pedidos → `EN_REPARTO`, jornada → `REPARTIENDO` si era el primer reparto (RN-039).
+1. **Logística** (el recorrido del día): una sola lista con lo que está en camino, en el orden en que se va a ir, con los kilómetros entre un destino y el siguiente. Los destinos se arrastran y el orden queda guardado al soltar; **Calcular el mejor recorrido** los acomoda con menos kilómetros desde el depósito o el mercado (o desde donde está el celular) y después se puede seguir cambiando a mano (RN-176). Con **＋ Agregar destino** se suman lugares que no son entregas (el banco, un taller), de los favoritos o nuevos (RN-177).
+2. **Armar el reparto con este orden** (en "Todavía no salieron", para las entregas sin reparto): crea el reparto `REP-xxxxxx` a cargo de quien lo arma, con las paradas en ese orden. Una entrega está en un solo reparto a la vez (RN-123).
+3. Desde "Todavía no salieron" se abre el reparto: se cambia el orden si hace falta, se hacen los remitos que falten y se imprime `DOC-04` Hoja de ruta (orden, cliente, dirección, horario, contacto, instrucciones, bultos; sin precios).
+4. **Salir** (en el reparto o en "Todavía no salieron" de Logística): exige que todas las entregas del reparto estén preparadas y tengan los remitos de su versión vigente (RN-122); si no se eligió quién lo hace, queda a cargo de quien toca Salir. Reparto → `EN_CURSO` (registra `salida_en`), entregas y pedidos → `EN_REPARTO`, jornada → `REPARTIENDO` si era el primer reparto (RN-039).
    - **Atajo "🚚 Sale ahora"** (RN-153): arrastrar una tarjeta de Preparando a En camino en el tablero (o elegir varias y "🚚 Salen ahora", o el botón en la tarjeta abierta y en la preparación) hace todo junto: completa lo que falte separar (si se confirma), marca preparado, hace el remito si falta y sale. Si la entrega ya estaba en un reparto armado, sale ese reparto con todas sus paradas (que tienen que estar listas); si no, sale en un reparto nuevo a cargo de quien la manda (las sueltas elegidas juntas van en el mismo). Si falta un precio para el remito no sale nada y el aviso lleva a cargarlo.
-5. En el camino, cada parada tiene **Ir** (Google Maps), **Waze** y llamar.
+5. En el camino, cada destino del recorrido tiene **Ir** (Google Maps), **Waze**, llamar y **✅ Entregar**.
 6. Al confirmar la última parada (o con "Regresé"), el reparto pasa a `FINALIZADO` y registra `regreso_en`.
 
 Estados del reparto (definidos en `03-modelo-de-datos.md`): `PLANIFICADO` → `EN_CURSO` → `FINALIZADO`; `ANULADO` solo si no tiene entregas `ENTREGADA`.
@@ -878,10 +879,10 @@ sequenceDiagram
     S-->>R: Parada confirmada, sigue parada 3
 ```
 
-1. Se abre la parada con **✅ Entregar** desde "🚚 En camino" del viaje de entrega o desde la parada del reparto (también desde **Mi reparto** (el reparto a cargo de cada uno; un REPARTIDOR solo ve los suyos, RN-131) o desde la entrega, "Confirmar desde la oficina").
+1. Se abre la parada con **✅ Entregar** desde el recorrido de Logística ("Ver recorrido" en la columna En camino del tablero) o desde la parada del reparto (también desde **Mi reparto** (el reparto a cargo de cada uno; un REPARTIDOR solo ve los suyos, RN-131) o desde la entrega, "Confirmar desde la oficina").
 2. "Entregado completo" (un toque: `cantidad_entregada` = `cantidad_preparada` en todas las líneas) o "Con diferencias".
 3. Con diferencias: por línea, cantidad entregada (≤ preparada, RN-126), motivo (`motivo_diferencia`: `RECHAZO_CALIDAD`, `FALTANTE`, `NO_CONSEGUIDO`, `ERROR_PREPARACION`, `CAMBIO_CLIENTE`, `OTRO`) y detalle en texto ("4 kg golpeados", "cliente cerrado").
-4. Datos de recepción: nombre y cargo de quien recibe (`recibido_por`, obligatorio), hora (`recibido_en`, la registra el servidor), y observaciones de la recepción.
+4. Datos de recepción: nombre y cargo de quien recibe (`recibido_por`, obligatorio; se elige con un toque entre quienes recibieron las últimas entregas de ese cliente, o se escribe, RN-178), hora (`recibido_en`, la registra el servidor), y observaciones de la recepción.
 5. "Confirmar": entrega `ENTREGADA`; pedidos `ENTREGADO`; `con_diferencias` según RN-127; la venta queda registrada (5.g).
 6. Si hubo diferencias, el sistema incrementa la versión y reemite `DOC-02` y `DOC-03` con `cantidad_entregada` (RN-128, RN-129).
 
@@ -924,7 +925,7 @@ sequenceDiagram
 | Disparador | Entrega `ENTREGADA`; fin del período de facturación del cliente; pedido del contador. |
 | Precondiciones | Permisos `facturacion.emitir`, `facturacion.anular`, `facturacion.exportar`. |
 
-**Alcance:** registro de la venta por entrega + comprobante interno no fiscal + exportación para el contador. No hay facturación fiscal ni cobranzas de clientes.
+**Alcance:** registro de la venta por entrega + comprobante interno no fiscal + exportación para el contador. No hay facturación fiscal. Lo que paga cada cliente se anota aparte, en "A cobrar" (5.i): cobrar no depende de haber hecho el comprobante.
 
 #### 5.g.1 Registro de la venta
 
@@ -1037,7 +1038,44 @@ Una entrega `FACTURADA` ya no se puede modificar ni reemitir (RN-138). Para corr
 |---|---|
 | Una entrega quedó `EN_REPARTO` porque no se confirmó en el camino | Se confirma desde la entrega ("Confirmar desde la oficina"); queda registrado quién confirmó. |
 | Se detecta un error después de cerrar | Reabrir la jornada (ADMIN, motivo, `auditoria`), corregir y volver a cerrar. Si la entrega está facturada, ver 5.g. |
+| Una tarjeta se pasó de columna sin querer | Se la vuelve un paso atrás, arrastrándola a la columna anterior o con "↩" en la tarjeta abierta (RN-174): de Preparando a donde estaba, de En camino a Preparando, de Entregados a En camino. Con el día cerrado, primero se reabre. |
 | Compra que llega al día siguiente para esta jornada (el proveedor la trajo tarde) | Si la jornada está cerrada, se registra en la jornada siguiente como compra sin pedido. |
+
+---
+
+### 5.i La plata: a cobrar, a pagar, gastos y balance
+
+| Campo | Detalle |
+|---|---|
+| Objetivo | Saber en todo momento cuánta plata entró y salió de verdad, cuánta falta cobrar y cuánta falta pagar, y qué quedaría si todo se saldara. |
+| Actores | ADMIN. |
+| Disparador | Una entrega confirmada (nace lo que hay que cobrar), una compra a cuenta (nace lo que hay que pagar), un cobro, un pago, un gasto o un ingreso. |
+| Precondiciones | Permisos `cobranzas.*` (a cobrar), `pagos.*` (a pagar, gastos e ingresos) y `reportes.ver` (balance). |
+
+Los dos lados son iguales:
+
+| | Con los proveedores | Con los clientes |
+|---|---|---|
+| Qué genera la deuda | Retirar mercadería (una compra) | Entregar mercadería (una entrega confirmada) |
+| Si se paga en el momento | Compra **pagada** | Entrega **cobrada** |
+| Si no | Queda **a pagar** (crédito del proveedor) | Queda **a cobrar** |
+| Dónde se ve y se salda | **A pagar** (cuenta del proveedor, `06-creditos-y-pagos.md`) | **A cobrar** (cuenta del cliente) |
+
+**A cobrar.** Apenas se confirma una entrega, su importe pasa a la cuenta del cliente. Cuando paga, se anota el cobro: **Pagó todo** (un toque, en efectivo o por transferencia), **otro importe** (una parte o un adelanto) o el cobro de **una entrega** en particular. No hay que elegir a qué va cada cobro: cancela lo más viejo que deba (RN-166); si paga de más, queda a su favor. Un cobro mal anotado se anula con motivo. Lo que el cliente ya debía antes de usar el sistema se carga una vez en su cuenta.
+
+**Gastos e ingresos.** Lo que se gasta o entra por fuera de la mercadería (nafta, peajes, arreglos, venta de cajones) se anota eligiendo el rubro y escribiendo el importe (y la cantidad, si el rubro la lleva: litros de nafta). Los rubros se crean libremente, con su dibujo y su título (RN-169, RN-170).
+
+**Balance del dinero** (RN-171, RN-172). Con todo eso el Balance muestra tres cosas:
+
+1. **Dinero real** de las fechas elegidas: lo que entró (cobros + otros ingresos) menos lo que salió (pagos a proveedores + gastos).
+2. **Dinero pendiente**, a hoy: lo que falta cobrar menos lo que falta pagar, en total, por cliente y por proveedor.
+3. **Balance total:** real + pendiente.
+
+Y, para las compras y las ventas de esas fechas, cuánto de lo retirado ya está pagado y cuánto quedó a pagar, y cuánto de lo entregado ya está cobrado y cuánto quedó a cobrar.
+
+**Ejemplo.** Se le entregan $486.840 al hospital y paga $200.000 en efectivo: entran $200.000 reales y quedan $286.840 a cobrar. Ese día se pagaron $237.500 a proveedores y $42.000 de nafta: salieron $279.500. Dinero real: −$79.500. Si además se les debe $696.750 a los proveedores, el dinero pendiente es $286.840 − $696.750 = −$409.910 y el balance total, −$489.410.
+
+**Datos que se crean o modifican:** `cobro_cliente`, `movimiento_extra`, `rubro_gasto`, `cliente.saldo_inicial`, `secuencia`, `auditoria`, `actividad`.
 
 ---
 
@@ -1055,4 +1093,5 @@ Una entrega `FACTURADA` ya no se puede modificar ni reemitir (RN-138). Para corr
 | 5.g Facturación | RN-135 a RN-143 | DOC-08 Comprobante interno | — |
 | 5.h Cierre | RN-040, RN-041 | — | — |
 | Pagos a proveedores | RN-092 a RN-110 | DOC-05 | `06-creditos-y-pagos.md` |
+| 5.i La plata | RN-164 a RN-172 | — | `08-pantallas-y-acciones.md` P-65, P-66 y P-91 |
 

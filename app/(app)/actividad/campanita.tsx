@@ -16,12 +16,11 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { marcarAvisosVistosAccion, marcarTodasLeidasAccion, pedirAlgoAccion } from "./acciones";
 
 // La campanita del encabezado: cuántas novedades hay, el panel con lo que cargó o cambió cada
-// persona (lo dirigido a uno, destacado), y un cartelito cuando llega algo mientras la pantalla
-// está abierta. Pregunta al servidor cada medio minuto; en las pantallas del día de trabajo,
+// persona (lo dirigido a uno, destacado). No hay carteles emergentes dentro de la app (pedido del
+// usuario, 07/10/2026): las novedades suman en el número de la campanita. Pregunta al servidor cada medio minuto; en las pantallas del día de trabajo,
 // además, vuelve a dibujar los datos para que el tablero quede al día sin recargar.
 
 const CADA_CUANTO_MS = 30_000;
-const CARTEL_MS = 10_000;
 /** Pantallas que se redibujan solas cuando la otra persona hace algo. */
 const PANTALLAS_VIVAS = ["/inicio", "/lista-compra", "/preparacion", "/viaje", "/actividad"];
 
@@ -30,16 +29,17 @@ const destinoDe = (a: AvisoVisible) => (!a.entidad ? "/actividad" : a.entidad.ti
 /** "cargó el pedido…" o, si es una nota, "te dejó una nota en PED-000012 · Hospital". */
 const textoDe = (a: AvisoVisible) => (a.clase === "NOTA" && a.entidad && a.entidad.tipo !== "USUARIO" ? `${a.resumen} en ${a.entidad.etiqueta}` : a.resumen);
 
-export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; zonaHoraria: string }) {
-  // Lo que trae la página al dibujarse manda sobre lo último que se consultó.
-  const [guardada, setGuardada] = useState({ de: inicial, datos: inicial });
-  if (guardada.de !== inicial) setGuardada({ de: inicial, datos: inicial });
-  const bandeja = guardada.datos;
+const SIN_AVISOS: BandejaDeAvisos = { nuevos: 0, notasSinLeer: 0, avisos: [], personas: [], paraRevisar: [] };
+
+export function Campanita({ zonaHoraria }: { zonaHoraria: string }) {
+  // Los avisos no demoran ninguna pantalla: los pide la campanita apenas aparece y después cada medio minuto.
+  const [bandeja, setBandeja] = useState<BandejaDeAvisos>(SIN_AVISOS);
+  const cargada = useRef(false);
+  const consultarAhora = useRef<() => void>(() => undefined);
 
   const [abierta, setAbierta] = useState(false);
   const [vistos, setVistos] = useState(false);
   const [ahora, setAhora] = useState(0);
-  const [cartel, setCartel] = useState<{ texto: string; href: string; paraMi: boolean } | null>(null);
   const [permiso, setPermiso] = useState<NotificationPermission | "sin-soporte">("sin-soporte");
   const conocidos = useRef(new Set<string>());
   const caja = useRef<HTMLDivElement>(null);
@@ -51,10 +51,6 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
     pantallaActual.current = pantalla;
   }, [pantalla]);
   useEffect(() => {
-    for (const a of inicial.avisos) conocidos.current.add(a.id);
-  }, [inicial]);
-
-  useEffect(() => {
     let viva = true;
     const consultar = async () => {
       const conPermiso = "Notification" in window && Notification.permission === "granted";
@@ -64,15 +60,15 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
         const respuesta = await fetch("/avisos", { cache: "no-store" });
         if (!respuesta.ok || !viva) return;
         const nueva = (await respuesta.json()) as BandejaDeAvisos;
-        const novedades = nueva.avisos.filter((a) => a.nuevo && !conocidos.current.has(a.id));
+        // La primera vez solo se toma nota de lo que hay: no es una novedad.
+        const novedades = cargada.current ? nueva.avisos.filter((a) => a.nuevo && !conocidos.current.has(a.id)) : [];
+        cargada.current = true;
         for (const a of nueva.avisos) conocidos.current.add(a.id);
-        setGuardada((g) => ({ de: g.de, datos: nueva }));
+        setBandeja(nueva);
         if (novedades.length === 0) return;
         setVistos(false);
-        const paraMi = novedades.some((a) => a.paraMi);
         const texto = textoDeNovedades(novedades.map((a) => ({ persona: a.persona.nombre, resumen: textoDe(a) })));
         if (texto) {
-          setCartel({ texto, href: novedades.length === 1 ? destinoDe(novedades[0]!) : "/actividad", paraMi });
           if (document.visibilityState !== "visible" && conPermiso) {
             try {
               new Notification("Sistema Repartos", { body: texto, tag: "sistema-repartos" });
@@ -86,6 +82,8 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
         // Sin conexión por un momento: se vuelve a preguntar en la próxima vuelta.
       }
     };
+    consultarAhora.current = () => void consultar();
+    void consultar();
     const reloj = setInterval(consultar, CADA_CUANTO_MS);
     const alVolver = () => {
       if (document.visibilityState === "visible") void consultar();
@@ -97,12 +95,6 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
       document.removeEventListener("visibilitychange", alVolver);
     };
   }, [router]);
-
-  useEffect(() => {
-    if (!cartel) return;
-    const reloj = setTimeout(() => setCartel(null), CARTEL_MS);
-    return () => clearTimeout(reloj);
-  }, [cartel]);
 
   useEffect(() => {
     if (!abierta) return;
@@ -127,12 +119,12 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
       return;
     }
     setAbierta(true);
-    setCartel(null);
     setAhora(Date.now());
     setPermiso("Notification" in window ? Notification.permission : "sin-soporte");
     if (bandeja.nuevos > bandeja.notasSinLeer && !vistos) {
       setVistos(true);
       void marcarAvisosVistosAccion();
+      setBandeja((b) => ({ ...b, nuevos: b.notasSinLeer, avisos: b.avisos.map((a) => (a.clase === "NOTA" ? a : { ...a, nuevo: false })) }));
     }
   };
   const pedirPermiso = async () => {
@@ -155,19 +147,12 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
       >
         <span aria-hidden>🔔</span>
         {nuevos > 0 && <span className="absolute top-1 right-0.5 min-w-5 rounded-full bg-[var(--vence-fondo)] px-1 text-center text-xs leading-5 font-bold text-white">{nuevos > 9 ? "9+" : nuevos}</span>}
+        {nuevos === 0 && bandeja.paraRevisar.length > 0 && (
+          <span className="absolute top-1 right-0.5 min-w-5 rounded-full bg-amber-500 px-1 text-center text-xs leading-5 font-bold text-black" title="Hay productos para revisar">
+            !
+          </span>
+        )}
       </button>
-
-      {cartel && !abierta && (
-        <div role="status" className="fixed inset-x-2 top-16 z-50 flex items-center gap-2 rounded-2xl bg-[#172b4d] p-2 pl-4 text-white shadow-xl sm:right-4 sm:left-auto sm:w-96">
-          <Link href={cartel.href} onClick={() => setCartel(null)} className="min-w-0 flex-1 py-2">
-            <span className="block text-sm font-semibold opacity-80">{cartel.paraMi ? "👉 Para vos" : "🔔 Novedad"}</span>
-            <span className="block font-medium">{cartel.texto}</span>
-          </Link>
-          <button type="button" onClick={() => setCartel(null)} aria-label="Cerrar el aviso" className="flex size-10 shrink-0 items-center justify-center rounded-full text-xl hover:bg-white/15">
-            ×
-          </button>
-        </div>
-      )}
 
       {abierta && (
         <div role="dialog" aria-label="Avisos" className="fixed inset-x-2 top-16 z-50 flex max-h-[78dvh] flex-col overflow-hidden rounded-2xl border border-borde bg-superficie shadow-2xl sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[26rem]">
@@ -180,6 +165,25 @@ export function Campanita({ inicial, zonaHoraria }: { inicial: BandejaDeAvisos; 
             )}
           </div>
           <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {bandeja.paraRevisar.length > 0 && (
+              <li className="border-b border-borde bg-amber-50 px-4 py-3 text-amber-950 dark:bg-amber-950 dark:text-amber-50">
+                <p className="font-bold">⚠ {bandeja.paraRevisar.length === 1 ? "Hay 1 producto para revisar" : `Hay ${bandeja.paraRevisar.length} productos para revisar`}</p>
+                <ul className="mt-1 flex flex-col gap-1.5">
+                  {bandeja.paraRevisar.map((p) => (
+                    <li key={p.id}>
+                      <Link href={p.href} onClick={() => setAbierta(false)} className="block rounded-lg px-2 py-1 hover:bg-black/10 dark:hover:bg-white/10">
+                        <b className="underline underline-offset-2">{p.producto}</b>
+                        {p.problemas.map((texto) => (
+                          <span key={texto} className="block text-sm">
+                            {texto}
+                          </span>
+                        ))}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            )}
             {bandeja.avisos.length === 0 && (
               <li className="px-4 py-6 text-center text-texto-suave">No hay novedades. Acá vas a ver lo que cargue o cambie la otra persona, y lo que te pidan.</li>
             )}

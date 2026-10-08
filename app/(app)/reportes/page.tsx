@@ -14,7 +14,7 @@ import { parametro } from "@/ui/parametros";
 export const metadata: Metadata = { title: "Reportes · Sistema Repartos" };
 
 const PATRON = /^\d{4}-\d{2}-\d{2}$/;
-const REPORTES = { ventas: "Ventas y margen", compras: "Compras", jornadas: "Días cerrados", deuda: "Deuda con proveedores", diferencias: "Faltantes y diferencias" } as const;
+const REPORTES = { ventas: "Ventas y margen", compras: "Compras", jornadas: "Días cerrados", deuda: "A pagar a los proveedores", diferencias: "Faltantes y diferencias" } as const;
 type Reporte = keyof typeof REPORTES;
 
 const plata = (v: string | null) => (v === null ? "—" : formatearMoneda(v));
@@ -215,7 +215,7 @@ export default async function PaginaReportes({ searchParams }: PageProps<"/repor
 
       {deuda &&
         (deuda.filas.length === 0 ? (
-          <p className="text-texto-suave">No se le debe nada a ningún proveedor.</p>
+          <p className="text-texto-suave">No le debemos nada a ningún proveedor.</p>
         ) : (
           <Tabla>
             <thead>

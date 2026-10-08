@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition, type PointerEvent as EventoPuntero } from "react";
 
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { formatearMoneda } from "@/dominio/dinero/formato";
-import { COLUMNAS_ARRASTRABLES, accionAlMover, porQueNoSeMueve, resumenDeSeleccion, type ClaveColumna } from "@/dominio/pedidos/tablero";
+import { COLUMNAS_ARRASTRABLES, PASO_SIGUIENTE, accionAlMover, porQueNoSeMueve, resumenDeSeleccion, type ClaveColumna } from "@/dominio/pedidos/tablero";
 import type { PersonaVisible } from "@/modulos/colaboracion/personas";
 import type { ColumnaDelTablero, ProductoDeTarjeta, TarjetaPedido } from "@/modulos/pedidos/tablero";
 import { Avatar } from "@/ui/avatar";
+import { Checklist, conTildeDeCompra, motivoParaNoTildar, type Tilde } from "@/ui/checklist";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 
 import { salenAhoraAccion } from "../repartos/acciones";
 import {
   armarListaConElegidosAccion,
+  cerrarDiaAccion,
+  separarProductoAccion,
   asignarElegidosAccion,
   moverTarjetaAccion,
   prioridadElegidosAccion,
@@ -31,8 +33,7 @@ import {
 // marcan varias (o todas) para mandarlas juntas a la lista de compras o a entregar.
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
-type Tilde = "SI" | "NO" | "PENDIENTE";
-type CambioALaVista = { tipo: "mover"; id: string; hacia: ClaveColumna } | { tipo: "tildar"; listaItemId: string; valor: Tilde };
+type CambioALaVista = { tipo: "mover"; id: string; hacia: ClaveColumna } | { tipo: "tildar"; listaItemId: string; valor: Tilde } | { tipo: "separar"; entregaItemId: string; separado: boolean };
 
 interface Props {
   fecha: string;
@@ -43,7 +44,9 @@ interface Props {
   /** "/inicio?fecha=…": las tarjetas se abren agregando `&pedido=…`. */
   base: string;
   /** `salir`: puede mandar pedidos a En camino (arma el reparto y sale). */
-  puede: { crear: boolean; armar: boolean; editar: boolean; tildar: boolean; salir: boolean };
+  puede: { crear: boolean; armar: boolean; editar: boolean; tildar: boolean; salir: boolean; preparar: boolean; entregar: boolean; cerrar: boolean };
+  /** El día ya está cerrado. */
+  cerrado: boolean;
   /** Destino de cada columna para ir a la pantalla de esa etapa. */
   enlaces: Partial<Record<ClaveColumna, { href: string; texto: string }>>;
 }
@@ -88,11 +91,14 @@ function conElCambio(columnas: ColumnaDelTablero[], cambio: CambioALaVista): Col
         );
         return { ...t, columna: cambio.hacia, productos };
       }
+      if (cambio.tipo === "separar") {
+        if (!t.productos.some((p) => p.entregaItemId === cambio.entregaItemId)) return t;
+        const productos = t.productos.map((p): ProductoDeTarjeta => (p.entregaItemId === cambio.entregaItemId ? { ...p, hecha: cambio.separado } : p));
+        return { ...t, productos, avance: t.avance ? { ...t.avance, hechos: productos.filter((p) => p.hecha).length } : t.avance };
+      }
       if (!t.productos.some((p) => p.listaItemId === cambio.listaItemId)) return t;
       const productos = t.productos.map((p): ProductoDeTarjeta =>
-        p.listaItemId === cambio.listaItemId
-          ? { ...p, hecha: cambio.valor !== "PENDIENTE", tildado: cambio.valor === "SI", compra: cambio.valor === "SI" ? "COMPRADO" : cambio.valor === "NO" ? "NO_CONSEGUIDO" : "PENDIENTE", aviso: cambio.valor === "NO" ? "No se consiguió en el mercado" : null }
-          : p,
+        p.listaItemId === cambio.listaItemId ? conTildeDeCompra(p, cambio.valor) : p,
       );
       const enCompra = t.columna === "en_lista" || t.columna === "comprados";
       return {
@@ -109,7 +115,7 @@ function Insignias({ t }: { t: TarjetaPedido }) {
   const avanceCompleto = t.avance && t.avance.total > 0 && t.avance.hechos === t.avance.total;
   if (!t.plazo && t.notas.total === 0 && !(t.avance && t.avance.total > 0) && !(t.totalEstimado !== null && t.lineas > 0)) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-tarjeta-suave">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-tarjeta-suave @[18rem]:gap-x-3">
       {t.plazo && (
         <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium ${PLAZO[t.estadoPlazo]}`} title={`Plazo: ${t.plazo}`}>
           <span aria-hidden>⏰</span>
@@ -138,80 +144,6 @@ function Insignias({ t }: { t: TarjetaPedido }) {
   );
 }
 
-const cajaDeProductos = "flex flex-col gap-1 rounded-lg bg-[var(--col-claro)] p-2 text-[var(--col-claro-texto)]";
-const avisoDeProducto = "mt-0.5 block w-fit rounded-md bg-white/80 px-2 text-sm font-semibold text-[#8a3a00] dark:bg-black/40 dark:text-[#fedec8]";
-const hecho = "font-bold text-[var(--listo-fondo)] dark:text-[#7ee2b8]";
-
-/** Los productos de una tarjeta en la lista de compras: se tilda lo comprado (✓) y lo que no se consiguió (✕). */
-function ProductosParaTildar({ t, alTildar }: { t: TarjetaPedido; alTildar: (p: ProductoDeTarjeta, valor: Tilde) => void }) {
-  const boton = "flex shrink-0 items-center justify-center rounded-lg border-2 font-bold leading-none transition-colors";
-  return (
-    <ul className={`${cajaDeProductos} max-h-64 overflow-y-auto overscroll-contain`} aria-label={`Lo que lleva ${t.cliente}: tildá lo que ya se compró`}>
-      {t.productos.map((p, i) => {
-        const comprado = p.compra === "COMPRADO";
-        const noHay = p.compra === "NO_CONSEGUIDO";
-        return (
-          <li key={`${p.nombre}-${i}`} className="flex items-center gap-1.5 text-[15px]">
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={comprado}
-              aria-label={`${p.nombre}: ya se compró`}
-              title={comprado ? (p.tildado ? "Comprado: tocá para destildar" : "Comprado (la compra está anotada)") : "Tildar como comprado"}
-              data-sin-arrastre
-              onClick={() => alTildar(p, comprado ? "PENDIENTE" : "SI")}
-              className={`${boton} size-10 text-xl ${comprado ? "border-[var(--listo-fondo)] bg-[var(--listo-fondo)] text-white" : "border-current/40 bg-white/70 hover:border-[var(--listo-fondo)] dark:bg-black/30"}`}
-            >
-              {comprado ? "✓" : ""}
-            </button>
-            <span aria-hidden>{dibujoDeProducto(p.nombre, p.grupo)}</span>
-            <span className={`min-w-0 flex-1 truncate ${noHay ? "line-through opacity-60" : comprado ? "opacity-80" : "font-medium"}`} title={p.nombre}>
-              {p.nombre}
-            </span>
-            <span className={`shrink-0 font-semibold tabular-nums ${noHay ? "line-through opacity-60" : ""}`}>{p.cantidad}</span>
-            <button
-              type="button"
-              aria-pressed={noHay}
-              aria-label={`${p.nombre}: no se consiguió`}
-              title={noHay ? "No se consiguió: tocá para volver a buscarlo" : "Marcar que no se consiguió"}
-              data-sin-arrastre
-              onClick={() => alTildar(p, noHay ? "PENDIENTE" : "NO")}
-              className={`${boton} size-9 text-base ${noHay ? "border-[var(--vence-fondo)] bg-[var(--vence-fondo)] text-white" : "border-transparent opacity-50 hover:border-[var(--vence-fondo)] hover:opacity-100"}`}
-            >
-              ✕
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function ProductosALaVista({ t }: { t: TarjetaPedido }) {
-  // Al preparar se ven todos los productos con lo que ya está (✓) y lo que falta (⬜).
-  const preparando = t.columna === "preparando";
-  return (
-    <ul className={`${cajaDeProductos} ${preparando ? "max-h-64 overflow-y-auto overscroll-contain" : ""}`}>
-      {(preparando ? t.productos : t.productos.slice(0, PRODUCTOS_A_LA_VISTA)).map((p, i) => (
-        <li key={`${p.nombre}-${i}`} className="text-[15px]">
-          <span className="flex items-baseline gap-2">
-            {preparando && (
-              <span aria-label={p.hecha ? "listo" : "falta"} className={p.hecha ? hecho : "opacity-60"}>
-                {p.hecha ? "✓" : "⬜"}
-              </span>
-            )}
-            <span aria-hidden>{dibujoDeProducto(p.nombre, p.grupo)}</span>
-            <span className="min-w-0 flex-1 truncate">{p.nombre}</span>
-            <span className="shrink-0 font-semibold tabular-nums">{p.cantidad}</span>
-          </span>
-          {p.aviso && <span className={`${avisoDeProducto} ml-6`}>⚠ {p.aviso}</span>}
-        </li>
-      ))}
-      {!preparando && t.productos.length > PRODUCTOS_A_LA_VISTA && <li className="pl-7 text-sm opacity-75">y {t.productos.length - PRODUCTOS_A_LA_VISTA} más…</li>}
-    </ul>
-  );
-}
-
 function Tarjeta({
   t,
   href,
@@ -219,6 +151,8 @@ function Tarjeta({
   elegida = false,
   alElegir,
   alTildar,
+  alSeparar,
+  siguiente,
 }: {
   t: TarjetaPedido;
   href: string;
@@ -227,23 +161,41 @@ function Tarjeta({
   alElegir?: () => void;
   /** Con esto, los productos se pueden tildar en la tarjeta (columnas Lista de compras y Comprado). */
   alTildar?: (p: ProductoDeTarjeta, valor: Tilde) => void;
+  /** Con esto, los productos se tildan como separados en la tarjeta (columna Preparando). */
+  alSeparar?: (p: ProductoDeTarjeta, separado: boolean) => void;
+  /** El botón verde que la hace avanzar al paso que sigue. */
+  siguiente?: { texto: string; alTocar: () => void; ocupado: boolean } | null;
 }) {
   const etiquetas = etiquetasDePedido(t);
+  // El mismo checklist en todas las columnas: con tildes donde se compra o se prepara, y a la vista en las demás.
+  const conTildes = Boolean(alTildar || alSeparar);
+  const productos = (
+    <Checklist
+      productos={t.productos}
+      modo={alTildar ? "compra" : alSeparar ? "separar" : t.columna === "preparando" ? "visto" : "ver"}
+      alTildar={alTildar}
+      alSeparar={alSeparar}
+      tono="columna"
+      limite={conTildes || t.columna === "preparando" ? undefined : PRODUCTOS_A_LA_VISTA}
+      className={conTildes || t.columna === "preparando" ? "max-h-[32rem] overflow-y-auto overscroll-contain [scrollbar-width:thin]" : ""}
+      etiqueta={`Lo que lleva ${t.cliente}${alTildar ? ": tildá lo que ya se compró" : alSeparar ? ": tildá lo que ya separaste" : ""}`}
+    />
+  );
   const cabecera = (
-    <div className="flex items-center gap-3 bg-[var(--col-fuerte)] px-3 py-2.5 text-[var(--col-fuerte-texto)]">
-      <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/25 text-2xl">
+    <div className="flex items-center gap-2 bg-[var(--col-fuerte)] px-2 py-2 text-[var(--col-fuerte-texto)] @[18rem]:gap-3 @[18rem]:px-3 @[18rem]:py-2.5">
+      <span aria-hidden className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-white/25 text-2xl @[18rem]:flex">
         {dibujoDeCliente(t.tipoCliente)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-lg leading-snug font-bold">{t.cliente}</p>
+        <p className="text-lg leading-tight font-bold [overflow-wrap:anywhere] @[18rem]:text-xl">{t.cliente}</p>
         <p className="text-sm opacity-90">
           {t.numero}
           {t.observaciones && <span title={t.observaciones}> · 📝 con nota</span>}
         </p>
       </div>
       {t.responsable && (
-        <span title={`Se encarga ${t.responsable.nombre}`}>
-          <Avatar persona={t.responsable} />
+        <span title={`Se encarga ${t.responsable.nombre}`} className="shrink-0">
+          <Avatar persona={t.responsable} tamano="chico" />
         </span>
       )}
     </div>
@@ -265,30 +217,43 @@ function Tarjeta({
     return (
       <label className={`${clases} cursor-pointer`}>
         {cabecera}
-        <span className="flex gap-3 p-3">
+        <span className="flex gap-1.5 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
           <input type="checkbox" checked={elegida} onChange={alElegir} className="mt-1 size-6 shrink-0" aria-label={`Elegir ${t.numero} de ${t.cliente}`} />
-          <span className="flex min-w-0 flex-1 flex-col gap-3">
+          <span className="flex min-w-0 flex-1 flex-col gap-2 @[18rem]:gap-3">
             {etiquetasALaVista}
-            {t.productos.length > 0 ? <ProductosALaVista t={t} /> : vacia}
+            {t.productos.length > 0 ? productos : vacia}
             <Insignias t={t} />
           </span>
         </span>
       </label>
     );
   }
-  if (alTildar && t.productos.length > 0) {
-    // Los tildes son botones: no pueden ir dentro del enlace que abre la tarjeta.
+  const botonSiguiente = siguiente && t.productos.length > 0 && (
+    <button
+      type="button"
+      data-sin-arrastre
+      disabled={siguiente.ocupado}
+      onClick={siguiente.alTocar}
+      className="flex min-h-14 w-full items-center justify-center rounded-xl bg-marca px-2 py-2 text-center text-base leading-tight font-extrabold text-balance text-marca-texto shadow-sm hover:brightness-110 disabled:animate-pulse disabled:opacity-70 @[18rem]:px-3 @[18rem]:text-lg"
+    >
+      {siguiente.texto}
+      {"\u00a0→"}
+    </button>
+  );
+  if ((alTildar || alSeparar || botonSiguiente) && t.productos.length > 0) {
+    // Los tildes y el botón verde son botones: no pueden ir dentro del enlace que abre la tarjeta.
     return (
       <article className={clases}>
         <Link href={destino} scroll={false} draggable={false} className="block" aria-label={`Abrir ${t.numero} de ${t.cliente}`}>
           {cabecera}
         </Link>
-        <div className="flex flex-col gap-3 p-3">
+        <div className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
           {etiquetasALaVista}
-          <ProductosParaTildar t={t} alTildar={alTildar} />
+          {productos}
           <Link href={destino} scroll={false} draggable={false} className="block empty:hidden">
             <Insignias t={t} />
           </Link>
+          {botonSiguiente}
         </div>
       </article>
     );
@@ -296,9 +261,9 @@ function Tarjeta({
   return (
     <Link href={destino} scroll={false} draggable={false} className={clases}>
       {cabecera}
-      <span className="flex flex-col gap-3 p-3">
+      <span className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
         {etiquetasALaVista}
-        {t.productos.length > 0 ? <ProductosALaVista t={t} /> : vacia}
+        {t.productos.length > 0 ? productos : vacia}
         <Insignias t={t} />
       </span>
     </Link>
@@ -319,7 +284,8 @@ function Aviso({ estado, cerrar, confirmar }: { estado: EstadoAccion; cerrar: ()
       )}
       {estado.enlace && (
         <Link href={estado.enlace.href} className="rounded-lg bg-white px-4 py-2 font-semibold text-[#172b4d] shadow-sm">
-          {estado.enlace.texto} →
+          {estado.enlace.texto}
+          {"\u00a0→"}
         </Link>
       )}
       <button type="button" onClick={cerrar} aria-label="Cerrar el aviso" className="flex size-9 items-center justify-center rounded-full text-xl leading-none hover:bg-black/10">
@@ -347,7 +313,7 @@ interface Agarre {
   reloj: ReturnType<typeof setTimeout> | null;
 }
 
-export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, yo, base, puede, enlaces }: Props) {
+export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, yo, base, puede, cerrado, enlaces }: Props) {
   const [eligiendo, setEligiendo] = useState(false);
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
   const [filtroPersona, setFiltroPersona] = useState<string | null>(null);
@@ -371,6 +337,8 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
   const todas = useMemo(() => columnas.flatMap((c) => c.tarjetas), [columnas]);
   const pasaFiltro = (t: TarjetaPedido) => (!filtroPersona || t.responsable?.id === filtroPersona) && (!soloUrgentes || t.prioridad === "ALTA");
   const elegidasTarjetas = todas.filter((t) => elegidas.has(t.id));
+  // El día está para cerrar cuando hay pedidos y todos quedaron entregados.
+  const todoEntregado = todas.length > 0 && todas.every((t) => t.columna === "entregados");
   const resumen = resumenDeSeleccion(elegidasTarjetas);
 
   const ejecutar = (accion: Accion, datos: Record<string, string | string[]>, opciones: { aLaVista?: CambioALaVista; despues?: () => void } = {}) => {
@@ -380,8 +348,9 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
     empezar(async () => {
       if (opciones.aLaVista) mostrarCambio(opciones.aLaVista);
       const r = await accion(ESTADO_INICIAL, fd);
-      // Un tilde que salió bien no dice nada: no tapa el aviso que estuviera a la vista.
-      if (r.mensaje || !r.ok) setMensaje(r.mensaje ? r : { ok: false, mensaje: "No se pudo guardar. Probá de nuevo." });
+      // Lo que sale bien se ve en el tablero y no dice nada. Solo hay cartel cuando algo no se pudo
+      // hacer: ahí dice por qué y qué hay que hacer.
+      setMensaje(r.ok ? ESTADO_INICIAL : r.mensaje ? r : { ok: false, mensaje: "No se pudo guardar: revisá la conexión y probá de nuevo." });
       if (r.ok) opciones.despues?.();
     });
   };
@@ -426,24 +395,20 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
   };
 
   const tildar = (p: ProductoDeTarjeta, valor: Tilde) => {
-    if (!p.listaItemId) {
-      setMensaje({
-        ok: false,
-        mensaje: `${p.nombre} todavía no está en la lista de compras (cambió un pedido después de armarla): actualizala y vas a poder tildarlo.`,
-        enlace: { href: `/lista-compra?fecha=${fecha}`, texto: "Ir a la lista de compras" },
-      });
-      return;
-    }
-    if (p.compra === "COMPRADO" && !p.tildado && valor !== "SI") {
-      setMensaje({
-        ok: false,
-        mensaje: `La compra de ${p.nombre} ya está anotada (puesto y precio). Para deshacerla, anulala desde “Compras anotadas”.`,
-        enlace: { href: `/compras?fecha=${fecha}`, texto: "Ver las compras anotadas" },
-      });
+    const motivo = motivoParaNoTildar(p, valor, fecha);
+    if (motivo || !p.listaItemId) {
+      if (motivo) setMensaje({ ok: false, ...motivo });
       return;
     }
     ejecutar(tildarProductoAccion, { itemId: p.listaItemId, valor, desde: p.compra ?? "" }, { aLaVista: { tipo: "tildar", listaItemId: p.listaItemId, valor } });
   };
+
+  const separar = (p: ProductoDeTarjeta, separado: boolean) => {
+    if (!p.entregaItemId) return;
+    ejecutar(separarProductoAccion, { itemId: p.entregaItemId, separado: separado ? "si" : "no" }, { aLaVista: { tipo: "separar", entregaItemId: p.entregaItemId, separado } });
+  };
+  /** Quién puede hacer avanzar una tarjeta de cada columna. */
+  const puedeAvanzar: Record<ClaveColumna, boolean> = { pedidos: puede.armar, en_lista: puede.tildar, comprados: puede.preparar, preparando: puede.salir, en_camino: puede.entregar, entregados: false };
 
   const soltar = (id: string, desde: ClaveColumna, hacia: ClaveColumna) => {
     const tarjeta = todas.find((t) => t.id === id);
@@ -458,7 +423,6 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
       setMensaje(sinProductos(tarjeta));
       return;
     }
-    if (accion === "PREPARAR" && !window.confirm("Empezar a preparar arma la preparación de todos los pedidos del día, no solo de este. ¿Empezamos?")) return;
     setLlegada(id);
     setTimeout(() => setLlegada((actual) => (actual === id ? null : actual)), 500);
     ejecutar(moverTarjetaAccion, { pedido: id, desde, hacia }, { aLaVista: { tipo: "mover", id, hacia } });
@@ -482,9 +446,12 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
     }
     const r = tablero.getBoundingClientRect();
     const borde = 72;
-    const empuje = a.x < r.left + borde ? a.x - r.left - borde : a.x > r.right - borde ? a.x - (r.right - borde) : 0;
-    if (empuje !== 0) {
-      tablero.scrollLeft += Math.max(-26, Math.min(26, empuje * 0.4));
+    const empuje = (punto: number, desde: number, hasta: number) => (punto < desde + borde ? punto - desde - borde : punto > hasta - borde ? punto - (hasta - borde) : 0);
+    const paso = (e: number) => Math.max(-26, Math.min(26, e * 0.4));
+    const [dx, dy] = [empuje(a.x, r.left, r.right), empuje(a.y, r.top, r.bottom)];
+    if (dx !== 0 || dy !== 0) {
+      tablero.scrollLeft += paso(dx);
+      tablero.scrollTop += paso(dy);
       setSobre(columnaEn(a.x, a.y));
     }
     cuadro.current = requestAnimationFrame(correrTablero);
@@ -595,9 +562,9 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
   const chip = (activo: boolean) => `min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold ${activo ? "bg-white text-[#172b4d]" : "bg-white/20 text-white hover:bg-white/30"}`;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center" role="toolbar" aria-label="Filtros y selección">
-        <div className="sin-barra -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 lg:flex-1 lg:flex-wrap lg:overflow-visible lg:pb-0">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="sin-barra -mx-1 flex shrink-0 items-center gap-2 overflow-x-auto px-1 lg:overflow-visible" role="toolbar" aria-label="Filtros y selección">
+        <div className="flex shrink-0 items-center gap-2 lg:flex-1 lg:shrink lg:flex-wrap">
           <span className="shrink-0 text-sm font-medium text-white/90">Ver:</span>
           <button type="button" onClick={() => setFiltroPersona(null)} aria-pressed={filtroPersona === null} className={chip(filtroPersona === null)}>
             Todos
@@ -619,7 +586,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
             🔴 Urgentes
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {puede.armar && pendientesDeCompra.length > vacios.length && !eligiendo && (
             <button type="button" onClick={elegirFaltantes} className="min-h-10 rounded-lg bg-white px-4 text-sm font-semibold text-[#172b4d] hover:bg-white/90">
               🛒 Elegir todos los pedidos para la lista ({pendientesDeCompra.length - vacios.length})
@@ -639,9 +606,15 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         </div>
       </div>
 
+      {/* Mientras el servidor guarda no se traba nada: se puede seguir con otras tarjetas. */}
+      {pendiente && (
+        <p role="status" className="pointer-events-none fixed right-4 bottom-4 z-40 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white shadow-lg max-sm:bottom-20">
+          ⏳ Guardando…
+        </p>
+      )}
       {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} confirmar={pendiente ? null : confirmarUltimo} />}
 
-      <nav aria-label="Ir a una columna" className="sin-barra -mx-1 flex gap-2 overflow-x-auto px-1 md:hidden">
+      <nav aria-label="Ir a una columna" className="sin-barra -mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 md:hidden">
         {columnas.map((col) => (
           <button
             key={col.clave}
@@ -654,7 +627,16 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         ))}
       </nav>
 
-      <div ref={caja} className={`-mx-3 flex items-start gap-4 overflow-x-auto px-3 pb-4 ${arrastrando ? "" : "snap-x snap-mandatory md:snap-none"}`} aria-busy={pendiente}>
+      {/* El tablero ocupa el alto que queda de la pantalla: la página no se desplaza, se desplaza
+          adentro de cada columna. Con lugar, las seis columnas van en una fila; con menos ancho, en
+          dos filas de tres (cada fila toma el alto que necesita, hasta repartirse el que hay); y en el
+          celular van de costado y se deslizan con el dedo. El ancho que
+          cuenta es el del tablero, no el de la ventana (consultas de contenedor). */}
+      <div className="@container flex min-h-0 flex-1 flex-col gap-2" aria-busy={pendiente}>
+        <div
+          ref={caja}
+          className={`flex min-h-0 flex-1 items-start gap-3 overflow-x-auto pb-1 ${arrastrando ? "" : "snap-x snap-mandatory"} @[34rem]:grid @[34rem]:snap-none @[34rem]:grid-cols-3 @[34rem]:grid-rows-[repeat(2,minmax(10rem,auto))] @[34rem]:content-start @[34rem]:gap-2 @[34rem]:overflow-x-hidden @[34rem]:overflow-y-auto @[64rem]:grid-cols-6 @[64rem]:grid-rows-1 @[64rem]:overflow-visible`}
+        >
         {columnas.map((col) => {
           const visibles = col.tarjetas.filter(pasaFiltro);
           const destino = arrastrando !== null && arrastrando.desde !== col.clave;
@@ -662,7 +644,9 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
           const encima = destino && sobre === col.clave;
           const todasElegidas = visibles.length > 0 && visibles.every((t) => elegidas.has(t.id));
           // De Preparando se arrastra solo para que salga a entregar (quien puede armar repartos).
-          const arrastrable = !eligiendo && (col.clave === "preparando" ? puede.salir : puede.editar && COLUMNAS_ARRASTRABLES.includes(col.clave));
+          const arrastrable = !eligiendo && COLUMNAS_ARRASTRABLES.includes(col.clave) && (col.clave === "preparando" ? puede.salir : col.clave === "en_camino" || col.clave === "entregados" ? puede.entregar : puede.editar);
+          const paso = PASO_SIGUIENTE[col.clave];
+          const sinElegir = !(eligiendo && col.seleccionable);
           const seTilda = puede.tildar && (col.clave === "en_lista" || col.clave === "comprados");
           return (
             <section
@@ -670,24 +654,30 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
               id={`lista-${col.clave}`}
               data-columna={col.clave}
               aria-labelledby={`col-${col.clave}`}
-              className={`${COLOR_COLUMNA[col.clave]} flex max-h-[calc(100dvh-230px)] w-[88vw] max-w-[380px] shrink-0 snap-start flex-col rounded-2xl bg-[var(--col)] text-[var(--col-texto)] shadow-lg outline-offset-2 transition-transform sm:w-[340px] ${
+              className={`${COLOR_COLUMNA[col.clave]} @container flex max-h-full min-h-0 w-[86%] max-w-[22rem] shrink-0 snap-start flex-col rounded-2xl bg-[var(--col)] text-[var(--col-texto)] shadow-lg outline-offset-2 transition-transform @[34rem]:w-auto @[34rem]:max-w-none @[34rem]:min-w-0 ${
                 encima ? (aceptaSoltar ? "scale-[1.02] outline-4 outline-white" : "outline-4 outline-[var(--vence-fondo)]") : aceptaSoltar ? "outline-2 outline-white/80 outline-dashed" : ""
               }`}
             >
-              <header className="flex items-start justify-between gap-2 px-4 pt-3 pb-2">
-                <div className="min-w-0">
-                  <h2 id={`col-${col.clave}`} className="text-xl font-extrabold">
-                    {col.titulo} <span className="ml-1 rounded-full bg-black/15 px-2.5 py-0.5 text-sm font-bold">{visibles.length}</span>
+              <header className="flex flex-col gap-0.5 px-2.5 pt-2 pb-1.5 @[18rem]:px-3">
+                <div className="flex flex-wrap items-start justify-between gap-x-1.5 gap-y-1">
+                  <h2 id={`col-${col.clave}`} className="flex-auto text-lg leading-tight font-extrabold @[18rem]:text-xl">
+                    {col.titulo} <span className="ml-0.5 rounded-full bg-black/15 px-2 py-0.5 text-sm font-bold">{visibles.length}</span>
                   </h2>
-                  <p className="text-sm font-medium opacity-85">{col.ayuda}</p>
+                  {eligiendo && col.seleccionable && visibles.length > 0 ? (
+                    <button type="button" onClick={() => elegirColumna(col)} className="shrink-0 rounded-lg bg-black/10 px-2 py-1 text-sm font-semibold hover:bg-black/20">
+                      {todasElegidas ? "Ninguno" : "Elegir todos"}
+                    </button>
+                  ) : (
+                    enlaces[col.clave] && (
+                      <Link href={enlaces[col.clave]!.href} title={enlaces[col.clave]!.texto} className="flex min-h-8 shrink-0 items-center gap-1 rounded-lg bg-black/10 px-2 text-sm font-semibold hover:bg-black/20">
+                        {enlaces[col.clave]!.texto} <span aria-hidden>›</span>
+                      </Link>
+                    )
+                  )}
                 </div>
-                {eligiendo && col.seleccionable && visibles.length > 0 && (
-                  <button type="button" onClick={() => elegirColumna(col)} className="shrink-0 rounded-lg bg-black/10 px-2 py-1.5 text-sm font-semibold hover:bg-black/20">
-                    {todasElegidas ? "Ninguno" : "Elegir todos"}
-                  </button>
-                )}
+                <p className="text-sm leading-snug font-medium opacity-95 @[18rem]:text-base">{col.ayuda}</p>
               </header>
-              <ol className="flex min-h-2 flex-col gap-3 overflow-y-auto px-3 py-1">
+              <ol className="flex min-h-2 flex-col gap-2 overflow-y-auto px-1.5 py-1 [scrollbar-width:thin] @[18rem]:gap-3 @[18rem]:px-3">
                 {encima && (
                   <li aria-hidden className={`flex min-h-16 items-center justify-center rounded-xl border-2 border-dashed px-3 text-center font-semibold ${aceptaSoltar ? "border-current/60 bg-white/35" : "border-[var(--vence-fondo)] bg-white/70 text-[var(--vence-fondo)]"}`}>
                     {aceptaSoltar ? "Soltá acá" : "Acá no se puede soltar"}
@@ -712,41 +702,44 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                       eligiendo={eligiendo && col.seleccionable}
                       elegida={elegidas.has(t.id)}
                       alElegir={() => alternar(t.id)}
-                      alTildar={seTilda && !(eligiendo && col.seleccionable) ? tildar : undefined}
+                      alTildar={seTilda && sinElegir ? tildar : undefined}
+                      alSeparar={col.clave === "preparando" && puede.preparar && sinElegir ? separar : undefined}
+                      siguiente={paso && puedeAvanzar[col.clave] && sinElegir && !cerrado ? { texto: paso.texto, alTocar: () => soltar(t.id, col.clave, paso.hacia), ocupado: false } : null}
                     />
                   </li>
                 ))}
-                {visibles.length === 0 && !encima && <li className="px-1 py-3 font-medium opacity-80">{col.tarjetas.length ? "Nada con este filtro." : col.clave === "en_camino" && puede.salir ? "Arrastrá acá desde Preparando lo que sale a entregar." : "Sin pedidos."}</li>}
+                {visibles.length === 0 && !encima && <li className="px-1 py-3 font-medium opacity-80">{col.tarjetas.length ? "Nada con este filtro." : col.clave === "en_camino" && puede.salir ? "Acá va lo que sale a entregar." : "Sin pedidos."}</li>}
               </ol>
-              <footer className="px-3 pt-2 pb-3">
-                {col.clave === "pedidos" && puede.crear ? (
-                  <Link href={`/pedidos/nuevo?fecha=${fecha}`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black/15 text-base font-bold hover:bg-black/25">
-                    <span aria-hidden className="text-xl leading-none">
-                      ＋
-                    </span>
-                    Nuevo pedido
-                  </Link>
+              <footer className="flex flex-col gap-1 px-2 pt-1.5 pb-2 empty:pb-1 @[18rem]:px-3">
+                {col.clave === "entregados" && todoEntregado && (cerrado ? (
+                  <p className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black/15 text-base font-bold">🔒 Día cerrado: está todo entregado</p>
                 ) : (
-                  enlaces[col.clave] && (
-                    <Link href={enlaces[col.clave]!.href} className="flex min-h-11 items-center rounded-lg px-2 font-semibold hover:bg-black/10">
-                      {enlaces[col.clave]!.texto} →
-                    </Link>
+                  puede.cerrar && (
+                    <button
+                      type="button"
+                      disabled={pendiente}
+                      onClick={() => ejecutar(cerrarDiaAccion, { fecha })}
+                      className="flex min-h-14 w-full items-center justify-center rounded-xl bg-marca px-3 py-2 text-center text-lg leading-tight font-extrabold text-balance text-marca-texto shadow-sm hover:brightness-110 disabled:animate-pulse disabled:opacity-70"
+                    >
+                      ✓ Está todo entregado: cerrar el día
+                    </button>
                   )
-                )}
+                ))}
               </footer>
             </section>
           );
         })}
+        </div>
         {cancelados.length > 0 && (
-          <section className="w-[88vw] max-w-[380px] shrink-0 snap-start rounded-2xl bg-black/25 p-3 text-white sm:w-64">
+          <section className="shrink-0 rounded-2xl bg-black/25 p-2 text-white">
             <button type="button" onClick={() => setVerCancelados(!verCancelados)} className="flex min-h-11 w-full items-center justify-between rounded-lg px-2 font-semibold hover:bg-white/10">
               Cancelados ({cancelados.length}) <span aria-hidden>{verCancelados ? "▾" : "▸"}</span>
             </button>
             {verCancelados && (
-              <ul className="mt-2 flex flex-col gap-2 opacity-80">
+              <ul className="mt-2 flex flex-wrap gap-2 opacity-80">
                 {cancelados.map((t) => (
                   <li key={t.id}>
-                    <Link href={`${base}&pedido=${t.id}`} scroll={false} className="block rounded-lg bg-tarjeta p-3 text-tarjeta-texto line-through shadow-tarjeta">
+                    <Link href={`${base}&pedido=${t.id}`} scroll={false} className="block rounded-lg bg-tarjeta px-3 py-2 text-tarjeta-texto line-through shadow-tarjeta">
                       {t.cliente} · {t.numero}
                     </Link>
                   </li>
@@ -758,9 +751,9 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
       </div>
 
       {arrastrando && enElAire && (
-        <div ref={fantasma} aria-hidden className={`${COLOR_COLUMNA[arrastrando.desde]} pointer-events-none fixed top-0 left-0 z-50 will-change-transform`} style={{ width: arrastrando.ancho }}>
+        <div ref={fantasma} aria-hidden className={`${COLOR_COLUMNA[arrastrando.desde]} @container pointer-events-none fixed top-0 left-0 z-50 will-change-transform`} style={{ width: arrastrando.ancho }}>
           <div className="tarjeta-en-el-aire">
-            <Tarjeta t={enElAire} href="#" alTildar={puede.tildar && arrastrando.desde !== "pedidos" ? () => undefined : undefined} />
+            <Tarjeta t={enElAire} href="#" />
           </div>
         </div>
       )}
