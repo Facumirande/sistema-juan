@@ -75,7 +75,8 @@ export function MarcoConMenu({ menu, barra, menuCerrado, children }: { menu: Rea
   };
 
   return (
-    <div className="marco flex flex-1">
+    // `data-cajon`: con el menú abierto en el celular, la franja de la hora y la batería vuelve a tener fondo (globals.css).
+    <div className="marco flex flex-1" data-cajon={enCelular ? "abierto" : undefined}>
       {enCelular && <button type="button" aria-label="Cerrar el menú" onClick={() => setEnCelular(false)} className="fixed inset-0 z-40 bg-black/55 md:hidden print:hidden" />}
       <aside
         id="menu-lateral"

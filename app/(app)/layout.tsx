@@ -15,6 +15,7 @@ import { diaElegido } from "@/ui/dia-elegido";
 import { DibujosDeProductos } from "@/ui/dibujos";
 import { MarcoConMenu } from "@/ui/marco";
 import { InstalarApp } from "@/ui/instalar-app";
+import { InterruptorDeTema } from "@/ui/interruptor-de-tema";
 import { Pulso } from "@/ui/pulso";
 import { menuDisponible, type GrupoMenu } from "@/ui/navegacion";
 
@@ -135,6 +136,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
       menu={<Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} dia={await diaElegido()} hoy={hoyEnEmpresa(new Date(), sesion.zonaHoraria)} />}
       barra={
         <>
+          <InterruptorDeTema />
           <Campanita zonaHoraria={sesion.zonaHoraria} />
           {/* Hasta dónde llegan los datos de esta pantalla (lo anota cada acción al guardar): lo propio no la hace redibujar de nuevo. */}
           <Pulso alDia={galletas.get(COOKIE_PULSO)?.value ?? null} />

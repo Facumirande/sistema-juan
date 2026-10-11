@@ -16,7 +16,7 @@ export function Hoja({ titulo, cerrar, children }: { titulo: string; cerrar: () 
     return () => document.removeEventListener("keydown", alTeclear);
   }, [cerrar]);
   return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true" aria-label={titulo}>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end pt-[var(--arriba-seguro)]" role="dialog" aria-modal="true" aria-label={titulo}>
       <button type="button" aria-label="Cerrar" onClick={cerrar} className="hoja-fondo absolute inset-0 cursor-default bg-black/55" />
       <div className="hoja-panel relative flex max-h-[88dvh] flex-col gap-4 overflow-y-auto overscroll-contain rounded-t-3xl bg-superficie px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] text-texto shadow-2xl">
         <span aria-hidden className="mx-auto h-1.5 w-12 shrink-0 rounded-full bg-borde" />

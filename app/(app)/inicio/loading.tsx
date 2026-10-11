@@ -6,12 +6,12 @@ import { DiaQueLlega } from "./dia-que-llega";
 
 /** El color de cada columna, el mismo del tablero (clases de `globals.css`). */
 const COLOR: Readonly<Record<string, string>> = {
-  pedidos: "color-azul",
-  en_lista: "color-violeta",
-  comprados: "color-naranja",
-  preparando: "color-amarillo",
-  en_camino: "color-verde",
-  entregados: "color-rosa",
+  pedidos: "de-etapa color-azul",
+  en_lista: "de-etapa color-violeta",
+  comprados: "de-etapa color-naranja",
+  preparando: "de-etapa color-amarillo",
+  en_camino: "de-etapa color-verde",
+  entregados: "de-etapa color-rosa",
 };
 
 /**

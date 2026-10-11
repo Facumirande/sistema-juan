@@ -72,14 +72,17 @@ interface Props {
   otras: { pasos: string; balance: string | null };
 }
 
-/** El color de cada columna, el mismo de su paso en "Paso a paso" (clases de `globals.css`). */
+/**
+ * El color de cada columna, el mismo de su paso en "Paso a paso" (clases de `globals.css`). `de-etapa`:
+ * con las tarjetas neutras (Mi cuenta → Aspecto) la columna y sus tarjetas van sin ese color.
+ */
 const COLOR_COLUMNA: Record<ClaveColumna, string> = {
-  pedidos: "color-azul",
-  en_lista: "color-violeta",
-  comprados: "color-naranja",
-  preparando: "color-amarillo",
-  en_camino: "color-verde",
-  entregados: "color-rosa",
+  pedidos: "de-etapa color-azul",
+  en_lista: "de-etapa color-violeta",
+  comprados: "de-etapa color-naranja",
+  preparando: "de-etapa color-amarillo",
+  en_camino: "de-etapa color-verde",
+  entregados: "de-etapa color-rosa",
 };
 
 /** En el indicador del celular: el nombre corto de cada columna y su dibujo. */

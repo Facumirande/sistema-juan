@@ -57,7 +57,7 @@ Lo usan dos personas (el dueño y su esposa), las dos con acceso completo.
 |---|---|
 | **Next.js 16 (App Router)** + React 19 | Interfaz y servidor en un solo proyecto: *Server Components* para leer y armar las pantallas, *Server Actions* para las escrituras. `proxy.ts` refresca la sesión. |
 | **TypeScript** | Todo el código, con tipos compartidos entre base, dominio e interfaz. |
-| **Tailwind CSS 4** | Estilos, con colores definidos como variables para el modo claro y el oscuro. Los componentes son propios (`src/ui`). |
+| **Tailwind CSS 4** | Estilos, con colores definidos como variables para el modo claro y el oscuro. El modo lo decide el atributo `data-tema` de `<html>` (lo elegido en cada aparato o, si no se eligió, el modo del aparato; 08 §1, principio 15), y las clases `dark:` siguen a ese atributo. Los componentes son propios (`src/ui`). |
 | **PostgreSQL en Supabase** | Base de datos: transacciones, `numeric` exacto para dinero, restricciones y **Row Level Security**. |
 | **Supabase Auth** | Ingreso con usuario y contraseña o con Google; las cuentas nuevas quedan como pedido de acceso (02 §10). |
 | **Drizzle ORM** | Esquema tipado, consultas y migraciones. |
@@ -323,7 +323,7 @@ Referencia: Android de gama media con 4G irregular.
 3. Los montos siempre esperan la confirmación del servidor.
 4. Botones de al menos 48 px de alto, letra grande en la computadora (18 px de base; ningún texto por debajo de unos 15 px) y letra normal de aplicación en el celular (14 px de base; 16 en lo que se escribe), alto contraste (legible al sol), teclado numérico para cantidades y precios, acciones principales al alcance del pulgar.
 5. Índices de 03 para las consultas del día (por jornada, proveedor y cliente).
-6. En el celular se usa como una app: la página no se mueve ni se agranda, la barra de arriba es transparente con sus botones grandes y arrastrar el dedo hacia la derecha no vuelve atrás (08 §1, principio 13).
+6. En el celular se usa como una app: la página no se mueve ni se agranda, la barra de arriba es transparente con sus botones grandes, arrastrar el dedo hacia la derecha no vuelve atrás y la pantalla llega hasta arriba, por detrás de la hora y la batería (08 §1, principio 13).
 
 ---
 

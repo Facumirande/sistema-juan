@@ -27,7 +27,7 @@ export function Modal({ cerrar, titulo, children }: { cerrar: string; titulo: st
     };
   }, [cerrar, router]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-2.5 sm:p-6" role="dialog" aria-modal="true" aria-label={titulo}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-2.5 pt-[calc(0.625rem+var(--arriba-seguro))] sm:p-6 sm:pt-[calc(1.5rem+var(--arriba-seguro))]" role="dialog" aria-modal="true" aria-label={titulo}>
       <Link href={cerrar} scroll={false} tabIndex={-1} aria-hidden className="absolute inset-0 cursor-default" />
       <div ref={panel} tabIndex={-1} className="tarjeta-abriendose relative flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-modal text-tarjeta-texto shadow-2xl ring-1 ring-black/10 outline-none dark:ring-white/10">
         <Link

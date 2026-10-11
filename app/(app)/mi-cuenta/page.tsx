@@ -11,11 +11,12 @@ import { FormularioAccion } from "@/ui/formulario-accion";
 import { clasesBoton } from "@/ui/formularios";
 
 import { cambiarMiClave } from "./acciones";
+import { Aspecto } from "./aspecto";
 import { FormularioPerfil } from "./perfil";
 
 export const metadata: Metadata = { title: "Mi cuenta · Sistema Repartos" };
 
-/** P-03 Mi cuenta: perfil (nombre y color con los que te ven los demás) y cambio de contraseña. */
+/** P-03 Mi cuenta: perfil (nombre y color con los que te ven los demás), aspecto (modo claro u oscuro, tarjetas) y cambio de contraseña. */
 export default async function PaginaMiCuenta() {
   const sesion = await obtenerSesion();
   const authUserId = await obtenerAuthUserId();
@@ -34,6 +35,11 @@ export default async function PaginaMiCuenta() {
       <div className="rounded-lg border border-borde bg-superficie p-4">
         <h2 className="mb-4 text-lg font-semibold">Tu perfil</h2>
         <FormularioPerfil nombre={sesion.nombre} color={sesion.color} otras={otras} />
+      </div>
+
+      <div className="rounded-lg border border-borde bg-superficie p-4">
+        <h2 className="mb-4 text-lg font-semibold">Aspecto</h2>
+        <Aspecto />
       </div>
 
       {(sesion.permisos.includes("usuarios.administrar") || sesion.permisos.includes("configuracion.ver")) && (

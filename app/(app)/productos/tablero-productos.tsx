@@ -77,7 +77,7 @@ function Elegir({
   const usadas = new Set(categorias.map((c) => c.nombre.toLowerCase()));
   const boton = "flex min-h-11 items-center gap-2 rounded-xl border-2 border-borde bg-superficie px-3 text-left font-medium hover:border-marca";
   return (
-    <div role="dialog" aria-modal="true" aria-label={titulo} className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={alCancelar}>
+    <div role="dialog" aria-modal="true" aria-label={titulo} className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 pt-[calc(0.75rem+var(--arriba-seguro))] sm:items-center" onClick={alCancelar}>
       <div className="flex max-h-[85dvh] w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-2xl bg-superficie p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <p className="text-lg font-semibold">{titulo}</p>
         {!soloNuevas && categorias.length > 0 && (

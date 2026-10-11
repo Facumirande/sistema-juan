@@ -72,7 +72,7 @@ function Calendario({ fecha, hoy, conocidos, ruta, cerrar, alElegir }: { fecha: 
   const flecha = "flex size-11 items-center justify-center rounded-full text-2xl font-bold hover:bg-fondo";
   // Colgado del documento: sobre toda la pantalla, también desde adentro del tablero.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Elegir el día en el calendario">
+    <div className="fixed inset-0 z-50 flex items-end justify-center pt-[var(--arriba-seguro)] sm:items-center sm:p-4 sm:pt-[calc(1rem+var(--arriba-seguro))]" role="dialog" aria-modal="true" aria-label="Elegir el día en el calendario">
       <button type="button" aria-label="Cerrar el calendario" onClick={cerrar} className="hoja-fondo absolute inset-0 cursor-default bg-black/55" />
       <div className="hoja-panel relative flex w-full flex-col gap-3 rounded-t-3xl bg-superficie px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] text-texto shadow-2xl sm:max-w-sm sm:rounded-3xl sm:pb-4">
         <div className="flex items-center justify-between gap-2">

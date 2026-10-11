@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* El modo claro u oscuro lo decide `data-tema` en <html> (pedido del usuario, 11/10/2026: poder
+   elegirlo con un interruptor y en Mi cuenta → Aspecto), no el aparato a secas: lo pone el guion de
+   `src/ui/aspecto-inicial.ts` antes de dibujar la página (lo elegido en este aparato o, si no se
+   eligió nada, el modo del aparato) y lo mantiene `src/ui/aspecto.ts`. Las clases `dark:` siguen a
+   ese atributo. Solo en pantalla: lo que se imprime sale siempre en claro. */
+@custom-variant dark {
+  @media screen {
+    &:where([data-tema="oscuro"], [data-tema="oscuro"] *) {
+      @slot;
+    }
+  }
+}
+
 :root {
   --fondo: #f6f7f5;
   --superficie: #ffffff;
@@ -61,8 +74,8 @@
   --barra-encima: rgb(0 0 0 / 0.38);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+@media screen {
+  :root[data-tema="oscuro"] {
     --fondo: #121614;
     --superficie: #1b201e;
     --texto: #e7ece9;
@@ -215,11 +228,13 @@ body {
    `--alto-barra` es su alto: en el celular es más alta, porque el ☰, la campana y la persona van
    grandes para el dedo; lo usan el tablero (que ocupa justo el resto de la pantalla) y la campanita. */
 :root {
-  --alto-barra: 4.25rem;
+  /* Lo que ocupan la hora y la batería cuando la pantalla llega hasta arriba (ver más abajo); 0 en el resto. */
+  --arriba-seguro: env(safe-area-inset-top, 0px);
+  --alto-barra: calc(4.25rem + var(--arriba-seguro));
 }
 @media (min-width: 640px) {
   :root {
-    --alto-barra: 3.5rem;
+    --alto-barra: calc(3.5rem + var(--arriba-seguro));
   }
 }
 .marco-barra {
@@ -227,6 +242,40 @@ body {
   --nav-borde: var(--borde);
   --nav-encima: var(--superficie);
   color: var(--nav-texto);
+  padding-top: var(--arriba-seguro);
+}
+
+/* La pantalla llega hasta arriba (pedido del usuario, 11/10/2026): instalada en el iPhone quedaba una
+   franja negra en el lugar de la hora y la batería. Ahora el sistema se dibuja también ahí detrás
+   (`black-translucent` en `app/layout.tsx`) y lo que va arriba —la barra, el menú, lo que se abre
+   encima— baja lo que mide esa zona (`--arriba-seguro`), que es 0 en la computadora, en Android y
+   en el navegador del iPhone: ahí nada cambia de lugar. El iPhone escribe la hora y la batería en
+   blanco, así que `.franja-de-estado` les pone detrás un fondo donde hace falta para leerlas: verde
+   en modo claro; nada en modo oscuro ni sobre la imagen del tablero, que ya son oscuros. */
+.franja-de-estado {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 70;
+  height: var(--arriba-seguro);
+  background: var(--marca);
+  pointer-events: none;
+}
+/* Con el menú abierto sobre el tablero (es claro), el verde vuelve. */
+[data-tema="oscuro"] .franja-de-estado,
+body:has(.marco-principal > .a-pantalla-completa):not(:has(.marco[data-cajon="abierto"])) .franja-de-estado {
+  background: transparent;
+}
+/* Las pantallas sin marco (el ingreso) empiezan debajo de esa zona. */
+body:not(:has(.marco)) {
+  padding-top: var(--arriba-seguro);
+}
+.menu-lateral {
+  padding-top: var(--arriba-seguro);
+}
+@media print {
+  .franja-de-estado {
+    display: none;
+  }
 }
 @media screen {
   .marco-contenido:has(> .marco-principal > .a-pantalla-completa) {
@@ -404,7 +453,8 @@ html {
   --col-claro-texto: #50253f;
 }
 
-@media (prefers-color-scheme: dark) {
+@media screen {
+  [data-tema="oscuro"] {
   .color-azul {
     --col: #0c4fb0;
     --col-texto: #ffffff;
@@ -452,6 +502,38 @@ html {
     --col-fuerte-texto: #3a0f2a;
     --col-claro: #50253f;
     --col-claro-texto: #fdd0ec;
+  }
+  }
+}
+
+/* Tarjetas neutras (Mi cuenta → Aspecto, 11/10/2026): las columnas del tablero, sus tarjetas y las
+   tarjetas del paso a paso (todo lo que lleva `de-etapa`) sin el color de cada etapa. En modo claro,
+   blancas grisáceas con letra negra; en oscuro, gris oscuro con letra blanca algo gris. Los carteles
+   del día (HOY, MAÑANA…) y las etiquetas conservan su color: dicen algo. */
+@media screen {
+  [data-tarjetas="neutro"] .de-etapa {
+    --col: #e3e6ea;
+    --col-texto: #15181b;
+    --col-fuerte: #cdd2d8;
+    --col-fuerte-texto: #15181b;
+    --col-claro: #eceef1;
+    --col-claro-texto: #15181b;
+    --tarjeta-fondo: #f8f9fa;
+    --tarjeta-hover: #f1f3f5;
+    --tarjeta-texto: #15181b;
+    --tarjeta-suave: #4a5560;
+  }
+  [data-tema="oscuro"][data-tarjetas="neutro"] .de-etapa {
+    --col: #24292e;
+    --col-texto: #d9dee4;
+    --col-fuerte: #474e56;
+    --col-fuerte-texto: #e6e9ed;
+    --col-claro: #2b3137;
+    --col-claro-texto: #d9dee4;
+    --tarjeta-fondo: #343a41;
+    --tarjeta-hover: #3b4249;
+    --tarjeta-texto: #d9dee4;
+    --tarjeta-suave: #a8b1bb;
   }
 }
 

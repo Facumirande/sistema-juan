@@ -30,14 +30,17 @@ export const TITULOS: Record<ClavePaso, string> = {
 
 const ICONO: Record<ClavePaso, string> = { pedidos: "📝", lista: "🛒", compras: "🧺", preparacion: "📦", entregas: "🚚", cierre: "🔒" };
 
-/** Cada paso con su color vivo, el mismo de su columna en el tablero (fondo y texto, del tema claro y oscuro). */
+/**
+ * Cada paso con su color vivo, el mismo de su columna en el tablero (fondo y texto, del modo claro y oscuro).
+ * `de-etapa`: con las tarjetas neutras (Mi cuenta → Aspecto) van sin ese color.
+ */
 const COLOR: Record<ClavePaso, string> = {
-  pedidos: "color-azul bg-[var(--col)] text-[var(--col-texto)]",
-  lista: "color-violeta bg-[var(--col)] text-[var(--col-texto)]",
-  compras: "color-naranja bg-[var(--col)] text-[var(--col-texto)]",
-  preparacion: "color-amarillo bg-[var(--col)] text-[var(--col-texto)]",
-  entregas: "color-verde bg-[var(--col)] text-[var(--col-texto)]",
-  cierre: "color-rosa bg-[var(--col)] text-[var(--col-texto)]",
+  pedidos: "de-etapa color-azul bg-[var(--col)] text-[var(--col-texto)]",
+  lista: "de-etapa color-violeta bg-[var(--col)] text-[var(--col-texto)]",
+  compras: "de-etapa color-naranja bg-[var(--col)] text-[var(--col-texto)]",
+  preparacion: "de-etapa color-amarillo bg-[var(--col)] text-[var(--col-texto)]",
+  entregas: "de-etapa color-verde bg-[var(--col)] text-[var(--col-texto)]",
+  cierre: "de-etapa color-rosa bg-[var(--col)] text-[var(--col-texto)]",
 };
 
 /** Qué hay que hacer en cada paso, dicho como una indicación. */
