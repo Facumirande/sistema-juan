@@ -4,13 +4,13 @@ import type { AspectoDeTarjetas, PreferenciaDeTema } from "@/dominio/aspecto/asp
 import { elegirTarjetas, elegirTema, useAspecto } from "@/ui/aspecto";
 
 // Mi cuenta → Aspecto (pedido del usuario, 11/10/2026): el modo claro u oscuro (lo mismo que el
-// interruptor de la barra, más "como el aparato") y las tarjetas del tablero en colores o neutras.
+// interruptor de la barra, más "Predeterminado": el modo que tenga el aparato) y las tarjetas del tablero en colores o neutras.
 // Cambia en el momento, sin botón de guardar, y queda en este aparato.
 
 const MODOS: readonly { valor: PreferenciaDeTema; dibujo: string; titulo: string }[] = [
   { valor: "claro", dibujo: "☀️", titulo: "Claro" },
   { valor: "oscuro", dibujo: "🌙", titulo: "Oscuro" },
-  { valor: "sistema", dibujo: "📱", titulo: "Como el aparato" },
+  { valor: "sistema", dibujo: "📱", titulo: "Predeterminado" },
 ];
 
 const TARJETAS: readonly { valor: AspectoDeTarjetas; dibujo: string; titulo: string }[] = [
@@ -19,7 +19,7 @@ const TARJETAS: readonly { valor: AspectoDeTarjetas; dibujo: string; titulo: str
 ];
 
 const opcion = (elegida: boolean) =>
-  // El dibujo arriba y el nombre debajo: así "Como el aparato" entra bien en el celular, en uno o dos renglones.
+  // El dibujo arriba y el nombre debajo: así los tres entran en un renglón en el celular.
   `flex min-h-16 flex-1 basis-0 flex-col items-center justify-center gap-1 rounded-xl border-2 px-2 py-2 text-center leading-tight font-semibold ${elegida ? "border-marca bg-marca/15" : "border-borde hover:border-marca"}`;
 
 export function Aspecto() {
@@ -38,7 +38,7 @@ export function Aspecto() {
             </button>
           ))}
         </div>
-        <p className="text-sm text-texto-suave">También se cambia con el interruptor de arriba, al lado de la campanita.</p>
+        <p className="text-sm text-texto-suave">Predeterminado: el modo que tenga el aparato. También se cambia con el interruptor de arriba, al lado de la campanita.</p>
       </fieldset>
 
       <fieldset className="flex flex-col gap-2">
