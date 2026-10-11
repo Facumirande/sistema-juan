@@ -18,7 +18,7 @@ import {
   marcarProveedorPreferido,
   type UnidadBase,
 } from "@/modulos/catalogo/productos";
-import { nombreDePresentacion } from "@/dominio/catalogo/productos";
+import { envaseComoUnidad, nombreDePresentacion } from "@/dominio/catalogo/productos";
 import { cambiarRecargo } from "@/modulos/precios-venta/reglas";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
@@ -124,17 +124,25 @@ export async function marcarPreferidoAccion(_estado: EstadoAccion, datos: FormDa
 export async function crearProductoGuiadoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   let id = "";
   const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
-    const unidadBase = campo(datos, "unidadBase") as UnidadBase;
-    const envase = campo(datos, "envase").trim();
+    let unidadBase = campo(datos, "unidadBase") as UnidadBase;
+    let envase = campo(datos, "envase").trim();
     const cantidad = campo(datos, "cantidadEnvase");
-    if (envase && !cantidad.trim()) return { ok: false, mensaje: `Escribí cuántos ${UNIDADES_CORTAS[unidadBase] ?? ""} trae el ${envase.toLowerCase()}.` };
+    let fraccion = tildada(datos, "admiteFraccion");
+    if (envase && !cantidad.trim()) {
+      // Sin decir cuánto trae: si el envase puede ser unidad (cajón, bolsa…), el producto se cuenta en ese envase.
+      const comoUnidad = envaseComoUnidad(envase);
+      if (!comoUnidad) return { ok: false, mensaje: `Escribí cuántos ${UNIDADES_CORTAS[unidadBase] ?? ""} trae el ${envase.toLowerCase()}, o elegí arriba “Por cajón”, “Por bolsa”… si se cuenta por envase.` };
+      unidadBase = comoUnidad;
+      envase = "";
+      fraccion = false;
+    }
     id = await crearProducto(db, authUserId, {
       codigo: campo(datos, "codigo"),
       nombre: campo(datos, "nombre"),
       nombreCorto: "",
       ...categoriaElegida(datos),
       unidadBase,
-      admiteFraccion: tildada(datos, "admiteFraccion"),
+      admiteFraccion: fraccion,
       observaciones: campo(datos, "observaciones"),
       presentacionCompraNombre: envase ? nombreDePresentacion(envase, cantidad, UNIDADES_CORTAS[unidadBase] ?? "") : "",
       presentacionCompraFactor: envase ? cantidad : "",

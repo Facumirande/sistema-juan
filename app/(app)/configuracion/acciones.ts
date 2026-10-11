@@ -1,6 +1,7 @@
 "use server";
 
-import { guardarConfiguracion, type ClaveRedondeo } from "@/modulos/configuracion/empresa";
+import { ETAPAS_PARA_ELEGIR } from "@/dominio/pedidos/responsables";
+import { guardarConfiguracion, guardarResponsables, type ClaveRedondeo } from "@/modulos/configuracion/empresa";
 import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
 
@@ -12,6 +13,8 @@ export async function guardarConfiguracionAccion(_estado: EstadoAccion, datos: F
       telefono: campo(datos, "telefono"),
       email: campo(datos, "email"),
       identificacionFiscal: campo(datos, "identificacionFiscal"),
+      razonSocial: campo(datos, "razonSocial"),
+      condicionFiscal: campo(datos, "condicionFiscal"),
       redondeo: campo(datos, "redondeo") as ClaveRedondeo,
       margenMinimoPct: campo(datos, "margenMinimoPct"),
       variacionBruscaPct: campo(datos, "variacionBruscaPct"),
@@ -26,5 +29,13 @@ export async function guardarConfiguracionAccion(_estado: EstadoAccion, datos: F
       ok: true,
       mensaje: r.pedidosRecalculados > 0 ? `Guardado. Se recalcularon los precios de ${r.pedidosRecalculados} pedido(s) pendiente(s).` : "Guardado.",
     };
+  });
+}
+
+/** Quién se encarga de cada paso del proceso. */
+export async function guardarResponsablesAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await guardarResponsables(db, authUserId, Object.fromEntries(ETAPAS_PARA_ELEGIR.map((e) => [e.clave, campo(datos, e.clave) || null])));
+    return { ok: true, mensaje: "Guardado." };
   });
 }

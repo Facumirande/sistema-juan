@@ -69,11 +69,15 @@ export function normalizarBusqueda(texto: string): string {
   return texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
 
-/** Si el nombre tiene todas las palabras buscadas (en cualquier orden). Sin búsqueda, todos coinciden. */
+/**
+ * Si el nombre tiene todas las palabras buscadas (en cualquier orden). Sin búsqueda, todos coinciden.
+ * Se busca también en singular: "papas" encuentra "Papa" y "limones", "Limón".
+ */
 export function coincideBusqueda(nombre: string, busqueda: string): boolean {
   const palabras = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
   const n = normalizarBusqueda(nombre);
-  return palabras.every((p) => n.includes(p));
+  const enSingular = (p: string) => [p, ...(p.length > 3 && p.endsWith("s") ? [p.slice(0, -1)] : []), ...(p.length > 4 && p.endsWith("es") ? [p.slice(0, -2)] : [])];
+  return palabras.every((p) => enSingular(p).some((forma) => n.includes(forma)));
 }
 
 /**

@@ -90,6 +90,7 @@ export async function crearBaseDePrueba(): Promise<BaseDePrueba> {
   await pg.exec(`
     create role app_servidor login noinherit nobypassrls;
     grant app_negocio, app_operativo, app_alta to app_servidor;
+    grant execute on function public.pulso_de_cambios() to app_servidor;
     set role app_servidor;
   `);
   return {

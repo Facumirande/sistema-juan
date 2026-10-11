@@ -73,8 +73,14 @@ export const jornada = pgTable(
     cerradaPor: uuid("cerrada_por").references((): AnyPgColumn => usuario.id),
     resumen: jsonb("resumen").$type<Record<string, unknown>>(),
     observaciones: text("observaciones"),
+    /** La plata con la que se cuenta ese día (el resumen balance del tablero). Nula = sin cargar. */
+    cajaInicial: monto("caja_inicial"),
   },
-  (t) => [unique("jornada_empresa_id_id").on(t.empresaId, t.id), unique("jornada_empresa_fecha").on(t.empresaId, t.fecha)],
+  (t) => [
+    unique("jornada_empresa_id_id").on(t.empresaId, t.id),
+    unique("jornada_empresa_fecha").on(t.empresaId, t.fecha),
+    check("jornada_caja_inicial", sql`${t.cajaInicial} is null or ${t.cajaInicial} >= 0`),
+  ],
 );
 
 /** 03 §8.2 */

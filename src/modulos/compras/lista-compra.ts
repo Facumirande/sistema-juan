@@ -11,6 +11,7 @@ import {
   compra,
   compraItem,
   empresa,
+  imputacionPagoProveedor,
   jornada,
   listaCompra,
   listaCompraItem,
@@ -24,6 +25,7 @@ import {
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { calcularLineaLista, estadoLineaLista, sugerirProveedor, tildeSigueValiendo, type AlertaLista, type Candidato, type EstadoLineaLista } from "@/dominio/compras/lista";
+import { RETIRO_A_LA_VISTA } from "@/dominio/pedidos/tablero";
 import { indicadoresCredito, type Semaforo } from "@/dominio/compras/credito";
 import { aNumeric, dec, redondearPesos, sumar } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
@@ -44,6 +46,9 @@ export interface LineaDeLista {
   codigo: string;
   /** Grupo de su categoría (FRUTA, VERDURA…), para el dibujo. */
   grupo: string | null;
+  /** Su categoría (Duras, De hoja…), para agruparla en la lista. */
+  categoria: string;
+  categoriaOrden: number;
   /** Para qué clientes es (los pedidos que están en la lista), con cuánto lleva cada uno en la unidad del producto. */
   paraQuien: { cliente: string; cantidadBase: string }[];
   unidadBase: string;
@@ -75,7 +80,7 @@ export interface LineaDeLista {
   observaciones: string | null;
   /** Lugar en la lista cuando se ordenó a mano; nulo = sin ordenar. */
   ordenManual: number | null;
-  /** Las compras ya anotadas de ese producto en el día: en qué puesto, cuánto y a cuánto (el precio, solo con `precios.ver_costos`). */
+  /** Las compras ya anotadas de ese producto en el día: en qué puesto, cuánto y a cuánto (el precio, solo con `precios.ver_costos`) y si falta pagarla. */
   compras: { proveedor: string; presentacion: string; cantidad: string; precio: string | null; aCuenta: boolean }[];
   /** Con `paraComprar`: los puestos que lo venden (con su último precio) y sus envases de compra, para anotar la compra en el mismo renglón. */
   ofertas: { ofertaId: string; proveedorId: string; presentacionId: string; precio: string; factor: string }[];
@@ -361,10 +366,16 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
     const pendiente = Decimal.max(dec(necesidadBase).minus(compradoBase), 0);
 
     // Proveedor: se respeta la asignación manual (RN-050)
-    const manual = anterior?.asignacionManual ? candidatos.find((x) => x.ofertaId === anterior.proveedorProductoSugeridoId) : undefined;
+    const manual = anterior?.asignacionManual
+      ? (candidatos.find((x) => x.ofertaId === anterior.proveedorProductoSugeridoId) ?? candidatos.find((x) => anterior.proveedorSugeridoId !== null && x.proveedorId === anterior.proveedorSugeridoId))
+      : undefined;
+    // Elegido a mano un puesto que todavía no tiene precio de este producto (o "sin puesto"): queda ese.
+    const aManoSinPrecio = Boolean(anterior?.asignacionManual) && !manual;
     const sugerencia = manual
       ? { candidato: manual, alertas: manual.desactualizada ? (["PRECIO_DESACTUALIZADO"] as AlertaLista[]) : [] }
-      : sugerirProveedor({
+      : aManoSinPrecio
+        ? { candidato: null, alertas: [] as AlertaLista[] }
+        : sugerirProveedor({
           candidatos,
           estrategia: e!.estrategiaCosto,
           preferidoId: prod.preferidoId,
@@ -404,7 +415,7 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
       cantidadPresentaciones: aNumeric(calculo.cantidadPresentaciones, 3),
       aComprarBase: aNumeric(calculo.aComprarBase, 3),
       sobrantePrevistoBase: aNumeric(calculo.sobrantePrevistoBase, 3),
-      proveedorSugeridoId: oferta?.proveedorId ?? null,
+      proveedorSugeridoId: aManoSinPrecio ? (anterior?.proveedorSugeridoId ?? null) : (oferta?.proveedorId ?? null),
       proveedorProductoSugeridoId: oferta?.ofertaId ?? null,
       precioSugerido: oferta ? aNumeric(oferta.precio, 4) : null,
       costoEstimado: costo ? aNumeric(costo, 2) : null,
@@ -457,6 +468,8 @@ async function armarLista(tx: Transaccion, c: ContextoUsuario, fecha: FechaISO, 
           resumen: existente
             ? `actualizó la lista de compras del ${dia}${aMover.length ? ` y agregó ${cuantos(aMover.length)}` : ""}`
             : `armó la lista de compras del ${dia} con ${cuantos(incluidos.length)}`,
+          // A quien se encarga de comprar le llega el aviso (RN-190).
+          paraUsuarioId: c.responsables.en_lista ?? null,
         })
       : null,
   ]);
@@ -484,6 +497,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           codigo: producto.codigo,
           unidadBase: producto.unidadBase,
           grupo: categoria.grupo,
+          categoria: categoria.nombre,
           presentacion: presentacion.nombre,
           factor: presentacion.factorABase,
           proveedor: proveedor.nombre,
@@ -510,7 +524,16 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
       umbralesSemaforo(tx),
       verCredito ? saldosNetos(tx) : new Map<string, string>(),
       tx
-        .select({ productoId: compraItem.productoId, proveedor: proveedor.nombre, presentacion: presentacion.nombre, cantidad: compraItem.cantidad, precio: compraItem.precioUnitario, condicion: compra.condicionPago })
+        .select({
+          productoId: compraItem.productoId,
+          proveedor: proveedor.nombre,
+          presentacion: presentacion.nombre,
+          cantidad: compraItem.cantidad,
+          precio: compraItem.precioUnitario,
+          total: compra.total,
+          // Lo pagado de la compra: lo que le imputaron los pagos vigentes.
+          imputado: sql<string>`coalesce((select sum(i.monto) from ${imputacionPagoProveedor} i where i.compra_id = "compra"."id" and i.activa), 0)`,
+        })
         .from(compraItem)
         .innerJoin(compra, and(eq(compra.id, compraItem.compraId), eq(compra.estado, "REGISTRADA")))
         .innerJoin(proveedor, eq(proveedor.id, compra.proveedorId))
@@ -550,6 +573,8 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           producto: f.producto,
           codigo: f.codigo,
           grupo: f.grupo,
+          categoria: f.categoria,
+          categoriaOrden: f.categoriaOrden ?? 0,
           paraQuien: paraQuien(f.item.productoId),
           unidadBase: f.unidadBase,
           necesidadBase: f.item.necesidadBase,
@@ -581,7 +606,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           observaciones: f.item.observaciones,
           compras: anotadas
             .filter((a) => a.productoId === f.item.productoId)
-            .map((a) => ({ proveedor: a.proveedor, presentacion: a.presentacion, cantidad: a.cantidad, precio: verCostos ? a.precio : null, aCuenta: a.condicion !== "CONTADO" })),
+            .map((a) => ({ proveedor: a.proveedor, presentacion: a.presentacion, cantidad: a.cantidad, precio: verCostos ? a.precio : null, aCuenta: dec(a.total).minus(a.imputado).gt(0) })),
           ofertas: ofertas.filter((o) => o.productoId === f.item.productoId).map((o) => ({ ofertaId: o.ofertaId, proveedorId: o.proveedorId, presentacionId: o.presentacionId, precio: o.precio, factor: o.factor })),
           envases: envases.filter((e) => e.productoId === f.item.productoId).map((e) => ({ id: e.id, nombre: e.nombre, factor: e.factor })),
         }),
@@ -693,6 +718,72 @@ export async function cambiarLineaLista(db: BaseDatos, authUserId: string, datos
   });
 }
 
+/**
+ * Elegir en qué puesto se va a comprar un renglón (pedido del usuario, 10/10/2026: "elegir puesto en
+ * lista de compras para comprar más rápido"). Nulo = sin puesto (se compra en efectivo donde sea). Si
+ * ese puesto ya lo vende, toma su último precio y su envase; si no, queda el puesto sin precio. Queda
+ * elegido a mano: al rearmar la lista se respeta (RN-050, RN-187).
+ */
+export async function elegirPuestoDeLinea(db: BaseDatos, authUserId: string, datos: { itemId: string; proveedorId: string | null }): Promise<void> {
+  const d = validar(z.object({ itemId: z.uuid(), proveedorId: z.uuid().nullable() }), datos);
+  await ejecutarComoUsuario(db, authUserId, "lista_compra.editar", async (tx, c) => {
+    const f = await renglonBloqueado(tx, d.itemId);
+    if (!f) throw new ErrorDeNegocio("NO_ENCONTRADO", "Ese producto ya no está en la lista de compras: recargá la página.");
+    const { l } = f;
+    const [[p], [o]] = await Promise.all([
+      tx.select({ nombre: proveedor.nombre }).from(proveedor).where(d.proveedorId ? and(eq(proveedor.id, d.proveedorId), eq(proveedor.activo, true)) : sql`false`),
+      tx
+        .select({ id: proveedorProducto.id, precio: proveedorProducto.precioVigente, presentacionId: proveedorProducto.presentacionId, factor: presentacion.factorABase })
+        .from(proveedorProducto)
+        .innerJoin(presentacion, eq(presentacion.id, proveedorProducto.presentacionId))
+        .where(d.proveedorId ? and(eq(proveedorProducto.proveedorId, d.proveedorId), eq(proveedorProducto.productoId, l.productoId), eq(proveedorProducto.activo, true)) : sql`false`)
+        .orderBy(asc(proveedorProducto.costoBase))
+        .limit(1),
+    ]);
+    if (d.proveedorId && !p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró ese puesto (puede que lo hayan dado de baja).");
+    const calculo = o
+      ? calcularLineaLista({
+          necesidadBase: l.necesidadNetaBase,
+          compradoBase: l.compradoBase,
+          factor: o.factor,
+          cantidadManual: null,
+          marcadaNoConseguido: l.estado === "NO_CONSEGUIDO",
+          tildada: l.tildado,
+        })
+      : null;
+    await Promise.all([
+      tx
+        .update(listaCompraItem)
+        .set({
+          proveedorSugeridoId: d.proveedorId,
+          proveedorProductoSugeridoId: o?.id ?? null,
+          asignacionManual: true,
+          alertas: [],
+          ...(o && calculo
+            ? {
+                presentacionSugeridaId: o.presentacionId,
+                cantidadPresentaciones: aNumeric(calculo.cantidadPresentaciones, 3),
+                aComprarBase: aNumeric(calculo.aComprarBase, 3),
+                sobrantePrevistoBase: aNumeric(calculo.sobrantePrevistoBase, 3),
+                ajusteManual: false,
+                precioSugerido: aNumeric(o.precio, 4),
+                costoEstimado: aNumeric(redondearPesos(calculo.cantidadPresentaciones.times(o.precio)), 2),
+              }
+            : { precioSugerido: null, costoEstimado: null }),
+          actualizadoPor: c.usuarioId,
+        })
+        .where(eq(listaCompraItem.id, l.id)),
+      registrarActividad(tx, c, {
+        accion: "MODIFICAR",
+        entidadTipo: "LISTA_COMPRA",
+        entidadId: l.listaCompraId,
+        jornadaId: f.jornadaId,
+        resumen: p ? `eligió comprar ${f.producto} en ${p.nombre}` : `dejó ${f.producto} sin puesto (en efectivo)`,
+      }),
+    ]);
+  });
+}
+
 /** Un renglón de la lista, bloqueado hasta el final, con el nombre de su producto y su día (una sola consulta). */
 async function renglonBloqueado(tx: Transaccion, itemId: string) {
   const [f] = await tx
@@ -785,7 +876,8 @@ export async function tildarLinea(db: BaseDatos, authUserId: string, datos: { it
     const { l, producto: nombre } = f;
     const yaComprado = dec(l.compradoBase).gte(l.necesidadNetaBase) && dec(l.necesidadNetaBase).gt(0);
     if (!d.tildado && !l.tildado && yaComprado) {
-      throw new ErrorDeNegocio("VALIDACION", `La compra de ${nombre} ya está anotada: para deshacerla, anulá esa compra desde “Compras anotadas”.`);
+      // Se puede destildar igual: la pantalla pide confirmar y anula la compra (RN-186, `destildarConCompra`).
+      throw new ErrorDeNegocio("VALIDACION", `${nombre} ya tiene la compra anotada. Para destildarlo se anula esa compra (y lo que se le pagó en el momento): tocá “Confirmar”.`, { requiereConfirmacion: true });
     }
     const tildado = d.tildado && !yaComprado;
     const estado = estadoLineaLista(l.necesidadNetaBase, l.compradoBase, false, tildado);
@@ -833,7 +925,7 @@ async function pedidoEnLaLista(tx: Transaccion, pedidoId: string) {
 }
 
 /**
- * Pasar una tarjeta a "Comprado" sin tildar producto por producto: todo lo suyo que faltaba queda
+ * Pasar una tarjeta a "Retiro" sin tildar producto por producto: todo lo suyo que faltaba queda
  * tildado como comprado (lo marcado "no se consiguió" queda así). Devuelve cuántos productos tildó.
  */
 export async function marcarPedidoComprado(db: BaseDatos, authUserId: string, pedidoId: string): Promise<number> {
@@ -856,14 +948,16 @@ export async function marcarPedidoComprado(db: BaseDatos, authUserId: string, pe
         entidadTipo: "PEDIDO",
         entidadId: p.id,
         jornadaId: p.jornadaId,
-        resumen: `pasó a Comprado el pedido ${formatearNumeroDocumento("PED-", p.numero)} (${faltan.length === 1 ? "1 producto tildado" : `${faltan.length} productos tildados`})`,
+        // Con la columna Retiro guardada no hay a quién pasarle ese paso: sigue la preparación, que avisa por su cuenta.
+        resumen: `${RETIRO_A_LA_VISTA ? "pasó a Retiro" : "marcó como comprado"} el pedido ${formatearNumeroDocumento("PED-", p.numero)} (${faltan.length === 1 ? "1 producto tildado" : `${faltan.length} productos tildados`})`,
+        paraUsuarioId: RETIRO_A_LA_VISTA ? (c.responsables.comprados ?? null) : null,
       }),
     ]);
     return faltan.length;
   });
 }
 
-/** Devolver una tarjeta de "Comprado" a la lista de compras: saca los tildes puestos a mano en lo suyo. */
+/** Devolver una tarjeta de "Retiro" a la lista de compras: saca los tildes puestos a mano en lo suyo. */
 export async function desmarcarPedidoComprado(db: BaseDatos, authUserId: string, pedidoId: string): Promise<number> {
   return ejecutarComoUsuario(db, authUserId, "lista_compra.editar", async (tx, c) => {
     const { pedido: p, lineas } = await pedidoEnLaLista(tx, pedidoId);

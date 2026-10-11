@@ -103,7 +103,22 @@ export function nombreDeProducto(texto: string): string {
 }
 
 const FRACCION: ReadonlySet<UnidadDeVenta> = new Set(["KG", "LITRO"]);
-const UNIDAD_CORTA: Readonly<Record<UnidadDeVenta, string>> = { KG: "kg", UNIDAD: "u", ATADO: "atado", MAPLE: "maple", BANDEJA: "bandeja", DOCENA: "docena", PAQUETE: "paquete", LITRO: "l" };
+const UNIDAD_CORTA: Readonly<Record<UnidadDeVenta, string>> = {
+  KG: "kg",
+  UNIDAD: "u",
+  ATADO: "atado",
+  MAPLE: "maple",
+  BANDEJA: "bandeja",
+  DOCENA: "docena",
+  PAQUETE: "paquete",
+  LITRO: "l",
+  CAJON: "cajón",
+  CAJA: "caja",
+  BOLSA: "bolsa",
+  JAULA: "jaula",
+  BOLSON: "bolsón",
+  RISTRA: "ristra",
+};
 
 export interface ContextoDeImportacion {
   /** Códigos que ya tienen los productos del negocio. */

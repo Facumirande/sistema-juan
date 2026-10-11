@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, count, desc, eq, inArray, max, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, max, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
@@ -185,7 +185,7 @@ function puedeEditar(c: ContextoUsuario, estado: EstadoPedido): boolean {
 
 export async function obtenerPedido(db: BaseDatos, authUserId: string, pedidoId: string): Promise<DetallePedido> {
   return ejecutarComoUsuario(db, authUserId, "pedidos.ver", async (tx, c) => {
-    const [p] = await tx
+    const consultaDelPedido = tx
       .select({
         pedido,
         fecha: jornada.fecha,
@@ -206,27 +206,29 @@ export async function obtenerPedido(db: BaseDatos, authUserId: string, pedidoId:
       .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
       .innerJoin(puntoEntrega, eq(puntoEntrega.id, pedido.puntoEntregaId))
       .where(eq(pedido.id, pedidoId));
-    if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
-
-    const items = await tx
+    const consultaDeItems = tx
       .select({ item: pedidoItem, producto: producto.nombre, unidadBase: producto.unidadBase, presentacion: presentacion.nombre, factor: presentacion.factorABase })
       .from(pedidoItem)
       .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
       .leftJoin(presentacion, eq(presentacion.id, pedidoItem.presentacionId))
       .where(eq(pedidoItem.pedidoId, pedidoId))
       .orderBy(asc(pedidoItem.linea));
-    const otros = await tx
+    // Los otros pedidos del mismo cliente, lugar y día se buscan a partir de este mismo pedido, dentro
+    // de la consulta (con una sola tabla, Drizzle escribe las columnas sin el nombre: las de afuera
+    // son las del pedido que se compara y las de `p`, las de este).
+    const consultaDeOtros = tx
       .select({ id: pedido.id, numero: pedido.numero })
       .from(pedido)
       .where(
         and(
-          eq(pedido.jornadaId, p.pedido.jornadaId),
-          eq(pedido.clienteId, p.pedido.clienteId),
-          eq(pedido.puntoEntregaId, p.pedido.puntoEntregaId),
+          sql`(${pedido.jornadaId}, ${pedido.clienteId}, ${pedido.puntoEntregaId}) = (select p.jornada_id, p.cliente_id, p.punto_entrega_id from ${pedido} p where p.id = ${pedidoId})`,
           ne(pedido.id, pedidoId),
           ne(pedido.estado, "CANCELADO"),
         ),
       );
+    // El pedido, lo que lleva y los otros del mismo día salen juntos, en una sola ida a la base.
+    const [[p], items, otros] = await Promise.all([consultaDelPedido, consultaDeItems, consultaDeOtros]);
+    if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
 
     const verVenta = c.permisos.tiene("precios.ver_venta");
     const verCostos = c.permisos.tiene("precios.ver_costos");
@@ -364,7 +366,15 @@ export async function recalcularPedidosPendientes(tx: Transaccion, filtro: { pro
     .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
     .where(
       and(
-        inArray(pedido.estado, [...ESTADOS_ABIERTOS]),
+        // Los que todavía se pueden cambiar y, ya en proceso, los que tienen algo sin precio (10/10/2026):
+        // así el precio que se anota en el mercado llega también a lo que ya se está preparando.
+        or(
+          inArray(pedido.estado, [...ESTADOS_ABIERTOS]),
+          and(
+            inArray(pedido.estado, ["EN_PREPARACION", "PREPARADO", "EN_REPARTO"]),
+            inArray(pedido.id, tx.select({ id: pedidoItem.pedidoId }).from(pedidoItem).where(and(isNull(pedidoItem.precioEstimado), eq(pedidoItem.cancelado, false)))),
+          ),
+        ),
         sql`${jornada.fecha} >= ${hoy}`,
         filtro.clienteId ? eq(pedido.clienteId, filtro.clienteId) : undefined,
         conProducto,
@@ -1376,5 +1386,56 @@ export async function cambiarProductosDePedido(db: BaseDatos, authUserId: string
       await confirmarEnTransaccion(tx, c, d.pedidoId);
     }
     return resumenDeCarga(tx, c, d.pedidoId, null);
+  });
+}
+
+const SE_LE_PONE_PRECIO: readonly EstadoPedido[] = ["BORRADOR", "CONFIRMADO", "EN_COMPRA", "EN_PREPARACION", "PREPARADO", "EN_REPARTO"];
+
+/**
+ * Ponerle precio sobre la marcha a un producto que no tiene (pedido del usuario, 10/10/2026: "en el
+ * mercado recién se sabe el precio"): desde la tarjeta del tablero, en cualquier paso antes de
+ * entregarlo. Queda como precio a mano de esa línea (RN-090, auditado) y destraba el remito, que lo
+ * usa al emitirse (RN-188).
+ */
+export async function ponerPrecioALinea(db: BaseDatos, authUserId: string, datos: { itemId: string; precio: string }): Promise<void> {
+  const precio = validar(
+    numeroObligatorio("Escribí el precio de venta.").refine((v) => dec(v).gt(0), { message: "El precio tiene que ser mayor que $0." }),
+    datos.precio,
+  );
+  await ejecutarComoUsuario(db, authUserId, "precios.override_linea", async (tx, c) => {
+    const [f] = await tx
+      .select({ item: pedidoItem, estado: pedido.estado, numero: pedido.numero, jornadaId: pedido.jornadaId, estadoJornada: jornada.estado, producto: producto.nombre })
+      .from(pedidoItem)
+      .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
+      .where(eq(pedidoItem.id, datos.itemId))
+      .for("update", { of: pedido });
+    if (!f || f.item.cancelado) throw new ErrorDeNegocio("NO_ENCONTRADO", "Ese producto ya no está en el pedido: recargá la página.");
+    if (f.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para cambiar un precio, primero reabrí el día.");
+    if (!SE_LE_PONE_PRECIO.includes(f.estado)) throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Ese pedido ya se entregó: su precio quedó en el remito.");
+    const motivo = "Precio puesto sobre la marcha (desde el tablero)";
+    await tx.update(pedidoItem).set({ precioManual: aNumeric(precio, 4), motivoPrecioManual: motivo, actualizadoPor: c.usuarioId }).where(eq(pedidoItem.id, f.item.id));
+    await recalcularPedido(tx, f.item.pedidoId);
+    await Promise.all([
+      auditar(tx, {
+        empresaId: c.empresaId,
+        usuarioId: c.usuarioId,
+        accion: "OVERRIDE_PRECIO",
+        entidad: "pedido_item",
+        entidadId: f.item.id,
+        resumen: `Precio puesto sobre la marcha ${precio} en la línea ${f.item.linea} de ${numeroPedido(f.numero)}.`,
+        motivo,
+        datosAntes: { precio: f.item.precioEstimado, manual: f.item.precioManual },
+        datosDespues: { manual: precio },
+      }),
+      registrarActividad(tx, c, {
+        accion: "PRECIO",
+        entidadTipo: "PEDIDO",
+        entidadId: f.item.pedidoId,
+        jornadaId: f.jornadaId,
+        resumen: `le puso precio a ${f.producto} en el pedido ${numeroPedido(f.numero)}`,
+      }),
+    ]);
   });
 }

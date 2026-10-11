@@ -5,6 +5,7 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { tiempoRelativo, tituloDeDia } from "@/dominio/colaboracion/tiempo";
 import { hoyEnEmpresa } from "@/dominio/fechas/fechas";
 import { listarActividad, type EntradaActividad } from "@/modulos/colaboracion/actividad";
+import { recuperarPedidoAccion } from "../inicio/acciones";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
@@ -124,6 +125,12 @@ export default async function PaginaActividad({ searchParams }: PageProps<"/acti
                       )}
                     </p>
                     {e.texto && <p className="mt-1 rounded-lg bg-fondo px-3 py-2 break-words whitespace-pre-line">{e.texto}</p>}
+                    {/* Un pedido eliminado se recupera desde acá (10/10/2026, RN-189). */}
+                    {e.clase === "ACTIVIDAD" && (e.accion === "ELIMINAR" || e.accion === "CANCELAR") && e.entidad?.tipo === "PEDIDO" && e.entidad.cancelado && sesion.permisos.includes("pedidos.editar") && (
+                      <BotonAccion accion={recuperarPedidoAccion} datos={{ pedido: e.entidad.id }} className="mt-1 min-h-10 rounded-lg border-2 border-marca px-3 font-semibold text-marca hover:bg-marca/10">
+                        ↩ Deshacer: recuperar el pedido
+                      </BotonAccion>
+                    )}
                     <p className="text-xs text-texto-suave">{tiempoRelativo(e.en, ahora, sesion.zonaHoraria)}</p>
                   </div>
                 </li>

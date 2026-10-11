@@ -5,6 +5,7 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearFechaHora, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { remitosDelDia, type RemitoDelDia } from "@/modulos/entregas/entregas";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
+import { diaElegido } from "@/ui/dia-elegido";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { FechaGrande } from "@/ui/fecha-grande";
 import { Encabezado, clasesBoton } from "@/ui/formularios";
@@ -94,7 +95,7 @@ export default async function Remitos({ searchParams }: PageProps<"/entregas/rem
   const sesion = await sesionParaPantalla("documentos.imprimir_entrega");
   const db = obtenerBaseDatos();
   const pedida = parametro((await searchParams).fecha);
-  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await jornadaEnCurso(db, sesion.authUserId);
+  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : ((await diaElegido()) ?? (await jornadaEnCurso(db, sesion.authUserId)));
   const remitos = await remitosDelDia(db, sesion.authUserId, fecha);
   const hechos = remitos.filter((r) => r.hecho);
   const contable = sesion.permisos.includes("documentos.imprimir_contable");

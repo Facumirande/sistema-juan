@@ -12,7 +12,8 @@ export function clasesBoton(variante: VarianteBoton = "principal"): string {
   return `${base} border border-borde`;
 }
 
-const CLASES_CONTROL = "h-12 rounded-lg border border-borde bg-superficie px-3 text-base";
+// `min-w-0`: un selector con opciones largas no estira el formulario más allá de la pantalla del celular.
+const CLASES_CONTROL = "h-12 min-w-0 rounded-lg border border-borde bg-superficie px-3 text-base";
 
 /** El nombre de un casillero; si es obligatorio, con su asterisco rojo. */
 export function Etiqueta({ texto, obligatorio }: { texto: string; obligatorio?: boolean }) {
@@ -31,7 +32,7 @@ export function Etiqueta({ texto, obligatorio }: { texto: string; obligatorio?: 
 
 export function Campo({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HTMLInputElement> & { etiqueta: string; ayuda?: string }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className="flex min-w-0 flex-col gap-1">
       <Etiqueta texto={etiqueta} obligatorio={input.required} />
       <input {...input} className={`${CLASES_CONTROL} ${input.className ?? ""}`} />
       {ayuda && <span className="text-sm text-texto-suave">{ayuda}</span>}
@@ -57,7 +58,7 @@ export function Selector({
   ...select
 }: SelectHTMLAttributes<HTMLSelectElement> & { etiqueta: string; opciones: readonly Opcion[]; vacia?: string; ayuda?: string }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className="flex min-w-0 flex-col gap-1">
       <Etiqueta texto={etiqueta} obligatorio={select.required} />
       <select {...select} className={CLASES_CONTROL}>
         {vacia !== undefined && <option value="">{vacia}</option>}
@@ -86,7 +87,7 @@ export function Casilla({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HTMLI
 
 export function AreaTexto({ etiqueta, ...area }: TextareaHTMLAttributes<HTMLTextAreaElement> & { etiqueta: string }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className="flex min-w-0 flex-col gap-1">
       <Etiqueta texto={etiqueta} obligatorio={area.required} />
       <textarea rows={3} {...area} className="rounded-lg border border-borde bg-superficie px-3 py-2 text-base" />
     </label>
@@ -103,17 +104,17 @@ export function Aviso({ children }: { children: ReactNode }) {
 
 export function Encabezado({ titulo, descripcion, volver, children }: { titulo: string; descripcion?: ReactNode; volver?: { ruta: string; texto: string }; children?: ReactNode }) {
   return (
-    <header className="flex flex-col gap-2">
+    <header className="flex flex-col gap-1.5 sm:gap-2">
       {volver && (
         <Link href={volver.ruta} className="text-texto-suave hover:underline">
           ← {volver.texto}
         </Link>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{titulo}</h1>
+        <h1 className="text-[1.375rem] leading-tight font-semibold sm:text-2xl">{titulo}</h1>
         {children && <div className="flex flex-wrap gap-2">{children}</div>}
       </div>
-      {descripcion && <p className="text-texto-suave">{descripcion}</p>}
+      {descripcion && <p className="text-sm text-texto-suave sm:text-base">{descripcion}</p>}
     </header>
   );
 }

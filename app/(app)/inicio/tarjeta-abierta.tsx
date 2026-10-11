@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { tiempoRelativo } from "@/dominio/colaboracion/tiempo";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
-import { COLUMNAS, PASO_ANTERIOR, PASO_SIGUIENTE, columnaDeTarjeta, textoPlazo, type ClaveColumna } from "@/dominio/pedidos/tablero";
+import { COLUMNAS, PASO_ANTERIOR, PASO_SIGUIENTE, RETIRO_A_LA_VISTA, columnaDeTarjeta, textoPlazo, type ClaveColumna } from "@/dominio/pedidos/tablero";
 import type { EntradaActividad } from "@/modulos/colaboracion/actividad";
 import type { NotaVisible } from "@/modulos/colaboracion/notas";
 import type { PersonaVisible } from "@/modulos/colaboracion/personas";
@@ -14,14 +14,15 @@ import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
 import { Checklist, type ProductoDeChecklist } from "@/ui/checklist";
-import { ESTADOS_PEDIDO, fechaConDia } from "@/ui/etiquetas";
+import { ESTADOS_PEDIDO, UNIDADES_CORTAS, fechaConDia } from "@/ui/etiquetas";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { FlechaNavegacion } from "@/ui/iconos";
 
 import { HiloDeNotas } from "../actividad/notas";
-import { asignarElegidosAccion, moverTarjetaAccion, plazoAccion, prioridadElegidosAccion, sacarDeListaAccion } from "./acciones";
+import { asignarElegidosAccion, eliminarPedidoAccion, moverTarjetaAccion, plazoAccion, prioridadElegidosAccion, recuperarPedidoAccion, sacarDeListaAccion } from "./acciones";
 import { ChecklistVivo, type ParaComprar } from "./checklist-vivo";
+import { PrecioSobreLaMarcha } from "./precio-sobre-la-marcha";
 
 // La tarjeta abierta (como en Trello), grande y despejada: primero lo que lleva el pedido, con el
 // mismo checklist de la tarjeta cerrada (se tilda ahí mismo lo comprado o lo separado) y el botón
@@ -78,7 +79,8 @@ const PERMISO_PARA_VOLVER: Readonly<Record<ClaveColumna, Permiso | null>> = {
 /** Qué permiso hace falta para hacer avanzar una tarjeta de cada columna (el mismo criterio que el tablero). */
 const PERMISO_PARA_AVANZAR: Readonly<Record<ClaveColumna, Permiso | null>> = {
   pedidos: "lista_compra.generar",
-  en_lista: "lista_compra.editar",
+  // Con la columna Retiro guardada, de la lista de compras se pasa directo a preparar.
+  en_lista: RETIRO_A_LA_VISTA ? "lista_compra.editar" : "preparacion.registrar",
   comprados: "preparacion.registrar",
   preparando: "repartos.gestionar",
   en_camino: "entregas.confirmar",
@@ -110,6 +112,8 @@ export function TarjetaAbierta({
   const etiquetas = etiquetasDePedido({ tipoCliente: p.tipoCliente, prioridad: p.prioridad, esTardio: p.esTardio });
   const plazo = textoPlazo(p.entregaDesde, p.entregaHasta);
   const abierto = p.estado !== "CANCELADO" && p.estado !== "ENTREGADO";
+  // Los productos que todavía no tienen precio de venta: se les pone ahí mismo (10/10/2026).
+  const sinPrecio = p.lineas.filter((l) => !l.cancelado && l.precio !== null && l.precio.precio === null).map((l) => ({ id: l.id, producto: l.producto, unidad: UNIDADES_CORTAS[l.unidadBase] ?? l.unidadBase }));
   const editable = abierto && puede("pedidos.editar");
   const cambiable = SE_CAMBIA.includes(p.estado) && puede("pedidos.editar") && (p.estado !== "EN_COMPRA" || puede("pedidos.editar_en_curso"));
   const hechos = avance.lineas.filter((l) => l.hecha).length;
@@ -135,7 +139,7 @@ export function TarjetaAbierta({
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:gap-8 sm:p-8">
-      <header className="flex items-start gap-3 sm:gap-4 sm:pr-12">
+      <header className="flex items-start gap-3 pr-12 sm:gap-4">
         <span aria-hidden className="flex size-12 shrink-0 items-center justify-center rounded-full bg-black/5 text-3xl sm:size-16 sm:text-4xl dark:bg-white/10">
           {dibujoDeCliente(p.tipoCliente)}
         </span>
@@ -217,6 +221,7 @@ export function TarjetaAbierta({
                 ) : (
                   <Checklist productos={productos} modo={avance.que ? "visto" : "ver"} tamano="amplio" etiqueta={`Lo que lleva ${p.cliente}`} />
                 )}
+                {abierto && puede("precios.override_linea") && sinPrecio.length > 0 && <PrecioSobreLaMarcha lineas={sinPrecio} />}
                 {seTilda && <p className="text-sm text-tarjeta-suave">{seTilda === "compra" ? (paraComprar ? "Tildá ✓ lo que ya compraste, o ✕ si no se consiguió. Con el $ anotás a quién se lo compraste y a cuánto: ese precio queda guardado para ese proveedor." : "Tildá ✓ lo que ya compraste, o ✕ si no se consiguió.") : "Tildá ✓ lo que ya separaste para el cliente. Si falta algo, anotalo desde “Anotar lo que falta”."}</p>}
               </>
             )}
@@ -304,6 +309,22 @@ export function TarjetaAbierta({
             <Link href={`/pedidos/${p.id}`} className={botonLateral}>
               🗒️ Ver el pedido completo
             </Link>
+            {/* Eliminar aunque ya esté en proceso, y recuperarlo (10/10/2026, RN-189). */}
+            {abierto && puede("pedidos.cancelar") && (
+              <BotonAccion
+                accion={eliminarPedidoAccion}
+                datos={{ pedido: p.id }}
+                className={`${botonLateral} text-error`}
+                confirmar={`¿Eliminar el pedido de ${p.cliente}? Se deshace lo que se hizo con él (preparación, remito y reparto). Se puede recuperar desde Actividad.`}
+              >
+                🗑 Eliminar el pedido
+              </BotonAccion>
+            )}
+            {p.estado === "CANCELADO" && puede("pedidos.editar") && (
+              <BotonAccion accion={recuperarPedidoAccion} datos={{ pedido: p.id }} className={botonLateral}>
+                ↩ Recuperar el pedido
+              </BotonAccion>
+            )}
           </div>
           {editable && (
             <div className="flex flex-col gap-2">

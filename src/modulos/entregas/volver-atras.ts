@@ -237,3 +237,82 @@ export async function volverAtras(db: BaseDatos, authUserId: string, datos: { pe
     return { cliente: suyas[0]!.cliente, fecha: suyas[0]!.fecha };
   });
 }
+
+const ABIERTAS = ["BORRADOR", "EN_PREPARACION", "PREPARADA"];
+
+/**
+ * Eliminar un pedido aunque ya esté en proceso (pedido del usuario, 10/10/2026): se deshace lo que se
+ * hizo con él (sale del reparto, se anula su preparación con el remito) y queda CANCELADO con el
+ * motivo, fuera del tablero. Queda en Actividad, desde donde se recupera (`recuperarPedido`). Un
+ * pedido entregado no: primero se vuelve atrás la entrega (RN-189).
+ */
+export async function eliminarPedido(db: BaseDatos, authUserId: string, datos: { pedidoId: string; motivo?: string | null }): Promise<{ cliente: string; fecha: FechaISO }> {
+  return ejecutarComoUsuario(db, authUserId, "pedidos.cancelar", async (tx, c) => {
+    const [p] = await tx
+      .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha, estadoJornada: jornada.estado, cliente: cliente.nombre })
+      .from(pedido)
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .where(eq(pedido.id, datos.pedidoId))
+      .for("update", { of: pedido });
+    if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido: puede que ya lo hayan eliminado. Recargá la página.");
+    if (p.estado === "CANCELADO") return { cliente: p.cliente, fecha: p.fecha };
+    if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para eliminar un pedido, primero reabrí el día.", { enlace: { href: `/jornadas/${p.fecha}/cierre`, texto: "Reabrir el día" } });
+    if (p.estado === "ENTREGADO") throw new ErrorDeNegocio("TRANSICION_INVALIDA", "Este pedido ya se entregó: para eliminarlo, primero volvelo a “En camino” (↩ No se entregó).");
+    // Lo que salió vuelve, y lo que se estaba preparando se deshace.
+    let suyas = await entregasDelPedido(tx, p.id);
+    if (suyas.some((e) => e.estado === "EN_REPARTO")) {
+      c.permisos.exigir("repartos.gestionar");
+      await volverDeCamino(tx, c, suyas);
+      suyas = await entregasDelPedido(tx, p.id);
+    }
+    if (suyas.some((e) => ABIERTAS.includes(e.estado))) {
+      c.permisos.exigir("preparacion.registrar");
+      await dejarDePreparar(tx, c, suyas);
+    }
+    const motivo = datos.motivo?.trim() || "Se eliminó desde el tablero";
+    const [antes] = await tx.select({ estado: pedido.estado }).from(pedido).where(eq(pedido.id, p.id));
+    await tx
+      .update(pedido)
+      .set({ estado: "CANCELADO", canceladoEn: sql`now()`, canceladoPor: c.usuarioId, motivoCancelacion: motivo, actualizadoPor: c.usuarioId })
+      .where(eq(pedido.id, p.id));
+    // Si estaba en la lista de compras, la lista queda para volver a calcular.
+    if (antes?.estado === "EN_COMPRA") await tx.update(listaCompra).set({ desactualizada: true }).where(eq(listaCompra.jornadaId, p.jornadaId));
+    const visible = formatearNumeroDocumento("PED-", p.numero);
+    await Promise.all([
+      auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "CANCELAR", entidad: "pedido", entidadId: p.id, resumen: `${visible} eliminado.`, motivo, datosAntes: { estado: p.estado }, datosDespues: { estado: "CANCELADO" } }),
+      registrarActividad(tx, c, { accion: "ELIMINAR", entidadTipo: "PEDIDO", entidadId: p.id, jornadaId: p.jornadaId, resumen: `eliminó el pedido ${visible} de ${p.cliente}` }),
+    ]);
+    return { cliente: p.cliente, fecha: p.fecha };
+  });
+}
+
+/**
+ * Recuperar un pedido eliminado o cancelado (desde Actividad o desde su tarjeta): vuelve a la columna
+ * Pedidos con todos sus productos, para seguir su camino de nuevo (RN-189).
+ */
+export async function recuperarPedido(db: BaseDatos, authUserId: string, datos: { pedidoId: string }): Promise<{ cliente: string; fecha: FechaISO }> {
+  return ejecutarComoUsuario(db, authUserId, "pedidos.editar", async (tx, c) => {
+    const [p] = await tx
+      .select({ id: pedido.id, numero: pedido.numero, estado: pedido.estado, jornadaId: pedido.jornadaId, fecha: jornada.fecha, estadoJornada: jornada.estado, cliente: cliente.nombre })
+      .from(pedido)
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
+      .where(eq(pedido.id, datos.pedidoId))
+      .for("update", { of: pedido });
+    if (!p) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el pedido.");
+    if (p.estado !== "CANCELADO") return { cliente: p.cliente, fecha: p.fecha };
+    if (p.estadoJornada === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "Ese día ya está cerrado: para recuperar un pedido, primero reabrí el día.", { enlace: { href: `/jornadas/${p.fecha}/cierre`, texto: "Reabrir el día" } });
+    const { n } = unico(await tx.select({ n: count() }).from(pedidoItem).where(and(eq(pedidoItem.pedidoId, p.id), eq(pedidoItem.cancelado, false))));
+    await tx
+      .update(pedido)
+      .set({ estado: Number(n) > 0 ? "CONFIRMADO" : "BORRADOR", canceladoEn: null, canceladoPor: null, motivoCancelacion: null, actualizadoPor: c.usuarioId })
+      .where(eq(pedido.id, p.id));
+    const visible = formatearNumeroDocumento("PED-", p.numero);
+    await Promise.all([
+      auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "MODIFICAR", entidad: "pedido", entidadId: p.id, resumen: `${visible} recuperado.`, datosAntes: { estado: "CANCELADO" }, datosDespues: { estado: "CONFIRMADO" } }),
+      registrarActividad(tx, c, { accion: "RECUPERAR", entidadTipo: "PEDIDO", entidadId: p.id, jornadaId: p.jornadaId, resumen: `recuperó el pedido ${visible} de ${p.cliente}` }),
+    ]);
+    return { cliente: p.cliente, fecha: p.fecha };
+  });
+}

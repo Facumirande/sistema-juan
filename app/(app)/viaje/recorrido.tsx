@@ -13,7 +13,6 @@ import { quitarParadaAccion } from "../repartos/acciones";
 
 import {
   armarRepartoAccion,
-  buscarEnMapaAccion,
   guardarFavoritoAccion,
   guardarOrdenAccion,
   guardarRecorridoAccion,
@@ -22,6 +21,7 @@ import {
   quitarDestinoAccion,
 } from "./acciones";
 import { AgregarDestino, type Favorito } from "./agregar-destino";
+import { BuscadorDeLugar } from "./buscador-de-lugar";
 
 // El recorrido en una sola lista (pedido del usuario, 07/10/2026): a dónde hay que ir, en qué
 // orden, cuánto hay hasta cada lugar, el GPS para ir y el botón para entregar. Los destinos se
@@ -98,7 +98,6 @@ export function Recorrido({
   const [aca, setAca] = useState<Coordenada | null>(null);
   const [acaTexto, setAcaTexto] = useState("donde estás ahora");
   const [otra, setOtra] = useState("");
-  const [lugares, setLugares] = useState<{ etiqueta: string; coordenada: Coordenada }[]>([]);
   const [fijarPrimero, setFijarPrimero] = useState(false);
   const [volver, setVolver] = useState(false);
   const [agregando, setAgregando] = useState(false);
@@ -194,7 +193,6 @@ export function Recorrido({
   const salirDe = (c: Coordenada, texto: string) => {
     setAca(c);
     setAcaTexto(texto);
-    setLugares([]);
     setAviso(null);
   };
   const dondeEstoy = () => {
@@ -208,18 +206,21 @@ export function Recorrido({
       { enableHighAccuracy: true, timeout: 15000 },
     );
   };
-  const buscarOtra = () =>
-    empezar(async () => {
-      const pegada = leerCoordenadas(otra) ?? (/^https?:/i.test(otra.trim()) ? await leerEnlaceAccion(otra) : null);
-      if (pegada) return salirDe(pegada, "la ubicación que pegaste");
-      const r = await buscarEnMapaAccion(otra);
-      setLugares(r.lugares);
-      setAviso(r.mensaje ? { texto: r.mensaje, grave: false } : null);
-    });
+  // Lo escrito también puede ser un enlace de Google Maps o unas coordenadas pegadas.
+  const escribirOtra = (texto: string) => {
+    setOtra(texto);
+    const pegada = leerCoordenadas(texto);
+    if (pegada) return salirDe(pegada, "la ubicación que pegaste");
+    if (/^https?:/i.test(texto.trim()))
+      empezar(async () => {
+        const enlace = await leerEnlaceAccion(texto);
+        if (enlace) salirDe(enlace, "la ubicación que pegaste");
+      });
+  };
 
   const calcular = () => {
     if (modo !== "salida" && !aca) {
-      return setAviso({ texto: modo === "otra" ? "Primero escribí de dónde salís y tocá Buscar." : "Todavía no sé dónde estás: tocá de nuevo “Donde estoy” y permití la ubicación, o elegí otra forma de salir.", grave: true });
+      return setAviso({ texto: modo === "otra" ? "Primero escribí de dónde salís y elegí el lugar de la lista." : "Todavía no sé dónde estás: tocá de nuevo “Donde estoy” y permití la ubicación, o elegí otra forma de salir.", grave: true });
     }
     const r = planearRecorrido(
       pendientes.map((d) => ({ id: d.clave, coordenada: d.coordenada })),
@@ -275,26 +276,7 @@ export function Recorrido({
             <p className="pl-12 text-sm text-texto-suave">{textoSalida}</p>
             {modo === "otra" && (
               <div className="flex flex-col gap-1 pl-12">
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    value={otra}
-                    onChange={(e) => setOtra(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && otra.trim()) buscarOtra();
-                    }}
-                    aria-label="Dirección de donde salís"
-                    placeholder="Calle, número y localidad (o un enlace de Google Maps)"
-                    className="h-12 min-w-0 flex-1 rounded-xl border-2 border-borde bg-superficie px-3"
-                  />
-                  <button type="button" onClick={buscarOtra} disabled={ocupado || !otra.trim()} className={chico}>
-                    🔎 Buscar
-                  </button>
-                </div>
-                {lugares.map((l) => (
-                  <button key={`${l.coordenada.lat},${l.coordenada.lng}`} type="button" onClick={() => salirDe(l.coordenada, l.etiqueta)} className="min-h-12 rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-left hover:border-marca">
-                    <b>Salgo de acá:</b> {l.etiqueta}
-                  </button>
-                ))}
+                <BuscadorDeLugar valor={otra} alCambiar={escribirOtra} alElegir={(l) => salirDe(l.coordenada, l.etiqueta)} etiqueta="Dirección de donde salís" placeholder="Calle y número, o el nombre del lugar (o un enlace)" />
               </div>
             )}
           </li>

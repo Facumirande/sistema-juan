@@ -7,6 +7,7 @@ import { coloresDelNegocio } from "@/modulos/colaboracion/colores";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { PermisosEfectivos } from "@/seguridad/permisos";
+import { leerResponsables, type Responsables } from "@/dominio/pedidos/responsables";
 
 /** Quién hace la acción y en qué empresa. Se arma en cada pedido al servidor (02 §10.3, regla 6). */
 export interface ContextoUsuario {
@@ -19,6 +20,8 @@ export interface ContextoUsuario {
   zonaHoraria: string;
   /** Hora a partir de la cual los pedidos pasan al día siguiente (nula = sin corte). */
   horaCortePedidos: string | null;
+  /** Quién se encarga de cada parte del proceso (para avisarle cuando le toca). */
+  responsables: Responsables;
   roles: string[];
   permisos: PermisosEfectivos;
   /** Entró con una clave provisoria: antes de usar el sistema elige la suya (02 §10.2). */
@@ -51,7 +54,7 @@ export async function resolverContexto(tx: Transaccion, authUserId: string): Pro
       })
       .from(usuario)
       .where(eq(usuario.authUserId, authUserId)),
-    tx.select({ activa: empresa.activa, zonaHoraria: empresa.zonaHoraria, horaCortePedidos: empresa.horaCortePedidos }).from(empresa),
+    tx.select({ activa: empresa.activa, zonaHoraria: empresa.zonaHoraria, horaCortePedidos: empresa.horaCortePedidos, responsables: empresa.responsablesEtapa }).from(empresa),
     tx
       .select({ codigo: rol.codigo, permisos: rol.permisos, activo: rol.activo })
       .from(usuarioRol)
@@ -71,6 +74,7 @@ export async function resolverContexto(tx: Transaccion, authUserId: string): Pro
     email: u.email,
     zonaHoraria: e.zonaHoraria,
     horaCortePedidos: e.horaCortePedidos,
+    responsables: leerResponsables(e.responsables),
     roles: roles.filter((r) => r.activo).map((r) => r.codigo),
     permisos: new PermisosEfectivos(roles),
     debeCambiarClave: u.debeCambiarClave,

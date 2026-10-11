@@ -6,7 +6,8 @@ import type { Coordenada } from "@/dominio/entregas/recorrido";
 import { leerCoordenadas, mostrarCoordenadas } from "@/dominio/entregas/ubicacion";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
-import { agregarDestinoAccion, buscarEnMapaAccion, leerEnlaceAccion, quitarFavoritoAccion, renombrarFavoritoAccion } from "./acciones";
+import { agregarDestinoAccion, leerEnlaceAccion, quitarFavoritoAccion, renombrarFavoritoAccion } from "./acciones";
+import { BuscadorDeLugar } from "./buscador-de-lugar";
 import { MapaParaMarcar } from "./mapa-para-marcar";
 
 // Sumar un destino al recorrido del día (pedido del usuario, 07/10/2026): un favorito con un toque,
@@ -30,7 +31,6 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
   const [direccion, setDireccion] = useState("");
   const [coordenada, setCoordenada] = useState<Coordenada | null>(null);
   const [comoFavorito, setComoFavorito] = useState(false);
-  const [lugares, setLugares] = useState<{ etiqueta: string; coordenada: Coordenada }[]>([]);
   const [conMapa, setConMapa] = useState(false);
   const [editando, setEditando] = useState(false);
   const [nombres, setNombres] = useState<Record<string, string>>({});
@@ -49,23 +49,20 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
   };
   const marcar = (c: Coordenada) => {
     setCoordenada(c);
-    setLugares([]);
     setConMapa(false);
     setAviso(null);
   };
-  const buscar = () =>
-    empezar(async () => {
-      // Sirve la dirección escrita, un enlace de Google Maps o unas coordenadas pegadas.
-      const pegada = leerCoordenadas(direccion) ?? (/^https?:/i.test(direccion.trim()) ? await leerEnlaceAccion(direccion) : null);
-      if (pegada) {
-        marcar(pegada);
-        setDireccion("");
-        return;
-      }
-      const r = await buscarEnMapaAccion(direccion);
-      setLugares(r.lugares);
-      setAviso(r.mensaje ? { texto: r.mensaje, grave: false } : null);
-    });
+  // Lo escrito también puede ser un enlace de Google Maps o unas coordenadas pegadas.
+  const escribir = (texto: string) => {
+    setDireccion(texto);
+    const pegada = leerCoordenadas(texto);
+    if (pegada) return marcar(pegada);
+    if (/^https?:/i.test(texto.trim()))
+      empezar(async () => {
+        const enlace = await leerEnlaceAccion(texto);
+        if (enlace) marcar(enlace);
+      });
+  };
   const estoyAca = () => {
     if (!navigator.geolocation) return setAviso({ texto: "Este aparato no tiene GPS disponible en el navegador. Escribí la dirección y tocá Buscar.", grave: false });
     setAviso({ texto: "Buscando dónde estás…", grave: false });
@@ -161,38 +158,16 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
         ) : (
           <>
             <div className="flex flex-col gap-1">
-              <label className="font-medium" htmlFor="destino-direccion">
+              <p className="font-medium">
                 Dirección <span className="font-normal text-texto-suave">(o un enlace de Google Maps)</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <input
-                  id="destino-direccion"
-                  value={direccion}
-                  onChange={(e) => setDireccion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    if (direccion.trim()) buscar();
-                  }}
-                  placeholder="Calle, número y localidad"
-                  autoComplete="off"
-                  className={entrada}
-                />
-                <button type="button" onClick={buscar} disabled={ocupado || !direccion.trim()} className={boton}>
-                  {ocupado ? "Un momento…" : "🔎 Buscar"}
-                </button>
-              </div>
-              {lugares.map((l) => (
-                <button key={`${l.coordenada.lat},${l.coordenada.lng}`} type="button" onClick={() => marcar(l.coordenada)} className="min-h-12 rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-left hover:border-marca">
-                  <b>Es acá:</b> {l.etiqueta}
-                </button>
-              ))}
+              </p>
+              <BuscadorDeLugar valor={direccion} alCambiar={escribir} alElegir={(l) => marcar(l.coordenada)} etiqueta="Dirección del destino" placeholder="Calle y número, o el nombre del lugar" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setConMapa(true)} className={boton}>
                 🗺️ {coordenada ? "Cambiarlo en el mapa" : "Marcar en el mapa"}
               </button>
-              <button type="button" onClick={estoyAca} disabled={ocupado} className={`${boton} pointer-fine:hidden`}>
+              <button type="button" onClick={estoyAca} disabled={ocupado} className={boton}>
                 📱 Estoy acá
               </button>
               <span className={`font-medium ${coordenada ? "text-marca" : "text-texto-suave"}`}>{coordenada ? `✓ Ubicación marcada (${mostrarCoordenadas(coordenada)})` : "Sin la ubicación marcada no entra en el cálculo del mejor recorrido."}</span>

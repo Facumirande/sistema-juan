@@ -11,6 +11,7 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { FechaGrande } from "@/ui/fecha-grande";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Encabezado, clasesBoton } from "@/ui/formularios";
+import { diaElegido } from "@/ui/dia-elegido";
 import { parametro } from "@/ui/parametros";
 import { SelectorDeDia } from "@/ui/selector-de-dia";
 
@@ -55,12 +56,18 @@ function renglon(l: LineaDeLista, conCompra: boolean): RenglonDeLista {
     grupo: l.grupo,
     compras: l.compras.map((k) => `${k.proveedor} · ${num(k.cantidad)} × ${k.presentacion}${k.precio ? ` a ${formatearMoneda(k.precio)}` : ""} · ${k.aCuenta ? "a cuenta" : "pagado"}`),
     compra: conCompra ? datosParaComprar(l) : null,
+    pago: l.compras.length === 0 ? null : l.compras.every((k) => !k.aCuenta) ? "PAGADO" : "A_CUENTA",
     importe: importeDe(l),
     total: cant(l.necesidadBase, l.unidadBase),
     equivalencia: porEnvase ? `≈ ${num(l.cantidadPresentaciones!)} × ${l.presentacion}` : null,
     falta: l.estado === "PARCIAL" ? `Falta ${cant(l.pendienteBase, l.unidadBase)}` : null,
     clientes: l.paraQuien.map((q) => ({ cliente: q.cliente, cantidad: cant(q.cantidadBase, l.unidadBase) })),
     puesto: l.proveedor ? `${l.proveedor}${l.ubicacion ? ` (${l.ubicacion})` : ""}${precio}` : null,
+    puestoId: l.proveedorId,
+    puestoNombre: l.proveedor,
+    puestoUbicacion: l.ubicacion,
+    categoria: l.categoria,
+    categoriaOrden: l.categoriaOrden,
     estado: l.estado,
     tildado: l.tildado,
     avisos: [...(l.necesidadModificada ? ["Cambió un pedido después de comprarlo: revisá si alcanza."] : []), ...(l.estado === "PENDIENTE" || l.estado === "PARCIAL" ? l.alertas.map((a) => AVISOS[a] ?? a) : [])],
@@ -75,7 +82,8 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
   const db = obtenerBaseDatos();
   const sp = await searchParams;
   // Con el día ya elegido, los días para cambiar y la lista se piden a la vez.
-  const pedida = parametro(sp.fecha);
+  // Sin día en la dirección, el que se eligió en el tablero (o en otra pantalla del día).
+  const pedida = parametro(sp.fecha) ?? (await diaElegido());
   const yaElegida = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : null;
   const [{ fecha, hoy, dias }, anticipada] = await Promise.all([diasParaElegir(db, sesion.authUserId, pedida), yaElegida ? obtenerListaCompra(db, sesion.authUserId, yaElegida, { paraComprar: true }) : null]);
   const lista = yaElegida ? anticipada : await obtenerListaCompra(db, sesion.authUserId, fecha, { paraComprar: true });
@@ -120,7 +128,7 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
 
       <FechaGrande fecha={fecha} hoy={hoy} />
       <div className="print:hidden">
-        <SelectorDeDia dias={dias} fecha={fecha} hoy={hoy} enlace={(f) => `/lista-compra?fecha=${f}`} />
+        <SelectorDeDia dias={dias} fecha={fecha} hoy={hoy} ruta="/lista-compra?fecha={fecha}" />
       </div>
 
       {!lista ? (
@@ -183,7 +191,7 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
           <ListaDeCompras
             fecha={fecha}
             renglones={lineas.map((l) => renglon(l, puede("compras.registrar") && !cerrado))}
-            puede={{ editar: puede("lista_compra.editar") && !cerrado, comprar: puede("compras.registrar") && !cerrado, exceder: puede("compras.exceder_limite") }}
+            puede={{ editar: puede("lista_compra.editar") && !cerrado, comprar: puede("compras.registrar") && !cerrado, exceder: puede("compras.exceder_limite"), pagar: puede("pagos.registrar") }}
             proveedores={lista.proveedores}
           />
 

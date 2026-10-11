@@ -7,13 +7,14 @@ import type { Coordenada } from "@/dominio/entregas/recorrido";
 import { leerCoordenadas, mostrarCoordenadas } from "@/dominio/entregas/ubicacion";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
-import { buscarEnMapaAccion, leerEnlaceAccion } from "./acciones";
+import { leerEnlaceAccion } from "./acciones";
+import { BuscadorDeLugar } from "./buscador-de-lugar";
 import { MapaParaMarcar } from "./mapa-para-marcar";
 
-// Marcar dónde queda un lugar. En la computadora hay una sola forma: marcarlo en el mapa
-// incrustado (pedido del usuario, 06/10/2026). En el celular, además, estando ahí (el GPS),
-// escribiendo la dirección o pegando un enlace de Google Maps (de WhatsApp, por ejemplo). Qué se
-// ve lo decide el tipo de puntero (mouse o dedo) con CSS, así la pantalla no cambia al cargar.
+// Marcar dónde queda un lugar, igual en la computadora y en el celular (10/10/2026: un solo método
+// en toda la aplicación). Se escribe la dirección y se elige entre los lugares de Tucumán que van
+// apareciendo; eso abre el mapa con el punto puesto, para afinarlo y guardarlo. También se puede
+// marcar directo en el mapa, estando ahí (el GPS) o pegando un enlace de Google Maps.
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
 
@@ -40,7 +41,8 @@ export function MarcarUbicacion({
 }) {
   const [estado, guardar, guardando] = useActionState(accion, ESTADO_INICIAL);
   const [buscando, empezar] = useTransition();
-  const [lugares, setLugares] = useState<{ etiqueta: string; coordenada: Coordenada }[]>([]);
+  /** El lugar elegido en el buscador, para abrir el mapa con el punto puesto. */
+  const [propuesta, setPropuesta] = useState<Coordenada | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [texto, setTexto] = useState(direccion);
   const [pegado, setPegado] = useState("");
@@ -54,7 +56,7 @@ export function MarcarUbicacion({
       fd.append("lng", String(c.lng));
     }
     if (guardaDireccion && conDireccion?.trim()) fd.append("direccion", conDireccion.trim());
-    setLugares([]);
+    setPropuesta(null);
     setAviso(null);
     setConMapa(false);
     startTransition(() => guardar(fd));
@@ -77,12 +79,6 @@ export function MarcarUbicacion({
       if (c) enviar(c);
       else setAviso("No encontré una ubicación en eso. En Google Maps tocá “Compartir”, copiá el enlace y pegalo acá (o las coordenadas, ej. -34.6037, -58.3816).");
     });
-  const buscar = () =>
-    empezar(async () => {
-      const r = await buscarEnMapaAccion(texto);
-      setLugares(r.lugares);
-      setAviso(r.mensaje);
-    });
   const boton = "min-h-12 rounded-xl border-2 border-borde bg-superficie px-4 font-semibold hover:border-marca disabled:opacity-60";
   const entrada = "h-12 min-w-0 flex-1 rounded-xl border-2 border-borde bg-superficie px-3";
   const ocupado = buscando || guardando;
@@ -104,69 +100,35 @@ export function MarcarUbicacion({
         )}
       </p>
       {conMapa ? (
-        <MapaParaMarcar actual={actual} direccion={texto} centro={centro} guardando={guardando} alGuardar={enviar} alCancelar={() => setConMapa(false)} />
+        <MapaParaMarcar actual={propuesta ?? actual} direccion={texto} centro={centro} guardando={guardando} alGuardar={enviar} alCancelar={() => setConMapa(false)} />
       ) : (
         <>
-          <div>
-            <button type="button" onClick={() => setConMapa(true)} disabled={guardando} className={`${boton} pointer-fine:border-marca pointer-fine:bg-marca pointer-fine:text-marca-texto`}>
+          <BuscadorDeLugar
+            valor={texto}
+            alCambiar={setTexto}
+            alElegir={(l) => {
+              setPropuesta(l.coordenada);
+              setConMapa(true);
+            }}
+            etiqueta={`Buscar la dirección (${titulo.toLowerCase()})`}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setConMapa(true)} disabled={guardando} className={boton}>
               🗺️ {actual ? "Cambiarla en el mapa" : "Marcar en el mapa"}
             </button>
+            <button type="button" onClick={estoyAca} disabled={ocupado} className={boton}>
+              📱 Estoy en el lugar (GPS)
+            </button>
           </div>
-
-          {/* En el celular, además: el GPS, la dirección escrita o un enlace pegado. */}
-          <div className="flex flex-col gap-3 pointer-fine:hidden">
-            <p className="text-sm text-texto-suave">O de la forma que te quede más cómoda:</p>
-            <div>
-              <button type="button" onClick={estoyAca} disabled={ocupado} className={boton}>
-                📱 Estoy en el lugar: usar el GPS del celular
+          <details>
+            <summary className="min-h-10 cursor-pointer py-2 text-sm font-medium">Pegar un enlace de Google Maps (o las coordenadas)</summary>
+            <div className="flex flex-wrap gap-2">
+              <input id={`link-${id}`} value={pegado} onChange={(e) => setPegado(e.target.value)} placeholder="Ej. el enlace que te mandaron por WhatsApp" aria-label="Enlace de Google Maps o coordenadas" className={entrada} />
+              <button type="button" onClick={usarPegado} disabled={ocupado || !pegado.trim()} className={boton}>
+                Usar
               </button>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="font-medium" htmlFor={`dir-${id}`}>
-                Escribiendo la dirección
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <input
-                  id={`dir-${id}`}
-                  value={texto}
-                  onChange={(e) => setTexto(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    if (texto.trim()) buscar();
-                  }}
-                  placeholder="Calle, número y localidad. Ej. Av. San Martín 1250, Morón"
-                  className={entrada}
-                />
-                <button type="button" onClick={buscar} disabled={ocupado || !texto.trim()} className={boton}>
-                  {buscando ? "Buscando…" : "🔎 Buscar"}
-                </button>
-              </div>
-              {lugares.length > 0 && (
-                <ul className="flex flex-col gap-1">
-                  <li className="text-sm text-texto-suave">Tocá el que corresponde:</li>
-                  {lugares.map((l) => (
-                    <li key={`${l.coordenada.lat},${l.coordenada.lng}`}>
-                      <button type="button" onClick={() => enviar(l.coordenada, texto)} disabled={guardando} className="min-h-12 w-full rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-left hover:border-marca">
-                        <b>Es acá:</b> {l.etiqueta}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="font-medium" htmlFor={`link-${id}`}>
-                Pegando un enlace de Google Maps (o las coordenadas)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <input id={`link-${id}`} value={pegado} onChange={(e) => setPegado(e.target.value)} placeholder="Ej. el enlace que te mandaron por WhatsApp" className={entrada} />
-                <button type="button" onClick={usarPegado} disabled={ocupado || !pegado.trim()} className={boton}>
-                  Usar
-                </button>
-              </div>
-            </div>
-          </div>
+          </details>
         </>
       )}
       {(guardando || aviso || estado.mensaje) && (

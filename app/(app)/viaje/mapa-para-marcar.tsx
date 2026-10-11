@@ -3,20 +3,19 @@
 import "leaflet/dist/leaflet.css";
 
 import type { Map as MapaLeaflet, Marker } from "leaflet";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Coordenada } from "@/dominio/entregas/recorrido";
-import { mostrarCoordenadas } from "@/dominio/entregas/ubicacion";
+import { enLaZona, mostrarCoordenadas, ZONA_DEL_NEGOCIO } from "@/dominio/entregas/ubicacion";
 
-import { buscarEnMapaAccion } from "./acciones";
+import { sugerirLugaresAccion } from "./acciones";
+import { BuscadorDeLugar } from "./buscador-de-lugar";
 
 // Mapa incrustado para marcar un lugar con un clic (pedido del usuario, 06/10/2026: desde la
 // computadora la ubicación se marca solo en el mapa). Usa Leaflet con los mapas de OpenStreetMap;
 // se carga recién cuando se abre. El punto se puede arrastrar para afinarlo. La dirección escrita
 // solo sirve para llevar el mapa a la zona (no marca nada sola).
 
-/** Argentina entera, si no hay ningún punto de referencia. */
-const ARGENTINA: Coordenada = { lat: -38.4, lng: -63.6 };
 const redondear = (n: number) => Math.round(n * 1e6) / 1e6;
 
 export function MapaParaMarcar({
@@ -42,7 +41,8 @@ export function MapaParaMarcar({
   const [elegido, setElegido] = useState<Coordenada | null>(actual);
   const [texto, setTexto] = useState(direccion);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [buscando, empezar] = useTransition();
+  // Para poner el punto desde el buscador (lo arma el mapa al abrirse).
+  const ponerDesdeAfuera = useRef<((c: Coordenada) => void) | null>(null);
 
   // El mapa se arma una vez, al abrirse; se desarma al cerrarse.
   useEffect(() => {
@@ -50,8 +50,10 @@ export function MapaParaMarcar({
     void (async () => {
       const L = (await import("leaflet")).default;
       if (cancelado || !contenedor.current || mapa.current) return;
-      const inicio = actual ?? centro ?? ARGENTINA;
-      const m = L.map(contenedor.current, { zoomControl: true, attributionControl: true }).setView([inicio.lat, inicio.lng], actual ? 17 : centro ? 14 : 4);
+      // Sin un punto marcado, arranca en el lugar de referencia si está en Tucumán (la zona del negocio) o en San Miguel de Tucumán.
+      const cerca = centro && enLaZona(centro) ? centro : null;
+      const inicio = actual ?? cerca ?? ZONA_DEL_NEGOCIO.centro;
+      const m = L.map(contenedor.current, { zoomControl: true, attributionControl: true }).setView([inicio.lat, inicio.lng], actual ? 17 : cerca ? 14 : 13);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
@@ -70,12 +72,12 @@ export function MapaParaMarcar({
         }
       };
       if (actual) poner(actual);
+      ponerDesdeAfuera.current = poner;
       m.on("click", (e) => poner({ lat: e.latlng.lat, lng: e.latlng.lng }));
       mapa.current = m;
       // Sin punto marcado, el mapa arranca en la dirección escrita (si se encuentra).
       if (!actual && direccion.trim()) {
-        const r = await buscarEnMapaAccion(direccion);
-        const primero = r.lugares[0];
+        const primero = (await sugerirLugaresAccion(direccion))[0];
         if (!cancelado && primero) m.setView([primero.coordenada.lat, primero.coordenada.lng], 16);
       }
     })();
@@ -89,38 +91,21 @@ export function MapaParaMarcar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const irA = () =>
-    empezar(async () => {
-      const r = await buscarEnMapaAccion(texto);
-      const primero = r.lugares[0];
-      if (primero && mapa.current) {
-        mapa.current.setView([primero.coordenada.lat, primero.coordenada.lng], 17);
-        setAviso("Listo: ahora hacé clic en el lugar exacto.");
-      } else setAviso(r.mensaje ?? "No se encontró esa dirección: mové el mapa a mano.");
-    });
-
   const boton = "min-h-10 rounded-lg border border-borde bg-superficie px-3 text-sm font-medium hover:border-marca disabled:opacity-60";
   return (
     <div className="flex flex-col gap-2">
-      {/* Sin <form>: este mapa puede quedar dentro de otro formulario. */}
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            if (texto.trim()) irA();
-          }}
-          placeholder="Llevar el mapa a una calle o barrio"
-          aria-label="Llevar el mapa a una dirección"
-          className="h-10 min-w-0 flex-1 rounded-lg border border-borde bg-superficie px-3 text-sm"
-        />
-        <button type="button" onClick={irA} disabled={buscando || !texto.trim()} className={boton}>
-          {buscando ? "Buscando…" : "Ir"}
-        </button>
-      </div>
-      <div ref={contenedor} className="h-80 w-full overflow-hidden rounded-xl border border-borde" role="application" aria-label="Mapa: hacé clic en el lugar para marcarlo" />
+      {/* Sin <form>: este mapa puede quedar dentro de otro formulario. Lo que se elige lleva el mapa ahí y deja el punto puesto. */}
+      <BuscadorDeLugar
+        valor={texto}
+        alCambiar={setTexto}
+        alElegir={(l) => {
+          mapa.current?.setView([l.coordenada.lat, l.coordenada.lng], 17);
+          ponerDesdeAfuera.current?.(l.coordenada);
+          setAviso("Listo: si hace falta, arrastrá el punto al lugar exacto y guardalo.");
+        }}
+        placeholder="Buscá la calle y el número (o el lugar)"
+      />
+      <div ref={contenedor} className="relative z-0 h-80 w-full overflow-hidden rounded-xl border border-borde" role="application" aria-label="Mapa: hacé clic en el lugar para marcarlo" />
       <p className="text-sm text-texto-suave" role="status">
         {aviso ?? (elegido ? `Marcado en ${mostrarCoordenadas(elegido)}. Podés arrastrar el punto para afinarlo.` : "Hacé clic (o tocá) en el lugar exacto para marcarlo.")}
       </p>

@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   COLUMNAS,
+  COLUMNAS_A_LA_VISTA,
   COLUMNAS_ARRASTRABLES,
   PASO_ANTERIOR,
   PASO_SIGUIENTE,
+  RETIRO_A_LA_VISTA,
   accionAlMover,
+  columnaEnCompra,
   porQueNoSeMueve,
   columnaDePedido,
   columnaDeTarjeta,
@@ -30,14 +33,29 @@ describe("tablero de pedidos", () => {
     expect(columnaDePedido("EN_REPARTO")).toBe("en_camino");
     expect(columnaDePedido("ENTREGADO")).toBe("entregados");
     expect(columnaDePedido("CANCELADO")).toBeNull();
-    // Con todo lo suyo comprado, el pedido de la lista pasa a "Comprado".
-    expect(columnaDeTarjeta("EN_COMPRA", true)).toBe("comprados");
+    // Con todo lo suyo comprado, el pedido de la lista pasa a "Retiro"; con esa columna guardada, se queda en la lista.
+    expect(columnaDeTarjeta("EN_COMPRA", true)).toBe(RETIRO_A_LA_VISTA ? "comprados" : "en_lista");
     expect(columnaDeTarjeta("EN_COMPRA", false)).toBe("en_lista");
+    expect(columnaEnCompra(false)).toBe("en_lista");
     expect(columnaDeTarjeta("EN_PREPARACION", true)).toBe("preparando");
     // Con la preparación armada (aunque no se separó nada) ya está en "Preparando".
     expect(columnaDeTarjeta("CONFIRMADO", false, true)).toBe("preparando");
     expect(columnaDeTarjeta("EN_COMPRA", true, true)).toBe("preparando");
     expect(columnaDeTarjeta("EN_REPARTO", false, true)).toBe("en_camino");
+  });
+
+  it("la columna Retiro se guarda o se muestra entera: el tablero, el botón verde y el paso atrás van juntos", () => {
+    const claves = COLUMNAS_A_LA_VISTA.map((c) => c.clave);
+    expect(claves.includes("comprados")).toBe(RETIRO_A_LA_VISTA);
+    expect(claves.filter((c) => c !== "comprados")).toEqual(["pedidos", "en_lista", "preparando", "en_camino", "entregados"]);
+    // Ninguna tarjeta queda en una columna que no se ve, ni el botón verde o el paso atrás llevan a una.
+    for (const todoComprado of [true, false]) expect(claves).toContain(columnaDeTarjeta("EN_COMPRA", todoComprado));
+    for (const c of claves) {
+      if (PASO_SIGUIENTE[c]) expect(claves).toContain(PASO_SIGUIENTE[c].hacia);
+      if (PASO_ANTERIOR[c]) expect(claves).toContain(PASO_ANTERIOR[c].hacia);
+    }
+    // Guardada, de la lista de compras se pasa directo a preparar.
+    if (!RETIRO_A_LA_VISTA) expect(PASO_SIGUIENTE.en_lista).toMatchObject({ hacia: "preparando" });
   });
 
   it("en el celular el tablero arranca en la primera columna con pedidos", () => {
@@ -105,12 +123,12 @@ describe("tablero de pedidos", () => {
 
   it("cada columna tiene su paso siguiente (el botón verde de la tarjeta), y Entregados es el final", () => {
     const camino = ["pedidos", "en_lista", "comprados", "preparando", "en_camino", "entregados"] as const;
-    expect(camino.map((c) => PASO_SIGUIENTE[c]?.hacia ?? null)).toEqual(["en_lista", "comprados", "preparando", "en_camino", "entregados", null]);
+    expect(camino.map((c) => PASO_SIGUIENTE[c]?.hacia ?? null)).toEqual(["en_lista", RETIRO_A_LA_VISTA ? "comprados" : "preparando", "preparando", "en_camino", "entregados", null]);
     // El botón de cada paso hace algo de verdad: mover la tarjeta ahí está permitido.
     for (const c of camino) if (PASO_SIGUIENTE[c]) expect(accionAlMover(c, PASO_SIGUIENTE[c].hacia)).not.toBeNull();
     // Todas las tarjetas se arrastran: también hacia atrás, por si se pasaron por accidente.
     expect(COLUMNAS_ARRASTRABLES).toHaveLength(6);
-    expect(camino.map((c) => PASO_ANTERIOR[c]?.hacia ?? null)).toEqual([null, "pedidos", "pedidos", "comprados", "preparando", "en_camino"]);
+    expect(camino.map((c) => PASO_ANTERIOR[c]?.hacia ?? null)).toEqual([null, "pedidos", "pedidos", RETIRO_A_LA_VISTA ? "comprados" : "en_lista", "preparando", "en_camino"]);
     for (const c of camino) if (PASO_ANTERIOR[c]) expect(accionAlMover(c, PASO_ANTERIOR[c].hacia)).not.toBeNull();
     // El subtítulo de cada columna dice qué hay que hacer.
     expect(COLUMNAS.every((c) => c.ayuda.length > 10)).toBe(true);

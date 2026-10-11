@@ -122,6 +122,42 @@ describe.each(MODOS)("el cliente rápido, $nombre", ({ opciones }) => {
   });
 });
 
+describe.each(MODOS)("el pulso de los cambios, $nombre", ({ opciones }) => {
+  // Las pruebas de arriba corren sin la secuencia del pulso: guardar no depende de ella.
+  it("sube con cada transacción que guarda algo, y no con las que solo leen o fallan", async () => {
+    await pg.exec("create schema if not exists interno; create sequence if not exists interno.pulso");
+    const crudo = postgres(`postgres://postgres:x@127.0.0.1:${puerto}/postgres`, { prepare: false, max: 2 });
+    const db = drizzle(clienteRapido(crudo, opciones));
+    const pulso = async () => Number((await db.execute(sql`select case when is_called then last_value else 0 end as n from interno.pulso`))[0]?.n);
+    try {
+      const antes = await pulso();
+      const texto = `pulso ${antes}`;
+      await db.transaction((tx) => tx.execute(sql`insert into t (texto) values (${texto})`));
+      await db.transaction((tx) => tx.execute(sql`update t set n = 1 where texto = ${texto}`));
+      expect(await pulso()).toBe(antes + 2);
+      await db.transaction((tx) => tx.execute(sql`select count(*) from t`));
+      await expect(
+        db.transaction(async (tx) => {
+          await tx.execute(sql`insert into t (texto) values ('no queda')`);
+          throw new Error("a propósito");
+        }),
+      ).rejects.toThrow("a propósito");
+      expect(await pulso()).toBe(antes + 2);
+
+      // Una consulta que falló y el código siguió de largo: no se da por guardado.
+      await expect(
+        db.transaction(async (tx) => {
+          await tx.execute(sql`insert into t (texto) values ('tragado')`);
+          await tx.execute(sql`select 1/0`).then(undefined, () => null);
+        }),
+      ).rejects.toThrow();
+      expect((await db.execute(sql`select count(*)::int as n from t where texto = 'tragado'`))[0]).toEqual({ n: 0 });
+    } finally {
+      await crudo.end({ timeout: 2 });
+    }
+  });
+});
+
 describe("qué cuenta como lectura (no hace falta esperar su commit)", () => {
   it("leer y fijar valores de la transacción es lectura", () => {
     expect(esDeLectura("select 1")).toBe(true);

@@ -243,14 +243,12 @@ export interface CuentaListada {
  */
 export async function listarCuentasProveedores(db: BaseDatos, authUserId: string): Promise<{ hoy: FechaISO; cuentas: CuentaListada[] }> {
   return ejecutarComoUsuario(db, authUserId, "proveedores.ver_credito", async (tx) => {
-    const umbrales = await umbralesSemaforo(tx);
-    const { diasAviso, hoy } = await zonaYHoy(tx);
     const saldos = tx
       .select({ proveedorId: movimientoCuentaProveedor.proveedorId, saldo: sum(movimientoCuentaProveedor.importe).as("saldo") })
       .from(movimientoCuentaProveedor)
       .groupBy(movimientoCuentaProveedor.proveedorId)
       .as("saldos");
-    const filas = await tx
+    const consultaDeFilas = tx
       .select({
         proveedorId: proveedor.id,
         proveedor: proveedor.nombre,
@@ -265,7 +263,7 @@ export async function listarCuentasProveedores(db: BaseDatos, authUserId: string
       .orderBy(asc(proveedor.nombre));
 
     // Deudas con vencimiento de todos los proveedores en dos consultas (compras y débitos).
-    const compras = await tx
+    const consultaDeCompras = tx
       .select({
         proveedorId: compra.proveedorId,
         vence: compra.fechaVencimiento,
@@ -274,7 +272,7 @@ export async function listarCuentasProveedores(db: BaseDatos, authUserId: string
       })
       .from(compra)
       .where(and(eq(compra.estado, "REGISTRADA"), sql`${compra.fechaVencimiento} is not null`));
-    const debitos = await tx
+    const consultaDeDebitos = tx
       .select({
         proveedorId: movimientoCuentaProveedor.proveedorId,
         vence: movimientoCuentaProveedor.fechaVencimiento,
@@ -283,12 +281,14 @@ export async function listarCuentasProveedores(db: BaseDatos, authUserId: string
       })
       .from(movimientoCuentaProveedor)
       .where(and(eq(movimientoCuentaProveedor.tipo, "AJUSTE_DEBITO"), sql`${movimientoCuentaProveedor.fechaVencimiento} is not null`));
-    const deudas = [...compras, ...debitos].map((d) => ({ proveedorId: d.proveedorId, vence: d.vence, pendiente: dec(d.total).minus(d.imputado) }));
-    const ultimos = await tx
+    const consultaDeUltimos = tx
       .selectDistinctOn([pagoProveedor.proveedorId], { proveedorId: pagoProveedor.proveedorId, fecha: pagoProveedor.fechaPago, monto: pagoProveedor.monto })
       .from(pagoProveedor)
       .where(eq(pagoProveedor.estado, "REGISTRADO"))
       .orderBy(pagoProveedor.proveedorId, desc(pagoProveedor.fechaPago));
+    // Todo sale junto, en una sola ida a la base: esta lista acompaña al tablero y no puede demorarlo.
+    const [umbrales, { diasAviso, hoy }, filas, compras, debitos, ultimos] = await Promise.all([umbralesSemaforo(tx), zonaYHoy(tx), consultaDeFilas, consultaDeCompras, consultaDeDebitos, consultaDeUltimos]);
+    const deudas = [...compras, ...debitos].map((d) => ({ proveedorId: d.proveedorId, vence: d.vence, pendiente: dec(d.total).minus(d.imputado) }));
 
     const orden: Record<string, number> = { EXCEDIDO: 0, ROJO: 1, AMARILLO: 2, VERDE: 3, SIN_LIMITE: 3 };
     const cuentas = filas

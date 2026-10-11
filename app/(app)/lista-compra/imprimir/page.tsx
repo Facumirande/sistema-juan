@@ -11,7 +11,6 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonImprimir, ImprimirAlAbrir } from "@/ui/boton-imprimir";
 import { fechaConDia } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
-import { SemaforoCredito } from "@/ui/semaforo";
 
 export const metadata: Metadata = { title: "Lista de compras para imprimir · Sistema Repartos" };
 
@@ -24,8 +23,9 @@ const ALERTAS: Readonly<Record<string, string>> = {
 const cant = (v: string, unidad: string) => formatearCantidad(v, unidad as UnidadMedida);
 
 /**
- * DOC-01 Lista de compras (09): la lista completa del día, por puesto, con para quién es cada
- * producto, casillas y columnas vacías para anotar lo que se pagó y lo que se compró.
+ * DOC-01 Lista de compras (09), simplificada el 10/10/2026: la lista del día por puesto (el elegido o
+ * el que conviene; lo que va sin puesto, aparte), con casilla, el producto en grande, cuánto comprar,
+ * para quién es y dos columnas para anotar a mano el puesto y el precio.
  * `?precios=no` la imprime sin precios (RN-053); `?falta=1` deja solo lo que falta comprar.
  */
 export default async function ImprimirListaCompra({ searchParams }: PageProps<"/lista-compra/imprimir">) {
@@ -102,64 +102,57 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
 
           {grupos.map((p) => (
             <section key={p.proveedorId ?? "sin"} className="break-inside-avoid">
-              <h2 className="flex flex-wrap items-baseline gap-x-3 font-bold uppercase">
-                {p.proveedor}
-                {p.ubicacion && <span className="font-normal normal-case">— {p.ubicacion}</span>}
-                {p.credito && (
-                  <span className="text-sm font-normal normal-case">
-                    <SemaforoCredito semaforo={p.credito.semaforoProyectado} />
-                    {p.credito.disponibleHoy !== null && ` disp. ${formatearMoneda(p.credito.disponibleHoy)} → ${formatearMoneda(p.credito.disponibleDespues ?? "0")}`}
-                  </span>
-                )}
+              <h2 className="flex flex-wrap items-baseline gap-x-3 border-b-2 border-texto pb-0.5 text-lg font-extrabold uppercase">
+                {p.proveedorId ? p.proveedor : "Sin puesto"}
+                {p.ubicacion && <span className="text-sm font-semibold normal-case">{p.ubicacion}</span>}
+                <span className="ml-auto text-sm font-semibold normal-case">
+                  {p.lineas.length === 1 ? "1 producto" : `${p.lineas.length} productos`}
+                  {conPrecios && subtotal(p.lineas).gt(0) && ` · ${formatearMoneda(subtotal(p.lineas))}`}
+                </span>
               </h2>
-              <table className="w-full border-collapse text-left text-sm [&_td]:border-b [&_td]:border-borde [&_td]:px-1 [&_td]:py-1 [&_td]:align-top [&_th]:border-b [&_th]:border-texto [&_th]:px-1">
+              <table className="w-full border-collapse text-left [&_td]:border-b [&_td]:border-borde [&_td]:px-1 [&_td]:py-1.5 [&_td]:align-middle [&_th]:px-1 [&_th]:pt-1 [&_th]:text-xs [&_th]:uppercase">
                 <thead>
                   <tr>
-                    <th className="w-6" />
+                    <th className="w-7" />
                     <th>Producto</th>
                     <th>Comprar</th>
-                    <th>Necesidad</th>
-                    <th>Ya compr.</th>
-                    <th>Sobra</th>
-                    {conPrecios && <th className="text-right">Precio sug.</th>}
-                    {conPrecios && <th className="text-right">Costo est.</th>}
-                    <th className="w-24">Pagado</th>
-                    <th className="w-20">Compr.</th>
+                    {conPrecios && <th className="text-right">Último precio</th>}
+                    <th className="w-28">Puesto</th>
+                    <th className="w-24">Precio</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {p.lineas.map((l) => (
-                    <tr key={l.id}>
-                      <td>{l.estado === "COMPRADO" ? "☑" : l.estado === "NO_CONSEGUIDO" ? "✕" : "☐"}</td>
-                      <td>
-                        <span className="font-semibold">{l.producto}</span>
-                        {l.paraQuien.length > 0 && <span className="block text-xs">Para: {l.paraQuien.map((q) => `${q.cliente} (${cant(q.cantidadBase, l.unidadBase)})`).join(" · ")}</span>}
-                        {l.estado === "COMPRADO" && <span className="block text-xs font-semibold">{l.tildado ? "YA COMPRADO (tildado)" : "YA COMPRADO"}</span>}
-                        {l.estado === "PARCIAL" && <span className="block text-xs font-semibold">FALTA UNA PARTE</span>}
-                        {l.observaciones && <span className="block text-xs">“{l.observaciones}”</span>}
-                        {l.alertas.map((a) => (
-                          <span key={a} className="block text-xs font-semibold">
-                            ⚠ {ALERTAS[a]}
+                  {p.lineas.map((l) => {
+                    const hecho = l.estado === "COMPRADO" || l.estado === "NO_CONSEGUIDO";
+                    return (
+                      <tr key={l.id} className={hecho ? "opacity-60" : ""}>
+                        <td className="text-xl leading-none">{l.estado === "COMPRADO" ? "☑" : l.estado === "NO_CONSEGUIDO" ? "✕" : "☐"}</td>
+                        <td>
+                          <span className={`text-base font-bold ${hecho ? "line-through" : ""}`}>{l.producto}</span>
+                          {l.paraQuien.length > 0 && <span className="block text-xs">{l.paraQuien.map((q) => `${q.cliente} ${cant(q.cantidadBase, l.unidadBase)}`).join(" · ")}</span>}
+                          {l.estado === "PARCIAL" && <span className="block text-xs font-bold">FALTA UNA PARTE</span>}
+                          {l.estado === "NO_CONSEGUIDO" && <span className="block text-xs font-bold">NO SE CONSIGUIÓ</span>}
+                          {l.observaciones && <span className="block text-xs">“{l.observaciones}”</span>}
+                          {l.alertas.map((a) => (
+                            <span key={a} className="block text-xs font-semibold">
+                              ⚠ {ALERTAS[a]}
+                            </span>
+                          ))}
+                        </td>
+                        <td className="whitespace-nowrap">
+                          <span className="text-base font-bold">
+                            {l.cantidadPresentaciones && l.presentacion && !dec(l.factor).eq(1) ? `${formatearNumero(l.cantidadPresentaciones, { decimales: 3, recortarCeros: true })} × ${l.presentacion}` : cant(l.pendienteBase === "0" ? l.necesidadBase : l.pendienteBase, l.unidadBase)}
                           </span>
-                        ))}
-                        {l.estado === "NO_CONSEGUIDO" && <span className="block text-xs font-semibold">NO SE CONSIGUIÓ</span>}
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {l.cantidadPresentaciones && l.presentacion ? `${formatearNumero(l.cantidadPresentaciones, { decimales: 3, recortarCeros: true })} ${l.presentacion}` : "—"}
-                        {l.aComprarBase && <span className="block text-xs">{cant(l.aComprarBase, l.unidadBase)}</span>}
-                      </td>
-                      <td className="whitespace-nowrap">{cant(l.necesidadBase, l.unidadBase)}</td>
-                      <td className="whitespace-nowrap">{cant(l.compradoBase, l.unidadBase)}</td>
-                      <td className="whitespace-nowrap">{dec(l.sobrantePrevistoBase).gt(0) ? cant(l.sobrantePrevistoBase, l.unidadBase) : ""}</td>
-                      {conPrecios && <td className="text-right whitespace-nowrap">{l.precioSugerido ? formatearMoneda(l.precioSugerido) : ""}</td>}
-                      {conPrecios && <td className="text-right whitespace-nowrap">{l.costoEstimado ? formatearMoneda(l.costoEstimado) : ""}</td>}
-                      <td className="border-texto!" />
-                      <td className="border-texto!" />
-                    </tr>
-                  ))}
+                          {l.cantidadPresentaciones && l.presentacion && !dec(l.factor).eq(1) && <span className="block text-xs">{cant(l.necesidadBase, l.unidadBase)}</span>}
+                        </td>
+                        {conPrecios && <td className="text-right whitespace-nowrap">{l.precioSugerido ? formatearMoneda(l.precioSugerido) : "—"}</td>}
+                        <td className="border-b-texto!" />
+                        <td className="border-b-texto!" />
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-              {conPrecios && subtotal(p.lineas).gt(0) && <p className="text-right text-sm font-semibold">Subtotal {formatearMoneda(subtotal(p.lineas))}</p>}
             </section>
           ))}
           {conPrecios && total.gt(0) && <p className="text-right text-lg font-bold">TOTAL ESTIMADO {formatearMoneda(total)}</p>}

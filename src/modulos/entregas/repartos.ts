@@ -369,7 +369,7 @@ export async function mandarEnCamino(
       }),
       aPreparar.length ? tx.update(entrega).set({ estado: "PREPARADA", actualizadoPor: c.usuarioId }).where(inArray(entrega.id, aPreparar.map((e) => e.id))) : null,
       aPreparar.length ? moverPedidosDeEntregas(tx, aPreparar.map((e) => e.id), ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO") : null,
-      ...aPreparar.map((e) => registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${nombre(e)}` })),
+      ...aPreparar.map((e) => registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${nombre(e)}`, paraUsuarioId: c.responsables.en_camino ?? null })),
     ]);
     for (const e of aPreparar) e.estado = "PREPARADA";
 

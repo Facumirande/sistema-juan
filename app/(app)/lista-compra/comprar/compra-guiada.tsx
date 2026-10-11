@@ -75,7 +75,7 @@ export function CompraGuiada({
       : "",
   );
   const [proveedorId, setProveedorId] = useState(
-    sugerido.proveedorId ?? proveedores[0]?.id ?? "",
+    sugerido.proveedorId ?? "",
   );
   const [envaseId, setEnvaseId] = useState(
     sugerido.envaseId ?? envases[0]?.id ?? "",
@@ -88,8 +88,9 @@ export function CompraGuiada({
     return o ? sinPesos(o.precio) : "";
   });
   const proveedor = proveedores.find((p) => p.id === proveedorId) ?? null;
+  // Con puesto, a cuenta; sin puesto, pagado en efectivo (se puede cambiar; 10/10/2026).
   const [pago, setPago] = useState<"CUENTA" | "PAGADO">(
-    proveedor?.aCuenta ? "CUENTA" : "PAGADO",
+    proveedor ? "CUENTA" : "PAGADO",
   );
   const oferta = ofertaDe(proveedorId, envaseId);
   const envase = envases.find((e) => e.id === envaseId) ?? null;
@@ -116,9 +117,7 @@ export function CompraGuiada({
       ofertas.find((o) => o.proveedorId === id) ??
       null;
     elegir(id, suya?.presentacionId ?? envaseId);
-    setPago(
-      proveedores.find((x) => x.id === id)?.aCuenta ? "CUENTA" : "PAGADO",
-    );
+    setPago(id ? "CUENTA" : "PAGADO");
   };
   const sumar = (paso: number) => {
     const actual = c ? Number(c.toString()) : 0;
@@ -146,10 +145,12 @@ export function CompraGuiada({
         value={
           oferta
             ? `oferta:${oferta.ofertaId}`
-            : `proveedor:${proveedorId}:${envaseId}`
+            : proveedorId
+              ? `proveedor:${proveedorId}:${envaseId}`
+              : `sinpuesto::${envaseId}`
         }
       />
-      <input type="hidden" name="pago" value={pago} />
+      <input type="hidden" name="pago" value={proveedorId ? pago : "PAGADO"} />
       <input type="hidden" name="volver" value={volver} />
       <input type="hidden" name="siguiente" value={siguiente} />
       {confirmar && (
@@ -163,6 +164,7 @@ export function CompraGuiada({
           onChange={(e) => elegirProveedor(e.target.value)}
           className="h-14 rounded-xl border-2 border-borde bg-superficie px-3 text-lg font-semibold"
         >
+          <option value="">Sin puesto (efectivo)</option>
           {proveedores.map((x) => (
             <option key={x.id} value={x.id}>
               {x.nombre}
@@ -189,16 +191,19 @@ export function CompraGuiada({
               key={valor}
               type="button"
               onClick={() => setPago(valor)}
-              aria-pressed={pago === valor}
-              className={`min-h-14 text-lg font-bold ${pago === valor ? "bg-marca text-marca-texto" : "bg-superficie"}`}
+              aria-pressed={(proveedorId ? pago : "PAGADO") === valor}
+              disabled={!proveedorId && valor === "CUENTA"}
+              className={`min-h-14 text-lg font-bold disabled:cursor-not-allowed disabled:opacity-50 ${(proveedorId ? pago : "PAGADO") === valor ? "bg-marca text-marca-texto" : "bg-superficie"}`}
             >
               {texto}
             </button>
           ))}
         </div>
         <p className="text-sm text-texto-suave">
-          {pago === "CUENTA"
-            ? `A cuenta: esta compra se suma a lo que le debemos a ${proveedor?.nombre ?? "ese puesto"}.`
+          {!proveedor
+            ? "Sin puesto: queda pagada en efectivo."
+            : pago === "CUENTA"
+            ? `A cuenta: esta compra se suma a lo que le debemos a ${proveedor.nombre}.`
             : "En efectivo: queda pagada, no suma deuda."}
         </p>
       </div>

@@ -33,6 +33,13 @@ interface ClienteConReserva extends ClientePostgres {
   begin(...argumentos: unknown[]): Promise<unknown>;
 }
 
+/**
+ * El pulso de los cambios (migración 0023): sube con cada transacción que guarda algo, y las
+ * pantallas abiertas lo miran para redibujarse cuando la otra persona cambia algo. Si todavía no
+ * existe o el rol no puede usarlo, no pasa nada: la transacción se guarda igual.
+ */
+export const SUBIR_PULSO = "do $$ begin perform nextval('interno.pulso'); exception when others then null; end $$";
+
 const LEE = /^\s*(select|set|show)\b/i;
 const BLOQUEA = /\bfor\s+(no\s+key\s+update|update|key\s+share|share)\b/i;
 
@@ -134,6 +141,8 @@ async function transaccion(cliente: ClienteConReserva, fn: (tx: ClientePostgres)
     devolver();
     throw error;
   }
+  // Si guardó algo, sube el pulso (sale junto con el "commit", sin esperarlo).
+  if (marca.escribio) conexion.unsafe(SUBIR_PULSO).execute().then(undefined, alFallar);
   const fin = conexion.unsafe("commit").execute();
   if (!marca.escribio && !opciones.esperarCommit) {
     // Solo se leyó: no hay nada que guardar, así que no se espera la respuesta.
@@ -144,7 +153,8 @@ async function transaccion(cliente: ClienteConReserva, fn: (tx: ClientePostgres)
     return resultado;
   }
   try {
-    await fin;
+    // Si algo había fallado sin que nadie se enterara, el "commit" termina en "rollback": se avisa.
+    if (((await fin) as { command?: string } | null)?.command === "ROLLBACK") throw new Error("La base no guardó los cambios.");
   } catch (error) {
     alFallar(error);
     throw error;
@@ -170,7 +180,12 @@ export function clienteRapido<T extends object>(cliente: T, opciones: Opciones =
           if (opciones.transaccionSimple) {
             // Como lo hace postgres.js, pero con los valores en la consulta también adentro.
             const marca = { escribio: false, corte: false, puntos: 0 };
-            return original.begin(...argumentos.map((a) => (a === fn ? (interno: ClientePostgres) => fn(dentroDeTransaccion(interno, marca)) : a)));
+            const conPulso = async (interno: ClientePostgres) => {
+              const resultado = await fn(dentroDeTransaccion(interno, marca));
+              if (marca.escribio) await interno.unsafe(SUBIR_PULSO);
+              return resultado;
+            };
+            return original.begin(...argumentos.map((a) => (a === fn ? conPulso : a)));
           }
           return transaccion(original, fn, opciones, typeof argumentos[0] === "string" ? argumentos[0] : "");
         };

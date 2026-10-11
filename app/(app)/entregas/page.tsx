@@ -7,6 +7,7 @@ import { formatearMoneda } from "@/dominio/dinero/formato";
 import { sumarDias } from "@/dominio/fechas/fechas";
 import { listarEntregas } from "@/modulos/entregas/entregas";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
+import { diaElegido } from "@/ui/dia-elegido";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { ESTADOS_ENTREGA, fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
@@ -20,7 +21,7 @@ export default async function PaginaEntregas({ searchParams }: PageProps<"/entre
   const sesion = await sesionParaPantalla("entregas.ver");
   const db = obtenerBaseDatos();
   const pedida = parametro((await searchParams).fecha);
-  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await jornadaEnCurso(db, sesion.authUserId);
+  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : ((await diaElegido()) ?? (await jornadaEnCurso(db, sesion.authUserId)));
   const entregas = await listarEntregas(db, sesion.authUserId, fecha);
   const vigentes = entregas.filter((e) => e.estado !== "ANULADA");
   const verVenta = sesion.permisos.includes("precios.ver_venta");

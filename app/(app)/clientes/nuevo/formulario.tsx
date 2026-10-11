@@ -6,6 +6,7 @@ import { dibujoDeCliente } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
 
+import { BuscadorDeLugar } from "../../viaje/buscador-de-lugar";
 import { crearClienteAccion } from "../acciones";
 
 // Alta de un cliente en tres preguntas (nombre y tipo, dónde se entrega, teléfono). Lo demás es
@@ -43,6 +44,7 @@ export function FormularioCliente() {
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState<string>("COMERCIO");
   const [direccion, setDireccion] = useState("");
+  const [ubicacion, setUbicacion] = useState<{ lat: number; lng: number } | null>(null);
   const [horario, setHorario] = useState(0);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
@@ -77,8 +79,31 @@ export function FormularioCliente() {
 
         <Pregunta n={2} titulo="¿Dónde se le entrega?" ayuda="Sin una dirección no se le pueden cargar pedidos. Después, en su ficha, podés marcarla en el mapa o agregar otra.">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <input name="punto_direccion" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle y número" aria-label="Dirección de entrega" className={campoGrande} />
-            <input name="punto_localidad" placeholder="Localidad (opcional)" aria-label="Localidad" className={campoGrande} />
+            {/* Mientras se escribe aparecen los lugares de Tucumán; el elegido deja marcada la ubicación. */}
+            <input type="hidden" name="punto_direccion" value={direccion} />
+            {ubicacion && (
+              <>
+                <input type="hidden" name="punto_lat" value={ubicacion.lat} />
+                <input type="hidden" name="punto_lng" value={ubicacion.lng} />
+              </>
+            )}
+            <div className="flex flex-col gap-1">
+              <BuscadorDeLugar
+                valor={direccion}
+                alCambiar={(t) => {
+                  setDireccion(t);
+                  setUbicacion(null);
+                }}
+                alElegir={(l) => {
+                  setDireccion(l.etiqueta);
+                  setUbicacion(l.coordenada);
+                }}
+                etiqueta="Dirección de entrega"
+                placeholder="Calle y número (elegí de la lista para marcar la ubicación)"
+              />
+              <span className={`text-sm ${ubicacion ? "font-semibold text-marca" : "text-texto-suave"}`}>{ubicacion ? "✓ Ubicación marcada: va a aparecer bien en el recorrido." : "Elegí la dirección de la lista para que quede marcada en el mapa."}</span>
+            </div>
+            <input name="punto_localidad" placeholder="Localidad (ej. Yerba Buena)" aria-label="Localidad" className={campoGrande} />
           </div>
           <p className="font-medium">¿A qué hora recibe?</p>
           <div className="flex flex-wrap gap-2">

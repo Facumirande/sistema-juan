@@ -4,6 +4,7 @@ import Link from "next/link";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { documentosDelDia } from "@/modulos/entregas/entregas";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
+import { diaElegido } from "@/ui/dia-elegido";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonImprimir } from "@/ui/boton-imprimir";
 import { fechaConDia } from "@/ui/etiquetas";
@@ -24,7 +25,7 @@ export default async function ImprimirRemitos({ searchParams }: PageProps<"/entr
   const sesion = await sesionParaPantalla(contable ? "documentos.imprimir_contable" : "documentos.imprimir_entrega");
   const db = obtenerBaseDatos();
   const pedida = parametro(f.fecha);
-  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await jornadaEnCurso(db, sesion.authUserId);
+  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : ((await diaElegido()) ?? (await jornadaEnCurso(db, sesion.authUserId)));
   const dosCopias = !contable && parametro(f.copias) === "2";
   const documentos = await documentosDelDia(db, sesion.authUserId, { fecha, tipo: contable ? "DOC_03" : "DOC_02" });
   const base = `/entregas/remitos/imprimir?fecha=${fecha}`;

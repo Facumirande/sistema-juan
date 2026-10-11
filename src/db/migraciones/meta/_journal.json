@@ -162,6 +162,41 @@
       "when": 1791428108036,
       "tag": "0022_recorrido_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791609639991,
+      "tag": "0023_pulso_de_cambios",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791610176236,
+      "tag": "0024_pulso_solo_la_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791658785352,
+      "tag": "0025_unidades_por_envase",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791659421593,
+      "tag": "0026_responsables_por_etapa",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791665002033,
+      "tag": "0027_caja_inicial",
+      "breakpoints": true
     }
   ]
 }

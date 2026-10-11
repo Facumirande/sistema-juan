@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
-import { compra, empresa, imputacionPagoProveedor, medioPago, modoImputacion, movimientoCuentaProveedor, pagoProveedor, proveedor, usuario } from "@/db/esquema";
+import { compra, compraItem, empresa, imputacionPagoProveedor, listaCompra, listaCompraItem, medioPago, modoImputacion, movimientoCuentaProveedor, pagoProveedor, producto, proveedor, usuario } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { indicadoresCredito, validarImputacionManual, type IndicadoresCredito } from "@/dominio/compras/credito";
@@ -417,4 +417,108 @@ export async function obtenerPago(db: BaseDatos, authUserId: string, pagoId: str
       })),
     };
   });
+}
+
+const esquemaPagadoDesdeLista = z.object({
+  itemId: z.uuid("Ese producto ya no está en la lista: recargá la página."),
+  pagado: z.boolean(),
+});
+
+/**
+ * El interruptor "Pagado / A cuenta" al final de cada renglón de la lista de compras (pedido del
+ * usuario, 08/10/2026), igual al del panel de precio y puesto (RN-179). Pagado: un pago en efectivo
+ * de hoy por lo que falta de cada compra anotada de ese producto en el día, imputado a ella (como
+ * "Pagué en efectivo"). A cuenta: se anulan los pagos de esas compras; un pago que cubre también
+ * otras compras no se toca desde acá y se explica dónde hacerlo.
+ */
+export async function pagadoDesdeLaLista(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaPagadoDesdeLista>): Promise<void> {
+  const d = validar(esquemaPagadoDesdeLista, datos);
+  await ejecutarComoUsuario(db, authUserId, d.pagado ? "pagos.registrar" : "pagos.anular", async (tx, c) => {
+    const [item] = await tx
+      .select({ productoId: listaCompraItem.productoId, jornadaId: listaCompra.jornadaId, producto: producto.nombre })
+      .from(listaCompraItem)
+      .innerJoin(listaCompra, eq(listaCompra.id, listaCompraItem.listaCompraId))
+      .innerJoin(producto, eq(producto.id, listaCompraItem.productoId))
+      .where(eq(listaCompraItem.id, d.itemId));
+    if (!item) throw new ErrorDeNegocio("NO_ENCONTRADO", "Ese producto ya no está en la lista de compras: recargá la página.");
+    const compras = await tx
+      .select({
+        id: compra.id,
+        proveedorId: compra.proveedorId,
+        numero: compra.numero,
+        total: compra.total,
+        imputado: sql<string>`coalesce((select sum(i.monto) from ${imputacionPagoProveedor} i where i.compra_id = "compra"."id" and i.activa), 0)`,
+      })
+      .from(compra)
+      .where(
+        and(
+          eq(compra.jornadaId, item.jornadaId),
+          eq(compra.estado, "REGISTRADA"),
+          inArray(compra.id, tx.select({ id: compraItem.compraId }).from(compraItem).where(eq(compraItem.productoId, item.productoId))),
+        ),
+      )
+      .orderBy(asc(compra.fechaCompra));
+    if (compras.length === 0) throw new ErrorDeNegocio("VALIDACION", `Todavía no hay una compra anotada de ${item.producto}: anotala con “💲 Precio y puesto” y después elegí si quedó pagada o a cuenta.`);
+
+    if (d.pagado) {
+      const [e] = await tx.select({ zona: empresa.zonaHoraria }).from(empresa);
+      const hoy = hoyEnEmpresa(new Date(), e!.zona);
+      for (const cp of compras) {
+        const falta = dec(cp.total).minus(cp.imputado);
+        if (falta.lte(0)) continue;
+        await tx.select({ id: proveedor.id }).from(proveedor).where(eq(proveedor.id, cp.proveedorId)).for("update");
+        const monto = falta.toFixed(2);
+        await pagoEnTransaccion(tx, c, {
+          proveedorId: cp.proveedorId,
+          fecha: hoy,
+          monto,
+          medio: "EFECTIVO",
+          referencia: null,
+          chequeBanco: null,
+          chequeFechaCobro: null,
+          observaciones: `Desde la lista de compras (${item.producto}).`,
+          modo: "MANUAL",
+          asignaciones: [{ clave: `C:${cp.id}`, monto }],
+          claveIdempotencia: null,
+        });
+      }
+      return;
+    }
+
+    // A cuenta: los pagos que cancelan estas compras, si no cubren nada más.
+    const { pagos, compartido } = await pagosDeLasCompras(tx, compras.map((cp) => cp.id));
+    if (pagos.length === 0) return;
+    if (compartido) {
+      throw new ErrorDeNegocio("VALIDACION", `El pago ${numeroPago(compartido.numero)} también cubre otras compras: para dejar a cuenta la de ${item.producto}, anulá ese pago desde su ficha.`, {
+        enlace: { href: `/cuentas-proveedores/pagos/${compartido.id}`, texto: `Ver el pago ${numeroPago(compartido.numero)}` },
+      });
+    }
+    for (const p of pagos) {
+      await tx.select({ id: proveedor.id }).from(proveedor).where(eq(proveedor.id, p.proveedorId)).for("update");
+      await anularPagoEnTransaccion(tx, c, p, `Quedó a cuenta desde la lista de compras (${item.producto})`);
+    }
+    for (const proveedorId of new Set(pagos.map((p) => p.proveedorId))) await aplicarSaldoAFavor(tx, c, proveedorId);
+  });
+}
+
+/**
+ * Los pagos vigentes que cancelan algo de estas compras y, si hay, uno que además cubre otras
+ * deudas (ese no se puede anular sin tocar las otras).
+ */
+export async function pagosDeLasCompras(tx: Transaccion, compraIds: readonly string[]): Promise<{ pagos: (typeof pagoProveedor.$inferSelect)[]; compartido: typeof pagoProveedor.$inferSelect | null; exclusivos: (typeof pagoProveedor.$inferSelect)[] }> {
+  if (compraIds.length === 0) return { pagos: [], compartido: null, exclusivos: [] };
+  const imputaciones = await tx
+    .select({ pagoId: imputacionPagoProveedor.pagoProveedorId, compraId: imputacionPagoProveedor.compraId })
+    .from(imputacionPagoProveedor)
+    .where(
+      and(
+        eq(imputacionPagoProveedor.activa, true),
+        inArray(imputacionPagoProveedor.pagoProveedorId, tx.select({ id: imputacionPagoProveedor.pagoProveedorId }).from(imputacionPagoProveedor).where(and(eq(imputacionPagoProveedor.activa, true), inArray(imputacionPagoProveedor.compraId, [...compraIds])))),
+      ),
+    );
+  const pagoIds = [...new Set(imputaciones.map((i) => i.pagoId).filter((x): x is string => Boolean(x)))];
+  if (pagoIds.length === 0) return { pagos: [], compartido: null, exclusivos: [] };
+  const pagos = await tx.select().from(pagoProveedor).where(and(inArray(pagoProveedor.id, pagoIds), eq(pagoProveedor.estado, "REGISTRADO")));
+  const cubreOtras = (p: typeof pagoProveedor.$inferSelect) => imputaciones.some((i) => i.pagoId === p.id && (!i.compraId || !compraIds.includes(i.compraId)));
+  return { pagos, compartido: pagos.find(cubreOtras) ?? null, exclusivos: pagos.filter((p) => !cubreOtras(p)) };
 }

@@ -327,52 +327,56 @@ async function jornadaParaCompras(tx: Transaccion, c: ContextoUsuario, fecha: Fe
 export async function anularCompra(db: BaseDatos, authUserId: string, datos: { compraId: string; motivo: string; devolvioDinero?: boolean }): Promise<void> {
   const motivo = datos.motivo?.trim() ?? "";
   if (motivo.length < 5) throw new ErrorDeNegocio("VALIDACION", "Escribí por qué se anula (al menos 5 letras).");
-  await ejecutarComoUsuario(db, authUserId, "compras.anular", async (tx, c) => {
-    const [cp] = await tx.select().from(compra).where(eq(compra.id, datos.compraId));
-    if (!cp) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la compra.");
-    await proveedorBloqueado(tx, cp.proveedorId);
-    if (cp.estado === "ANULADA") return;
-    if (cp.jornadaId) {
-      const [j] = await tx.select({ estado: jornada.estado }).from(jornada).where(eq(jornada.id, cp.jornadaId));
-      if (j?.estado === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "La jornada ya está cerrada.");
-    }
-    const visible = numeroCompra(cp.numero);
-    await tx.update(compra).set({ estado: "ANULADA", anuladoEn: sql`now()`, anuladoPor: c.usuarioId, motivoAnulacion: motivo, actualizadoPor: c.usuarioId }).where(eq(compra.id, cp.id));
+  await ejecutarComoUsuario(db, authUserId, "compras.anular", (tx, c) => anularCompraEnTransaccion(tx, c, { compraId: datos.compraId, motivo, devolvioDinero: datos.devolvioDinero }));
+}
 
-    const [cargo] = await tx
-      .select({ id: movimientoCuentaProveedor.id })
-      .from(movimientoCuentaProveedor)
-      .where(and(eq(movimientoCuentaProveedor.compraId, cp.id), eq(movimientoCuentaProveedor.tipo, "CARGO_COMPRA")));
-    if (cargo) {
-      await registrarMovimiento(tx, c, {
-        proveedorId: cp.proveedorId,
-        tipo: "ANULACION_COMPRA",
-        importe: aNumeric(dec(cp.total).neg(), 2),
-        descripcion: `Anulación de la compra ${visible}`,
-        compraId: cp.id,
-        movimientoCompensadoId: cargo.id,
-        motivo,
-      });
-    }
+/** Anula una compra dentro de una transacción ya abierta (06 §6.1). La usa también "destildar" en la lista de compras. */
+export async function anularCompraEnTransaccion(tx: Transaccion, c: ContextoUsuario, datos: { compraId: string; motivo: string; devolvioDinero?: boolean }): Promise<void> {
+  const motivo = datos.motivo;
+  const [cp] = await tx.select().from(compra).where(eq(compra.id, datos.compraId));
+  if (!cp) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la compra.");
+  await proveedorBloqueado(tx, cp.proveedorId);
+  if (cp.estado === "ANULADA") return;
+  if (cp.jornadaId) {
+    const [j] = await tx.select({ estado: jornada.estado }).from(jornada).where(eq(jornada.id, cp.jornadaId));
+    if (j?.estado === "CERRADA") throw new ErrorDeNegocio("JORNADA_CERRADA", "La jornada ya está cerrada.");
+  }
+  const visible = numeroCompra(cp.numero);
+  await tx.update(compra).set({ estado: "ANULADA", anuladoEn: sql`now()`, anuladoPor: c.usuarioId, motivoAnulacion: motivo, actualizadoPor: c.usuarioId }).where(eq(compra.id, cp.id));
 
-    // Lo pagado a esta compra queda libre (06 §6.1). Si el proveedor devolvió la plata, el pago
-    // hecho en el momento también se anula; si no, queda a favor y se aplica a otras deudas.
-    await desactivarImputaciones(tx, c, { compraId: cp.id }, `Anulación de ${visible}`);
-    if (datos.devolvioDinero) {
-      const pagos = await tx
-        .select()
-        .from(pagoProveedor)
-        .where(and(eq(pagoProveedor.compraId, cp.id), eq(pagoProveedor.origen, "EN_COMPRA"), eq(pagoProveedor.estado, "REGISTRADO")));
-      for (const p of pagos) await anularPagoEnTransaccion(tx, c, p, `El proveedor devolvió la plata (anulación de ${visible})`);
-    }
-    await aplicarSaldoAFavor(tx, c, cp.proveedorId);
+  const [cargo] = await tx
+    .select({ id: movimientoCuentaProveedor.id })
+    .from(movimientoCuentaProveedor)
+    .where(and(eq(movimientoCuentaProveedor.compraId, cp.id), eq(movimientoCuentaProveedor.tipo, "CARGO_COMPRA")));
+  if (cargo) {
+    await registrarMovimiento(tx, c, {
+      proveedorId: cp.proveedorId,
+      tipo: "ANULACION_COMPRA",
+      importe: aNumeric(dec(cp.total).neg(), 2),
+      descripcion: `Anulación de la compra ${visible}`,
+      compraId: cp.id,
+      movimientoCompensadoId: cargo.id,
+      motivo,
+    });
+  }
 
-    await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "compra", entidadId: cp.id, resumen: `Anulación de ${visible}.`, motivo });
-    await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "COMPRA", entidadId: cp.id, jornadaId: cp.jornadaId, resumen: `anuló la compra ${visible} (${motivo})` });
-    if (cp.jornadaId) await actualizarComprado(tx, c.empresaId, cp.jornadaId);
-    const productos = await tx.selectDistinct({ id: compraItem.productoId }).from(compraItem).where(eq(compraItem.compraId, cp.id));
-    await recalcularPedidosPendientes(tx, { productoIds: productos.map((p) => p.id) });
-  });
+  // Lo pagado a esta compra queda libre (06 §6.1). Si el proveedor devolvió la plata, el pago
+  // hecho en el momento también se anula; si no, queda a favor y se aplica a otras deudas.
+  await desactivarImputaciones(tx, c, { compraId: cp.id }, `Anulación de ${visible}`);
+  if (datos.devolvioDinero) {
+    const pagos = await tx
+      .select()
+      .from(pagoProveedor)
+      .where(and(eq(pagoProveedor.compraId, cp.id), eq(pagoProveedor.origen, "EN_COMPRA"), eq(pagoProveedor.estado, "REGISTRADO")));
+    for (const p of pagos) await anularPagoEnTransaccion(tx, c, p, `El proveedor devolvió la plata (anulación de ${visible})`);
+  }
+  await aplicarSaldoAFavor(tx, c, cp.proveedorId);
+
+  await auditar(tx, { empresaId: c.empresaId, usuarioId: c.usuarioId, accion: "ANULAR", entidad: "compra", entidadId: cp.id, resumen: `Anulación de ${visible}.`, motivo });
+  await registrarActividad(tx, c, { accion: "ANULAR", entidadTipo: "COMPRA", entidadId: cp.id, jornadaId: cp.jornadaId, resumen: `anuló la compra ${visible} (${motivo})` });
+  if (cp.jornadaId) await actualizarComprado(tx, c.empresaId, cp.jornadaId);
+  const productos = await tx.selectDistinct({ id: compraItem.productoId }).from(compraItem).where(eq(compraItem.compraId, cp.id));
+  await recalcularPedidosPendientes(tx, { productoIds: productos.map((p) => p.id) });
 }
 
 export interface CompraListada {

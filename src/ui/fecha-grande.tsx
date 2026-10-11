@@ -1,6 +1,7 @@
 import { sumarDias } from "@/dominio/fechas/fechas";
 
 import { fechaConDia } from "./etiquetas";
+import { RecordarDia } from "./recordar-dia";
 
 /** De qué día se trata, en una palabra y con su color: para no confundir lo de hoy con lo de otro día. */
 export function queDiaEs(fecha: string, hoy: string): { cartel: string; color: string } {
@@ -12,7 +13,8 @@ export function queDiaEs(fecha: string, hoy: string): { cartel: string; color: s
 
 /**
  * La fecha de lo que se está mirando, bien grande (pedido del usuario, 07/10/2026): el cartel de
- * color (HOY, MAÑANA, AYER…) y el día escrito completo. Va arriba en las pantallas del día.
+ * color (HOY, MAÑANA, AYER…) y el día escrito completo. Va arriba en las pantallas del día, y ese
+ * día queda como el día elegido (el menú y las otras pantallas del día van a ese).
  */
 export function FechaGrande({ fecha, hoy, className = "" }: { fecha: string; hoy: string; className?: string }) {
   const cual = queDiaEs(fecha, hoy);
@@ -20,6 +22,7 @@ export function FechaGrande({ fecha, hoy, className = "" }: { fecha: string; hoy
     <p className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${className}`}>
       <span className={`${cual.color} rounded-xl bg-[var(--col-fuerte)] px-3 py-1.5 text-lg font-extrabold tracking-wide text-[var(--col-fuerte-texto)]`}>{cual.cartel}</span>
       <span className="text-3xl leading-tight font-extrabold first-letter:uppercase sm:text-4xl">{fechaConDia(fecha)}</span>
+      <RecordarDia fecha={fecha} />
     </p>
   );
 }

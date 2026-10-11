@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useOptimistic, useRef, useState, useSyncExternalStore, useTransition, type PointerEvent as EventoPuntero } from "react";
 
 import { normalizarBusqueda } from "@/dominio/pedidos/carga";
+import { Buscador } from "@/ui/buscador";
 import { NombreDeProducto } from "@/ui/checklist";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
-import { noConseguidoAccion, ordenarListaAccion, tildarLineaAccion } from "./acciones";
+import { elegirPuestoAccion, noConseguidoAccion, ordenarListaAccion, pagadoDesdeLaListaAccion, tildarLineaAccion } from "./acciones";
 import { PrecioYPuesto, type DatosParaComprar } from "./precio-y-puesto";
 
 // La lista de compras del día, como una lista: un renglón por producto con el nombre bien grande,
@@ -27,6 +28,8 @@ export interface RenglonDeLista {
   compras: string[];
   /** Lo necesario para anotar la compra en el mismo renglón (null si no se puede). */
   compra: DatosParaComprar | null;
+  /** Con compras anotadas: si ya están pagadas o falta pagarlas (el interruptor del final del renglón). */
+  pago: "PAGADO" | "A_CUENTA" | null;
   /** Lo que sale en pesos: lo anotado al comprarlo (`real`) o lo que se calcula con el último precio. Nulo si no se sabe. */
   importe: { texto: string; real: boolean } | null;
   /** "63 kg" */
@@ -38,6 +41,13 @@ export interface RenglonDeLista {
   clientes: { cliente: string; cantidad: string }[];
   /** "Puesto 12 · $21.000 cada bolsa" */
   puesto: string | null;
+  /** Dónde se va a comprar (para agrupar y para elegirlo en el renglón). */
+  puestoId: string | null;
+  puestoNombre: string | null;
+  /** Dónde queda en el mercado ("Nave 2, puesto 14"): ordena los puestos por cercanía. */
+  puestoUbicacion: string | null;
+  categoria: string;
+  categoriaOrden: number;
   estado: "PENDIENTE" | "PARCIAL" | "COMPRADO" | "NO_CONSEGUIDO";
   /** Tildado a mano (se puede destildar); una compra anotada, no. */
   tildado: boolean;
@@ -47,8 +57,14 @@ export interface RenglonDeLista {
 }
 
 type Accion = (estado: EstadoAccion, datos: FormData) => Promise<EstadoAccion>;
-type Orden = "manual" | "alfabetico";
-type Cambio = { id: string; estado: RenglonDeLista["estado"]; tildado: boolean };
+type Orden = "manual" | "alfabetico" | "puesto" | "grupo";
+const ORDENES: readonly { clave: Orden; texto: string }[] = [
+  { clave: "manual", texto: "Manual" },
+  { clave: "alfabetico", texto: "A-Z" },
+  { clave: "puesto", texto: "Por puesto" },
+  { clave: "grupo", texto: "Por grupo" },
+];
+type Cambio = { id: string } & Partial<Pick<RenglonDeLista, "estado" | "tildado" | "pago" | "puestoId" | "puestoNombre">>;
 
 // Cómo se prefiere ver la lista se recuerda en este aparato.
 const CLAVE_ORDEN = "lista-de-compras:orden";
@@ -63,7 +79,8 @@ const suscribirAlOrden = (avisar: () => void) => {
 };
 const ordenGuardado = (): Orden => {
   try {
-    return window.localStorage.getItem(CLAVE_ORDEN) === "alfabetico" ? "alfabetico" : "manual";
+    const guardado = window.localStorage.getItem(CLAVE_ORDEN);
+    return ORDENES.find((o) => o.clave === guardado)?.clave ?? "manual";
   } catch {
     // Sin almacenamiento (modo privado): queda el orden a mano.
     return "manual";
@@ -79,11 +96,11 @@ export function ListaDeCompras({
 }: {
   fecha: string;
   renglones: RenglonDeLista[];
-  puede: { editar: boolean; comprar: boolean; exceder: boolean };
+  puede: { editar: boolean; comprar: boolean; exceder: boolean; pagar: boolean };
   /** Los puestos, para elegir dónde se compró. */
   proveedores: { id: string; nombre: string; aCuenta: boolean }[];
 }) {
-  const [vista, marcar] = useOptimistic(renglones, (actual: RenglonDeLista[], c: Cambio) => actual.map((r) => (r.id === c.id ? { ...r, estado: c.estado, tildado: c.tildado } : r)));
+  const [vista, marcar] = useOptimistic(renglones, (actual: RenglonDeLista[], c: Cambio) => actual.map((r) => (r.id === c.id ? { ...r, ...c } : r)));
   const orden = useSyncExternalStore(suscribirAlOrden, ordenGuardado, (): Orden => "manual");
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -91,6 +108,8 @@ export function ListaDeCompras({
   const [comprando, setComprando] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<EstadoAccion>(ESTADO_INICIAL);
   const [ocupado, empezar] = useTransition();
+  // Lo último que se mandó, por si el servidor pide confirmarlo.
+  const [ultimo, setUltimo] = useState<{ accion: Accion; datos: Record<string, string | string[]>; cambio?: Cambio } | null>(null);
   // El orden a mano mientras se arrastra (y hasta que el servidor lo devuelve guardado).
   const [aMano, setAMano] = useState<string[] | null>(null);
   const [arrastrando, setArrastrando] = useState<string | null>(null);
@@ -106,6 +125,7 @@ export function ListaDeCompras({
   };
 
   const ejecutar = (accion: Accion, datos: Record<string, string | string[]>, cambio?: Cambio) => {
+    setUltimo({ accion, datos, cambio });
     const fd = new FormData();
     for (const [clave, valor] of Object.entries(datos)) for (const v of Array.isArray(valor) ? valor : [valor]) fd.append(clave, v);
     empezar(async () => {
@@ -116,12 +136,13 @@ export function ListaDeCompras({
     });
   };
   const tildar = (r: RenglonDeLista) => {
-    if (r.estado === "COMPRADO" && !r.tildado) {
-      setMensaje({ ok: false, mensaje: `La compra de ${r.producto} ya está anotada con su puesto y su precio. Para deshacerla hay que anular esa compra.`, enlace: { href: `/compras?fecha=${fecha}`, texto: "Ver las compras anotadas" } });
-      return;
-    }
+    // Destildar una compra anotada también se puede: el servidor pide confirmar y la anula (RN-186).
     const tildado = r.estado !== "COMPRADO";
     ejecutar(tildarLineaAccion, { itemId: r.id, tildado: String(tildado) }, { id: r.id, estado: tildado ? "COMPRADO" : "PENDIENTE", tildado });
+  };
+  const pagar = (r: RenglonDeLista, pagado: boolean) => {
+    if ((r.pago === "PAGADO") === pagado) return;
+    ejecutar(pagadoDesdeLaListaAccion, { itemId: r.id, pagado: String(pagado) }, { id: r.id, pago: pagado ? "PAGADO" : "A_CUENTA" });
   };
   const noHay = (r: RenglonDeLista) => {
     const quitar = r.estado === "NO_CONSEGUIDO";
@@ -135,6 +156,29 @@ export function ListaDeCompras({
   const buscado = normalizarBusqueda(busqueda);
   const visibles = buscado ? enOrden.filter((r) => normalizarBusqueda(r.producto).includes(buscado)) : enOrden;
   const seArrastra = puede.editar && orden === "manual" && !buscado;
+  // Por puesto (los puestos por dónde quedan en el mercado; lo que va sin puesto, al final) o por
+  // grupo (las categorías en su orden); adentro de cada uno, el orden a mano.
+  const grupos: { clave: string; titulo: string; detalle: string | null; renglones: RenglonDeLista[] }[] | null =
+    orden === "puesto" || orden === "grupo"
+      ? (() => {
+          const porClave = new Map<string, { clave: string; titulo: string; detalle: string | null; orden: string; renglones: RenglonDeLista[] }>();
+          for (const r of visibles) {
+            const clave = orden === "puesto" ? (r.puestoId ?? "") : r.categoria;
+            const g = porClave.get(clave) ?? {
+              clave,
+              titulo: orden === "puesto" ? (r.puestoNombre ?? "Sin puesto (efectivo)") : r.categoria,
+              detalle: orden === "puesto" ? r.puestoUbicacion : null,
+              orden: orden === "puesto" ? (r.puestoId ? `0 ${r.puestoUbicacion ?? "~"} ${r.puestoNombre ?? ""}` : "9") : String(r.categoriaOrden).padStart(4, "0"),
+              renglones: [],
+            };
+            g.renglones.push(r);
+            porClave.set(clave, g);
+          }
+          return [...porClave.values()].sort((a, b) => a.orden.localeCompare(b.orden, "es", { numeric: true }));
+        })()
+      : null;
+  const elegirPuesto = (r: RenglonDeLista, proveedorId: string) =>
+    ejecutar(elegirPuestoAccion, { itemId: r.id, proveedorId }, { id: r.id, puestoId: proveedorId || null, puestoNombre: proveedores.find((p) => p.id === proveedorId)?.nombre ?? null });
 
   // ——— Arrastrar un renglón para ordenar ———
   const agarrar = (e: EventoPuntero<HTMLButtonElement>, id: string) => {
@@ -186,25 +230,23 @@ export function ListaDeCompras({
           )}
         </p>
         <span className="flex rounded-xl border border-borde bg-superficie p-1 text-sm" role="group" aria-label="Cómo ordenar la lista">
-          {(["manual", "alfabetico"] as const).map((o) => (
-            <button key={o} type="button" onClick={() => elegirOrden(o)} aria-pressed={orden === o} className={`min-h-9 rounded-lg px-3 font-semibold ${orden === o ? "bg-marca text-marca-texto" : ""}`}>
-              {o === "manual" ? "Manual" : "Alfabético"}
+          {ORDENES.map((o) => (
+            <button key={o.clave} type="button" onClick={() => elegirOrden(o.clave)} aria-pressed={orden === o.clave} className={`min-h-9 rounded-lg px-2.5 font-semibold whitespace-nowrap ${orden === o.clave ? "bg-marca text-marca-texto" : ""}`}>
+              {o.texto}
             </button>
           ))}
         </span>
-        <input
-          type="search"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="🔎 Buscar producto"
-          aria-label="Buscar un producto en la lista"
-          className="h-11 w-full min-w-0 rounded-xl border border-borde bg-superficie px-3 sm:w-56"
-        />
+        <Buscador valor={busqueda} alCambiar={setBusqueda} placeholder="Buscar producto" aria-label="Buscar un producto en la lista" className="w-full sm:w-64" />
       </div>
 
       {mensaje.mensaje && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl bg-error/10 px-4 py-3 font-medium text-error">
           <span className="min-w-0 flex-1">{mensaje.mensaje}</span>
+          {mensaje.requiereConfirmacion && ultimo && (
+            <button type="button" onClick={() => ejecutar(ultimo.accion, { ...ultimo.datos, confirmarVariacion: "on" }, ultimo.cambio)} className="rounded-lg bg-error px-3 py-2 font-bold text-white shadow-sm">
+              Confirmar
+            </button>
+          )}
           {mensaje.enlace && (
             <Link href={mensaje.enlace.href} className="rounded-lg bg-superficie px-3 py-2 font-semibold text-texto shadow-sm">
               {mensaje.enlace.texto}{"\u00a0→"}
@@ -216,138 +258,197 @@ export function ListaDeCompras({
         </div>
       )}
 
+      {grupos ? (
+        <div className="flex flex-col gap-4" aria-busy={ocupado}>
+          {grupos.map((g) => (
+            <section key={g.clave} aria-label={g.titulo} className="flex flex-col gap-2">
+              <h3 className="flex flex-wrap items-baseline gap-x-2 px-1 text-lg font-extrabold">
+                {orden === "puesto" ? "🏪" : "🧺"} {g.titulo}
+                {g.detalle && <span className="text-sm font-medium text-texto-suave">{g.detalle}</span>}
+                <span className="text-sm font-semibold text-texto-suave">· {g.renglones.filter((r) => !hecho(r)).length} por comprar</span>
+              </h3>
+              <ol className="flex flex-col gap-2">{g.renglones.map((r) => fila(r))}</ol>
+            </section>
+          ))}
+          {grupos.length === 0 && <p className="rounded-2xl border border-borde bg-superficie p-4 text-texto-suave">Ningún producto de la lista se llama así.</p>}
+        </div>
+      ) : (
       <ol className="flex flex-col gap-2" aria-busy={ocupado}>
-        {visibles.map((r) => {
-          const listo = hecho(r);
-          const desplegado = abierto === r.id;
-          return (
-            <li
-              key={r.id}
-              ref={(el) => {
-                if (el) filas.current.set(r.id, el);
-                else filas.current.delete(r.id);
-              }}
-              className={`rounded-2xl border-2 bg-superficie ${arrastrando === r.id ? "border-marca shadow-lg" : r.estado === "PARCIAL" ? "border-amber-500" : "border-borde"} ${listo ? "opacity-70" : ""}`}
-            >
-              {/* En el celular va en tres columnas (mover · el producto · tildar y precio, uno sobre otro);
-                  con más ancho, todo en un renglón. */}
-              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 px-2 py-2 sm:flex sm:gap-3 sm:px-3">
-                {seArrastra && (
-                  <button
-                    type="button"
-                    aria-label={`Mover ${r.producto} en la lista`}
-                    title="Arrastrá para cambiarlo de lugar"
-                    onPointerDown={(e) => agarrar(e, r.id)}
-                    onPointerMove={mover}
-                    onPointerUp={soltar}
-                    onPointerCancel={soltar}
-                    className="row-span-2 flex h-12 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-xl text-texto-suave hover:bg-fondo active:cursor-grabbing print:hidden"
-                  >
-                    ⠿
-                  </button>
-                )}
-                <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-expanded={desplegado} className="col-start-2 row-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1 text-left">
-                  {/* El nombre no baja de un ancho cómodo: si no entra con la cantidad al lado, la cantidad pasa abajo. */}
-                  <span className="min-w-0 flex-1 basis-40">
-                    <NombreDeProducto nombre={r.producto} grupo={r.grupo} className={`text-xl sm:text-2xl ${listo ? "line-through" : ""}`} />
-                    <span className="block text-sm text-texto-suave">
-                      {r.estado === "NO_CONSEGUIDO" ? <b className="text-error">No se consiguió</b> : r.compras.length ? <b className="text-marca">🧾 {r.compras.join(" + ")}</b> : (r.equivalencia ?? r.puesto ?? "—")}
-                      {r.falta && <b className="text-amber-700 dark:text-amber-400"> · {r.falta}</b>}
-                    </span>
-                  </span>
-                  <span className={`shrink-0 text-xl font-bold tabular-nums sm:text-2xl ${listo ? "line-through" : ""}`}>{r.total}</span>
-                  {r.importe && (
-                    <span className="ml-auto flex shrink-0 flex-col items-end leading-tight" title={r.importe.real ? "Lo que se anotó al comprarlo" : "Lo que se calcula con el último precio cargado"}>
-                      <b className={`text-xl tabular-nums sm:text-2xl ${r.importe.real ? "text-marca" : ""}`}>{r.importe.texto}</b>
-                      <span className="text-sm text-texto-suave">{r.importe.real ? "salió" : "se calcula"}</span>
-                    </span>
-                  )}
-                  <span className="shrink-0 rounded-full border border-borde px-2.5 py-1 text-sm font-semibold max-sm:hidden">{r.clientes.length === 1 ? "1 cliente" : `${r.clientes.length} clientes`}</span>
-                </button>
-                {puede.editar && (
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={r.estado === "COMPRADO"}
-                    aria-label={`${r.producto}: ya lo compré`}
-                    title={r.estado === "COMPRADO" ? "Comprado: tocá para destildar" : "Tildar como comprado"}
-                    onClick={() => tildar(r)}
-                    className={`${boton} col-start-3 row-start-1 size-12 text-2xl print:hidden ${r.estado === "COMPRADO" ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca"}`}
-                  >
-                    {r.estado === "COMPRADO" ? "✓" : ""}
-                  </button>
-                )}
-                {/* A la derecha y algo separado: dónde se compró y a cuánto, para anotarlo ahí mismo. */}
-                {puede.comprar && r.compra && r.estado !== "NO_CONSEGUIDO" && (
-                  <span className="col-start-3 row-start-2 flex shrink-0 items-center print:hidden sm:border-l-2 sm:border-dashed sm:border-borde sm:pl-3">
-                    <button
-                      type="button"
-                      onClick={() => setComprando(comprando === r.id ? null : r.id)}
-                      aria-expanded={comprando === r.id}
-                      title="Anotar en qué puesto se compró y a cuánto"
-                      className={`flex min-h-12 min-w-12 items-center justify-center gap-1.5 rounded-xl border-2 font-bold sm:px-3 ${comprando === r.id ? "border-marca bg-marca text-marca-texto" : "border-marca/50 bg-marca/10 text-marca hover:border-marca"}`}
-                    >
-                      <span aria-hidden className="text-xl leading-none">
-                        💲
-                      </span>
-                      <span className="max-md:sr-only">{r.compras.length ? "Otra compra" : "Precio y puesto"}</span>
-                      <span aria-hidden className={`transition-transform max-sm:hidden ${comprando === r.id ? "rotate-180" : ""}`}>
-                        ▾
-                      </span>
-                    </button>
-                  </span>
-                )}
-                <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-label={desplegado ? "Cerrar el detalle" : "Ver el detalle"} className="flex size-10 shrink-0 items-center justify-center rounded-lg text-xl text-texto-suave hover:bg-fondo max-sm:hidden print:hidden">
-                  <span aria-hidden className={`transition-transform ${desplegado ? "rotate-90" : ""}`}>
-                    ›
-                  </span>
-                </button>
-              </div>
-              {comprando === r.id && r.compra && (
-                <div className="rounded-b-2xl border-t-2 border-dashed border-marca/50 bg-fondo px-3 py-3 print:hidden sm:px-4">
-                  <PrecioYPuesto key={r.id} itemId={r.id} productoId={r.productoId} producto={r.producto} datos={r.compra} proveedores={proveedores} puedeExceder={puede.exceder} alGuardar={() => setComprando(null)} />
-                </div>
-              )}
-              {desplegado && (
-                <div className="flex flex-col gap-3 border-t border-borde px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-texto-suave">Para quién es</p>
-                    <ul className="mt-1 flex flex-col gap-0.5">
-                      {r.clientes.map((c) => (
-                        <li key={c.cliente} className="flex justify-between gap-3">
-                          <span>{c.cliente}</span>
-                          <b className="tabular-nums">{c.cantidad}</b>
-                        </li>
-                      ))}
-                      {r.clientes.length === 0 && <li className="text-texto-suave">Ningún pedido de la lista lo lleva.</li>}
-                    </ul>
-                  </div>
-                  {r.puesto && (
-                    <p>
-                      <span className="text-sm font-semibold text-texto-suave">Dónde conviene: </span>
-                      {r.puesto}
-                    </p>
-                  )}
-                  {r.nota && <p>📝 “{r.nota}”</p>}
-                  {r.avisos.map((a) => (
-                    <p key={a} className="font-medium text-amber-700 dark:text-amber-400">
-                      ⚠ {a}
-                    </p>
-                  ))}
-                  <div className="flex flex-wrap gap-2 print:hidden">
-                    {puede.editar && !(r.estado === "COMPRADO") && (
-                      <button type="button" onClick={() => noHay(r)} className="min-h-11 rounded-xl border-2 border-borde px-4 font-semibold hover:border-error">
-                        {r.estado === "NO_CONSEGUIDO" ? "↩ Volver a buscarlo" : "✕ No lo conseguí"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </li>
-          );
-        })}
+        {visibles.map((r) => fila(r))}
         {visibles.length === 0 && <li className="rounded-2xl border border-borde bg-superficie p-4 text-texto-suave">Ningún producto de la lista se llama así.</li>}
       </ol>
+      )}
     </div>
   );
+
+  function fila(r: RenglonDeLista) {
+    const listo = hecho(r);
+    const desplegado = abierto === r.id;
+    return (
+      <li
+        key={r.id}
+        ref={(el) => {
+          if (el) filas.current.set(r.id, el);
+          else filas.current.delete(r.id);
+        }}
+        className={`rounded-2xl border-2 bg-superficie ${arrastrando === r.id ? "border-marca shadow-lg" : r.estado === "PARCIAL" ? "border-amber-500" : "border-borde"} ${listo ? "opacity-70" : ""}`}
+      >
+        {/* En el celular va en tres columnas (mover · el producto · tildar y precio, uno sobre otro);
+            con más ancho, todo en un renglón. */}
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 px-2 py-2 sm:flex sm:gap-3 sm:px-3">
+          {seArrastra && (
+            <button
+              type="button"
+              aria-label={`Mover ${r.producto} en la lista`}
+              title="Arrastrá para cambiarlo de lugar"
+              onPointerDown={(e) => agarrar(e, r.id)}
+              onPointerMove={mover}
+              onPointerUp={soltar}
+              onPointerCancel={soltar}
+              className="row-span-2 flex h-12 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-xl text-texto-suave hover:bg-fondo active:cursor-grabbing print:hidden"
+            >
+              ⠿
+            </button>
+          )}
+          <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-expanded={desplegado} className="col-start-2 row-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1 text-left">
+            {/* El nombre no baja de un ancho cómodo: si no entra con la cantidad al lado, la cantidad pasa abajo. */}
+            <span className="min-w-0 flex-1 basis-40">
+              <NombreDeProducto nombre={r.producto} grupo={r.grupo} className={`text-xl sm:text-2xl ${listo ? "line-through" : ""}`} />
+              <span className="block text-sm text-texto-suave">
+                {r.estado === "NO_CONSEGUIDO" ? <b className="text-error">No se consiguió</b> : r.compras.length ? <b className="text-marca">🧾 {r.compras.join(" + ")}</b> : (r.equivalencia ?? r.puesto ?? "—")}
+                {r.falta && <b className="text-amber-700 dark:text-amber-400"> · {r.falta}</b>}
+              </span>
+            </span>
+            <span className={`shrink-0 text-xl font-bold tabular-nums sm:text-2xl ${listo ? "line-through" : ""}`}>{r.total}</span>
+            {r.importe && (
+              <span className="ml-auto flex shrink-0 flex-col items-end leading-tight" title={r.importe.real ? "Lo que se anotó al comprarlo" : "Lo que se calcula con el último precio cargado"}>
+                <b className={`text-xl tabular-nums sm:text-2xl ${r.importe.real ? "text-marca" : ""}`}>{r.importe.texto}</b>
+                <span className="text-sm text-texto-suave">{r.importe.real ? "salió" : "se calcula"}</span>
+              </span>
+            )}
+            <span className="shrink-0 rounded-full border border-borde px-2.5 py-1 text-sm font-semibold max-sm:hidden">{r.clientes.length === 1 ? "1 cliente" : `${r.clientes.length} clientes`}</span>
+          </button>
+          {puede.editar && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={r.estado === "COMPRADO"}
+              aria-label={`${r.producto}: ya lo compré`}
+              title={r.estado === "COMPRADO" ? "Comprado: tocá para destildar" : "Tildar como comprado"}
+              onClick={() => tildar(r)}
+              className={`${boton} col-start-3 row-start-1 size-12 text-2xl print:hidden ${r.estado === "COMPRADO" ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca"}`}
+            >
+              {r.estado === "COMPRADO" ? "✓" : ""}
+            </button>
+          )}
+          {/* A la derecha y algo separado: dónde se compró y a cuánto, para anotarlo ahí mismo. */}
+          {puede.comprar && r.compra && r.estado !== "NO_CONSEGUIDO" && (
+            <span className="col-start-3 row-start-2 flex shrink-0 items-center print:hidden sm:border-l-2 sm:border-dashed sm:border-borde sm:pl-3">
+              <button
+                type="button"
+                onClick={() => setComprando(comprando === r.id ? null : r.id)}
+                aria-expanded={comprando === r.id}
+                title="Anotar en qué puesto se compró y a cuánto"
+                className={`flex min-h-12 min-w-12 items-center justify-center gap-1.5 rounded-xl border-2 font-bold sm:px-3 ${comprando === r.id ? "border-marca bg-marca text-marca-texto" : "border-marca/50 bg-marca/10 text-marca hover:border-marca"}`}
+              >
+                <span aria-hidden className="text-xl leading-none">
+                  💲
+                </span>
+                <span className="max-md:sr-only">{r.compras.length ? "Otra compra" : "Precio y puesto"}</span>
+                <span aria-hidden className={`transition-transform max-sm:hidden ${comprando === r.id ? "rotate-180" : ""}`}>
+                  ▾
+                </span>
+              </button>
+            </span>
+          )}
+          {/* Dónde comprarlo, elegido antes de ir (pedido del usuario, 10/10/2026: comprar más rápido). */}
+          {puede.editar && !listo && !r.pago && (
+            <label className="col-span-2 col-start-2 row-start-3 flex min-w-0 items-center gap-1.5 justify-self-start text-sm print:hidden">
+              <span aria-hidden>🏪</span>
+              <span className="sr-only">Puesto donde comprar {r.producto}</span>
+              <select
+                value={r.puestoId ?? ""}
+                onChange={(e) => elegirPuesto(r, e.target.value)}
+                className="h-9 max-w-48 min-w-0 rounded-lg border border-borde bg-superficie px-2 font-semibold"
+              >
+                <option value="">Sin puesto (efectivo)</option>
+                {proveedores.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {/* Al final: si lo comprado ya quedó pagado o a cuenta, igual que en el panel de precio y puesto. */}
+          {puede.pagar && r.pago && (
+            <span role="group" aria-label={`${r.producto}: ¿quedó pagado?`} className="col-span-2 col-start-2 row-start-3 grid shrink-0 grid-cols-2 justify-self-end overflow-hidden rounded-xl border-2 border-borde print:hidden">
+              {(
+                [
+                  [true, "💵 Pagado"],
+                  [false, "📒 A cuenta"],
+                ] as const
+              ).map(([pagado, texto]) => (
+                <button
+                  key={texto}
+                  type="button"
+                  onClick={() => pagar(r, pagado)}
+                  aria-pressed={(r.pago === "PAGADO") === pagado}
+                  title={pagado ? "Se le pagó en efectivo lo que faltaba" : "Queda en lo que le debemos al puesto"}
+                  className={`min-h-10 px-3 font-bold whitespace-nowrap ${(r.pago === "PAGADO") === pagado ? "bg-marca text-marca-texto" : "bg-superficie text-texto-suave"}`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </span>
+          )}
+          <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-label={desplegado ? "Cerrar el detalle" : "Ver el detalle"} className="flex size-10 shrink-0 items-center justify-center rounded-lg text-xl text-texto-suave hover:bg-fondo max-sm:hidden print:hidden">
+            <span aria-hidden className={`transition-transform ${desplegado ? "rotate-90" : ""}`}>
+              ›
+            </span>
+          </button>
+        </div>
+        {comprando === r.id && r.compra && (
+          <div className="rounded-b-2xl border-t-2 border-dashed border-marca/50 bg-fondo px-3 py-3 print:hidden sm:px-4">
+            <PrecioYPuesto key={r.id} itemId={r.id} productoId={r.productoId} producto={r.producto} datos={r.compra} proveedores={proveedores} puedeExceder={puede.exceder} alGuardar={() => setComprando(null)} />
+          </div>
+        )}
+        {desplegado && (
+          <div className="flex flex-col gap-3 border-t border-borde px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-texto-suave">Para quién es</p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {r.clientes.map((c) => (
+                  <li key={c.cliente} className="flex justify-between gap-3">
+                    <span>{c.cliente}</span>
+                    <b className="tabular-nums">{c.cantidad}</b>
+                  </li>
+                ))}
+                {r.clientes.length === 0 && <li className="text-texto-suave">Ningún pedido de la lista lo lleva.</li>}
+              </ul>
+            </div>
+            {r.puesto && (
+              <p>
+                <span className="text-sm font-semibold text-texto-suave">Dónde conviene: </span>
+                {r.puesto}
+              </p>
+            )}
+            {r.nota && <p>📝 “{r.nota}”</p>}
+            {r.avisos.map((a) => (
+              <p key={a} className="font-medium text-amber-700 dark:text-amber-400">
+                ⚠ {a}
+              </p>
+            ))}
+            <div className="flex flex-wrap gap-2 print:hidden">
+              {puede.editar && !(r.estado === "COMPRADO") && (
+                <button type="button" onClick={() => noHay(r)} className="min-h-11 rounded-xl border-2 border-borde px-4 font-semibold hover:border-error">
+                  {r.estado === "NO_CONSEGUIDO" ? "↩ Volver a buscarlo" : "✕ No lo conseguí"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  }
 }

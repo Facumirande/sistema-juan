@@ -2,6 +2,7 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 
 import type { EstadoEtapa } from "@/dominio/jornadas/etapas";
 
@@ -30,7 +31,8 @@ function Yendo() {
   return pending ? <span aria-label="Cargando" className="ml-auto size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" /> : null;
 }
 
-export function EnlaceDeMenu({ href, icono, etiqueta, destacado }: { href: string; icono: string; etiqueta: string; destacado?: "principal" | "secundario" }) {
+/** `insignia`: un número a la derecha (ej. cuántos clientes deben, en "A cobrar"). */
+export function EnlaceDeMenu({ href, icono, etiqueta, destacado, insignia }: { href: string; icono: string; etiqueta: string; destacado?: "principal" | "secundario"; insignia?: ReactNode }) {
   const ruta = usePathname();
   const activo = !href.includes("?") && esActual(ruta, href);
   if (destacado) {
@@ -62,6 +64,7 @@ export function EnlaceDeMenu({ href, icono, etiqueta, destacado }: { href: strin
         <Icono icono={icono} />
       </span>
       {etiqueta}
+      {insignia}
       <Yendo />
     </Link>
   );
@@ -74,8 +77,11 @@ const MARCA: Readonly<Record<EstadoEtapa, { texto: string; clases: string; leer:
   pendiente: { texto: "", clases: "border-2 border-borde bg-superficie", leer: "falta" },
 };
 
-/** Una etapa del día en el menú: el estado en un círculo, el nombre y su avance en pocas palabras. */
-export function EnlaceDeEtapa({ href, icono, etiqueta, estado, detalle }: { href: string; icono: string; etiqueta: string; estado: EstadoEtapa; detalle: string | null }) {
+/**
+ * Una etapa del día en el menú: el estado en un círculo, el nombre y su avance en pocas palabras.
+ * Con `cargando`, el avance todavía es el de antes (se está pidiendo el del día nuevo): va apagado.
+ */
+export function EnlaceDeEtapa({ href, icono, etiqueta, estado, detalle, cargando = false }: { href: string; icono: string; etiqueta: string; estado: EstadoEtapa; detalle: string | null; cargando?: boolean }) {
   const ruta = usePathname();
   const activo = esActual(ruta, href);
   const marca = MARCA[estado];
@@ -85,7 +91,7 @@ export function EnlaceDeEtapa({ href, icono, etiqueta, estado, detalle }: { href
       aria-current={activo ? "page" : undefined}
       className={`relative flex min-h-11 items-center gap-2 rounded-lg py-1 pr-2 pl-1 ${activo ? "bg-marca/15" : "hover:bg-fondo"} ${estado === "actual" ? "font-semibold" : "font-medium"}`}
     >
-      <span className={`z-10 flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${marca.clases}`}>
+      <span className={`z-10 flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${marca.clases} ${cargando ? "animate-pulse opacity-50" : ""}`}>
         <span aria-hidden>{marca.texto}</span>
         <span className="sr-only">{marca.leer}</span>
       </span>
@@ -94,7 +100,7 @@ export function EnlaceDeEtapa({ href, icono, etiqueta, estado, detalle }: { href
       </span>
       <span className="min-w-0 flex-1 leading-tight">
         {etiqueta}
-        {detalle && <span className="block text-xs font-normal text-texto-suave">{detalle}</span>}
+        {detalle && <span className={`block text-xs font-normal text-texto-suave ${cargando ? "opacity-50" : ""}`}>{detalle}</span>}
       </span>
       <Yendo />
     </Link>

@@ -184,7 +184,7 @@ El rol de base de datos de la aplicación **no tiene permiso `DELETE`** sobre do
 
 | Enum | Valores |
 |---|---|
-| `unidad_medida` | `KG`, `UNIDAD`, `ATADO`, `MAPLE`, `BANDEJA`, `DOCENA`, `PAQUETE`, `LITRO` |
+| `unidad_medida` | `KG`, `UNIDAD`, `ATADO`, `MAPLE`, `BANDEJA`, `DOCENA`, `PAQUETE`, `LITRO`, `CAJON`, `CAJA`, `BOLSA`, `JAULA`, `BOLSON`, `RISTRA` (los envases como unidad propia, sin kilos, RN-192) |
 | `grupo_producto` | `FRUTA`, `VERDURA`, `OTRO` |
 | `tipo_cliente` | `HOSPITAL`, `RESTAURANTE`, `COMERCIO`, `INSTITUCION`, `OTRO` |
 | `periodicidad_facturacion` | `POR_ENTREGA`, `SEMANAL`, `QUINCENAL`, `MENSUAL` |
@@ -309,6 +309,7 @@ Configuración del negocio. Una fila por empresa. No tiene `empresa_id`; sí tie
 | dias_aviso_precio_fijo | int | No | `15` | Aviso PRECIO_FIJO_POR_VENCER. |
 | dias_aviso_vencimiento | int | No | `3` | Anticipación del aviso de deudas por vencer. |
 | hora_corte_pedidos | time | Sí | — | Opcional (ej. 20:00 del día anterior a la entrega): después de esta hora un pedido nuevo se marca tardío (`pedido.es_tardio`). Nulo = sin corte. |
+| responsables_etapa | jsonb | No | `{}` | Quién se encarga de cada parte del proceso, de manera fija: `{ pedidos, en_lista, comprados, preparando, en_camino }` → id de usuario (RN-190). Lo que falta, sin nadie fijo. |
 | cantidad_atipica_multiplicador | numeric(7,3) | No | `3.000` | Aviso si una cantidad pedida supera N veces el promedio del cliente. |
 | cantidad_atipica_semanas | int | No | `8` | Semanas que se promedian para el aviso anterior. |
 | tolerancia_peso_pct | numeric(7,3) | No | `3.000` | Diferencia entre preparado y pedido que no se considera diferencia. |
@@ -535,7 +536,7 @@ Ficha central del producto. Todo cálculo interno se hace en `unidad_base`.
 | nombre | text | No | — | `unique (empresa_id, lower(nombre))`. Ej. "Tomate redondo". Calidades distintas se modelan como productos distintos ("Tomate redondo primera" / "segunda"). |
 | nombre_corto | text | Sí | — | Para pantallas de celular y documentos angostos. |
 | categoria_id | uuid | No | — | FK `categoria`. |
-| unidad_base | unidad_medida | No | — | KG, UNIDAD, ATADO, MAPLE, BANDEJA... Inmutable si el producto tiene movimientos. |
+| unidad_base | unidad_medida | No | — | KG, UNIDAD, ATADO, CAJON, BOLSA... (un envase como unidad: se cuenta en cajones, sin kilos, RN-192). Inmutable si el producto tiene movimientos. |
 | admite_fraccion | boolean | No | `true` | `false` → cantidades en unidad base enteras (ej. lechuga por unidad). También define el paso al repartir faltantes (0,1 si admite fracción; 1 si no; ver 04-procesos-y-flujos.md). |
 | recargo_default | numeric(7,3) | Sí | — | Nivel 5 de la precedencia. |
 | alicuota_iva | numeric(7,3) | No | `0.000` | Se sugiere desde `empresa.alicuota_iva_default`. |
@@ -801,6 +802,7 @@ Fecha operativa (= fecha de entrega). Agrupa pedidos, lista de compras, compras,
 | cerrada_por | uuid | Sí | — | FK `usuario`. |
 | resumen | jsonb | Sí | — | Resumen del día **congelado al cerrar** (comprado, pagado en el momento, deuda generada, vendido, costo de lo vendido, margen, sobrantes, saldos a proveedores, alertas; ver 04-procesos-y-flujos.md, cierre de jornada). Si se reabre, se recalcula al volver a cerrar. |
 | observaciones | text | Sí | — | Ej. "Feriado: el mercado abre 05:00". |
+| caja_inicial | numeric(14,2) | Sí | — | La plata con la que se cuenta ese día (el resumen balance del tablero, RN-194). Nula = sin cargar. `check (caja_inicial is null or caja_inicial >= 0)`. Al cargarla en un día que todavía no tiene fila, se crea la jornada. |
 
 ### 8.2 pedido
 
@@ -1544,6 +1546,10 @@ Libro de lo que hizo cada persona, en palabras ("María confirmó el pedido PED-
 
 Índices: por fecha, por entidad y por persona (todos con `ocurrida_en desc`).
 
+### 13.4 El pulso de los cambios
+
+No es una tabla: la secuencia `interno.pulso` sube con cada transacción que guarda algo, y las pantallas abiertas la consultan cada 5 segundos para redibujarse cuando cambió (RN-183). Se lee con la función `public.pulso_de_cambios()` (`SECURITY DEFINER`; devuelve 0 si nunca subió), que solo puede llamar `app_servidor` (migraciones 0023 y 0024). No guarda datos del negocio ni distingue empresas.
+
 ---
 
 ## 14. Relaciones y cardinalidades
@@ -1842,6 +1848,8 @@ No hay vistas en la base: lo que el diseño original resolvía con vistas (`v_of
 | Partidas imputables (FIFO y deuda vencida) | `partidasDeudoras` y `partidasAcreedoras` (`src/modulos/compras/imputaciones.ts`) |
 | Saldo, crédito disponible, % de uso, semáforo y deuda vencida por proveedor | `cuentaDeProveedor`, `listarCuentasProveedores` y `cuentaCorriente` |
 | Venta, costo y margen por entrega, cliente y producto | `reporteVentas` y `balance` (`src/modulos/reportes`) |
+| Gastado, ganancia cobrada y ganancia a cobrar de un día (el cartel del tablero) | `datosDelCartel` (`src/modulos/jornadas/dia.ts`), con `cartelDelDia` (`src/dominio/reportes/cartel-del-dia.ts`) |
+| Cuántos clientes deben y a cuántos proveedores se les debe (números del menú) | `pendientesDelMenu` (`src/modulos/cuentas-clientes/pendientes.ts`) |
 | Lo que debe cada cliente, qué entregas están cobradas y desde cuándo debe | `cuentasDeClientes` (`src/modulos/cuentas-clientes/cuentas.ts`), con `repartirCobros` y `debeDesde` (`src/dominio/cuentas/clientes.ts`) |
 | Gastos e ingresos por rubro | `gastosEIngresos` y `totalesPorRubro` (`src/modulos/gastos/gastos.ts`) |
 | Dinero real, pendiente y total; compras pagadas y a pagar; ventas cobradas y a cobrar | `balance` (`src/modulos/reportes/balance.ts`), con `balanceDeDinero` y `partesDe` (`src/dominio/reportes/dinero.ts`) |

@@ -216,7 +216,8 @@ export function Checklist<P extends ProductoDeChecklist>({ productos, modo, alTi
 
 /**
  * Por qué no se puede tildar la compra de un producto (o null si se puede): todavía no está en la
- * lista, o su compra ya está anotada con puesto y precio.
+ * lista, o se lo quiere marcar "no se consiguió" con la compra ya anotada. Destildar una compra
+ * anotada sí se puede: el servidor pide confirmar y la anula (RN-186).
  */
 export function motivoParaNoTildar(p: ProductoDeChecklist, valor: Tilde, fecha: string): { mensaje: string; enlace: { href: string; texto: string } } | null {
   if (!p.listaItemId) {
@@ -225,9 +226,9 @@ export function motivoParaNoTildar(p: ProductoDeChecklist, valor: Tilde, fecha: 
       enlace: { href: `/lista-compra?fecha=${fecha}`, texto: "Ir a la lista de compras" },
     };
   }
-  if (p.compra === "COMPRADO" && !p.tildado && valor !== "SI") {
+  if (p.compra === "COMPRADO" && !p.tildado && valor === "NO") {
     return {
-      mensaje: `La compra de ${p.nombre} ya está anotada (puesto y precio). Para deshacerla, anulala desde “Compras anotadas”.`,
+      mensaje: `La compra de ${p.nombre} ya está anotada: para marcarlo como no conseguido, primero destildalo (se anula esa compra).`,
       enlace: { href: `/compras?fecha=${fecha}`, texto: "Ver las compras anotadas" },
     };
   }

@@ -38,6 +38,8 @@ export interface EntidadDescripta {
   etiqueta: string;
   /** Día de trabajo, si corresponde a uno (para armar el enlace). */
   fecha: FechaISO | null;
+  /** Un pedido eliminado o cancelado: se puede recuperar desde la actividad (RN-189). */
+  cancelado?: boolean;
 }
 
 export const claveDeReferencia = (r: Referencia) => `${r.tipo}:${r.id}`;
@@ -46,7 +48,8 @@ export const claveDeReferencia = (r: Referencia) => `${r.tipo}:${r.id}`;
 export async function describirEntidades(tx: Transaccion, referencias: readonly Referencia[]): Promise<Map<string, EntidadDescripta>> {
   const resultado = new Map<string, EntidadDescripta>();
   const ids = (tipo: TipoEntidad) => [...new Set(referencias.filter((r) => r.tipo === tipo).map((r) => r.id))];
-  const poner = (tipo: TipoEntidad, id: string, etiqueta: string, fecha: FechaISO | null = null) => resultado.set(claveDeReferencia({ tipo, id }), { etiqueta, fecha });
+  const poner = (tipo: TipoEntidad, id: string, etiqueta: string, fecha: FechaISO | null = null, cancelado = false) =>
+    resultado.set(claveDeReferencia({ tipo, id }), cancelado ? { etiqueta, fecha, cancelado } : { etiqueta, fecha });
   // Cada tipo se busca a la vez: todas las consultas salen juntas, en una sola ida a la base.
   const busquedas: Promise<void>[] = [];
   const buscar = (fn: () => Promise<void>) => void busquedas.push(fn());
@@ -55,12 +58,12 @@ export async function describirEntidades(tx: Transaccion, referencias: readonly 
   if (pedidos.length) {
     buscar(async () => {
       const filas = await tx
-        .select({ id: pedido.id, numero: pedido.numero, cliente: cliente.nombre, fecha: jornada.fecha })
+        .select({ id: pedido.id, numero: pedido.numero, cliente: cliente.nombre, fecha: jornada.fecha, estado: pedido.estado })
         .from(pedido)
         .innerJoin(cliente, eq(cliente.id, pedido.clienteId))
         .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
         .where(inArray(pedido.id, pedidos));
-      for (const f of filas) poner("PEDIDO", f.id, `${formatearNumeroDocumento("PED-", f.numero)} · ${f.cliente}`, f.fecha);
+      for (const f of filas) poner("PEDIDO", f.id, `${formatearNumeroDocumento("PED-", f.numero)} · ${f.cliente}`, f.fecha, f.estado === "CANCELADO");
     });
   }
   const simples: [TipoEntidad, typeof cliente | typeof proveedor | typeof producto][] = [

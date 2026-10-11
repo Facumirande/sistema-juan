@@ -57,6 +57,12 @@ export const NOMBRES_DE_UNIDAD: Readonly<Record<UnidadMedida, readonly string[]>
   DOCENA: ["docena", "docenas", "doc"],
   PAQUETE: ["paquete", "paquetes", "paq"],
   LITRO: ["l", "lt", "lts", "litro", "litros"],
+  CAJON: ["cajon", "cajón", "cajones"],
+  CAJA: ["caja", "cajas"],
+  BOLSA: ["bolsa", "bolsas"],
+  JAULA: ["jaula", "jaulas"],
+  BOLSON: ["bolson", "bolsón", "bolsones"],
+  RISTRA: ["ristra", "ristras"],
 };
 
 /** Entre varios nombres, el único que contiene lo escrito o está contenido en él (para sugerir "¿quisiste decir…?"). */

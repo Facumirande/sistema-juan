@@ -55,13 +55,25 @@ export const sinLeerPara = (c: ContextoUsuario) =>
     sql`not exists (select 1 from ${notaLectura} l where l.nota_id = nota.id and l.usuario_id = ${c.usuarioId})`,
   );
 
-async function armarNotas(tx: Transaccion, c: ContextoUsuario, filas: (typeof nota.$inferSelect)[]): Promise<NotaVisible[]> {
+type FilaDeNota = typeof nota.$inferSelect;
+type Lectura = { notaId: string; usuarioId: string };
+
+async function armarNotas(tx: Transaccion, c: ContextoUsuario, filas: FilaDeNota[]): Promise<NotaVisible[]> {
   if (filas.length === 0) return [];
-  const personas = new Map((await personasDelNegocio(tx)).map((p) => [p.id, p]));
-  const lecturas = await tx
-    .select({ notaId: notaLectura.notaId, usuarioId: notaLectura.usuarioId })
-    .from(notaLectura)
-    .where(inArray(notaLectura.notaId, filas.map((f) => f.id)));
+  // Las personas y quién leyó cada nota salen juntas, en una sola ida a la base.
+  const [gente, lecturas] = await Promise.all([
+    personasDelNegocio(tx),
+    tx
+      .select({ notaId: notaLectura.notaId, usuarioId: notaLectura.usuarioId })
+      .from(notaLectura)
+      .where(inArray(notaLectura.notaId, filas.map((f) => f.id))),
+  ]);
+  return notasParaVer(c, filas, gente, lecturas);
+}
+
+/** Las notas listas para mostrar, con las personas y las lecturas ya traídas. */
+function notasParaVer(c: ContextoUsuario, filas: FilaDeNota[], gente: readonly PersonaVisible[], lecturas: readonly Lectura[]): NotaVisible[] {
+  const personas = new Map(gente.map((p) => [p.id, p]));
   const desconocida = (id: string | null): PersonaVisible => ({ id: id ?? "", nombre: "Alguien", color: "#46505e" });
   return filas.map((f) => {
     const leidaPor = lecturas.filter((l) => l.notaId === f.id);
@@ -81,14 +93,19 @@ async function armarNotas(tx: Transaccion, c: ContextoUsuario, filas: (typeof no
 /** Las notas de una tarjeta o ficha, de la más vieja a la más nueva (como un chat). */
 export async function notasDe(db: BaseDatos, authUserId: string, referencia: Referencia): Promise<{ notas: NotaVisible[]; personas: PersonaVisible[]; yo: string }> {
   return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
-    await exigirEntidadVisible(tx, c, referencia);
-    const filas = await tx
-      .select()
-      .from(nota)
-      .where(and(eq(nota.entidadTipo, referencia.tipo), eq(nota.entidadId, referencia.id)))
-      .orderBy(asc(nota.creadoEn));
-    const personas = (await personasDelNegocio(tx)).filter((p) => p.activa);
-    return { notas: await armarNotas(tx, c, filas), personas: personas.map(soloVisible), yo: c.usuarioId };
+    const deEso = and(eq(nota.entidadTipo, referencia.tipo), eq(nota.entidadId, referencia.id));
+    // Todo sale junto, en una sola ida a la base (las lecturas se buscan por la tarjeta, sin esperar
+    // a saber qué notas tiene). Si la tarjeta no se puede ver, falla y no se devuelve nada.
+    const [, filas, gente, lecturas] = await Promise.all([
+      exigirEntidadVisible(tx, c, referencia),
+      tx.select().from(nota).where(deEso).orderBy(asc(nota.creadoEn)),
+      personasDelNegocio(tx),
+      tx
+        .select({ notaId: notaLectura.notaId, usuarioId: notaLectura.usuarioId })
+        .from(notaLectura)
+        .where(inArray(notaLectura.notaId, tx.select({ id: nota.id }).from(nota).where(deEso))),
+    ]);
+    return { notas: notasParaVer(c, filas, gente, lecturas), personas: gente.filter((p) => p.activa).map(soloVisible), yo: c.usuarioId };
   });
 }
 
@@ -159,16 +176,24 @@ export async function bandejaDeNotas(db: BaseDatos, authUserId: string, limite =
   return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     const tipos = tiposVisibles(c);
     if (tipos.length === 0) return { sinLeer: [], recientes: [] };
-    const sinLeer = await tx
-      .select()
-      .from(nota)
-      .where(and(sinLeerPara(c), inArray(nota.entidadTipo, tipos)))
-      .orderBy(desc(nota.creadoEn))
-      .limit(50);
-    const recientes = await tx.select().from(nota).where(inArray(nota.entidadTipo, tipos)).orderBy(desc(nota.creadoEn)).limit(limite);
+    // Las sin leer y las recientes salen juntas (el tablero pide solo las sin leer: `limite` 0).
+    const [sinLeer, recientes] = await Promise.all([
+      tx
+        .select()
+        .from(nota)
+        .where(and(sinLeerPara(c), inArray(nota.entidadTipo, tipos)))
+        .orderBy(desc(nota.creadoEn))
+        .limit(50),
+      limite > 0 ? tx.select().from(nota).where(inArray(nota.entidadTipo, tipos)).orderBy(desc(nota.creadoEn)).limit(limite) : Promise.resolve([] as FilaDeNota[]),
+    ]);
     const todas = [...sinLeer, ...recientes];
-    const entidades = await describirEntidades(tx, todas.map((n) => ({ tipo: n.entidadTipo, id: n.entidadId })));
-    const armadas = new Map((await armarNotas(tx, c, [...new Map(todas.map((n) => [n.id, n])).values()])).map((n) => [n.id, n]));
+    if (todas.length === 0) return { sinLeer: [], recientes: [] };
+    // De qué es cada nota y quién la leyó, también juntos.
+    const [entidades, notasArmadas] = await Promise.all([
+      describirEntidades(tx, todas.map((n) => ({ tipo: n.entidadTipo, id: n.entidadId }))),
+      armarNotas(tx, c, [...new Map(todas.map((n) => [n.id, n])).values()]),
+    ]);
+    const armadas = new Map(notasArmadas.map((n) => [n.id, n]));
     const conEntidad = (filas: typeof todas): NotaEnBandeja[] =>
       filas.flatMap((f) => {
         const e = entidades.get(claveDeReferencia({ tipo: f.entidadTipo, id: f.entidadId }));

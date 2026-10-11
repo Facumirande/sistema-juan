@@ -45,7 +45,9 @@ export const accionAuditoria = pgEnum("accion_auditoria", [
 
 // 03 §3.4 y §3.5 — catálogo, clientes y compras.
 
-export const unidadMedida = pgEnum("unidad_medida", ["KG", "UNIDAD", "ATADO", "MAPLE", "BANDEJA", "DOCENA", "PAQUETE", "LITRO"]);
+// Los envases como unidad propia (10/10/2026): un producto que se compra y se vende por cajón, caja,
+// bolsa, jaula, bolsón o ristra se cuenta en esos envases, sin decir cuántos kilos traen.
+export const unidadMedida = pgEnum("unidad_medida", ["KG", "UNIDAD", "ATADO", "MAPLE", "BANDEJA", "DOCENA", "PAQUETE", "LITRO", "CAJON", "CAJA", "BOLSA", "JAULA", "BOLSON", "RISTRA"]);
 
 export const grupoProducto = pgEnum("grupo_producto", ["FRUTA", "VERDURA", "OTRO"]);
 

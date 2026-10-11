@@ -1,18 +1,23 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { listarActividad } from "@/modulos/colaboracion/actividad";
 import { avisosPara } from "@/modulos/colaboracion/avisos";
+import { bandejaDeNotas, notasDe } from "@/modulos/colaboracion/notas";
 import { personasDelNegocio } from "@/modulos/colaboracion/personas";
 import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
+import { listarCuentasProveedores } from "@/modulos/compras/cuenta-corriente";
 import { generarListaCompra, marcarNoConseguido, marcarPedidoComprado, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
 import { entregarPedido } from "@/modulos/entregas/entregas";
 import { iniciarPreparacion, marcarPreparada, obtenerPreparacion, separarLinea } from "@/modulos/entregas/preparacion";
 import { guardarOrdenDelRecorrido } from "@/modulos/entregas/recorrido";
 import { mandarEnCamino } from "@/modulos/entregas/repartos";
 import { viajeDelDia } from "@/modulos/entregas/viaje";
+import { guardarCajaInicial } from "@/modulos/jornadas/caja";
 import { diaDeTrabajo, diasParaElegir, procesoEnCurso } from "@/modulos/jornadas/dia";
 import { datosParaCargarPedido } from "@/modulos/pedidos/carga";
-import { cargarPedido } from "@/modulos/pedidos/pedidos";
+import { cargarPedido, obtenerPedido } from "@/modulos/pedidos/pedidos";
 import { avanceDeTarjeta, tableroDePedidos } from "@/modulos/pedidos/tablero";
+import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 
 import { crearUsuarioDePrueba, medirIdas } from "./base-de-prueba";
@@ -47,11 +52,31 @@ describe("idas a la base de cada pantalla", () => {
     await hasta(2, "tablero solo", () => tableroDePedidos(db, j.admin, j.manana));
     await hasta(2, "tarjeta abierta", () => avanceDeTarjeta(db, j.admin, j.ids.pedRestaurante!));
     await hasta(3, "etapas del menú", () => procesoEnCurso(db, j.admin));
+    // Lo que pide el menú al cambiar de día (ya sabe cuál es: no hay que averiguarlo).
+    await hasta(2, "etapas del menú de un día elegido", () => procesoEnCurso(db, j.admin, j.manana));
     await hasta(3, "avisos de la campanita", () => avisosPara(db, j.admin));
     await hasta(2, "días para elegir", () => diasParaElegir(db, j.admin, j.manana));
     await hasta(3, "lista de compras", () => obtenerListaCompra(db, j.admin, j.manana));
     await hasta(2, "nuevo pedido", () => datosParaCargarPedido(db, j.admin));
     await hasta(2, "recorrido del día", () => viajeDelDia(db, j.admin, j.manana));
+  });
+
+  it("lo que acompaña al tablero y a la tarjeta abierta no los demora", async () => {
+    const { db } = j.base;
+    const tarjeta = { tipo: "PEDIDO" as const, id: j.ids.pedRestaurante! };
+    // Junto con el tablero: los avisos de deuda vencida y las notas sin leer.
+    await hasta(2, "deudas por vencer", () => listarCuentasProveedores(db, j.admin));
+    await hasta(2, "notas sin leer", () => bandejaDeNotas(db, j.admin, 0));
+    // Junto con la tarjeta abierta: el pedido, sus notas y lo que se hizo con él.
+    await hasta(2, "el pedido de la tarjeta", () => obtenerPedido(db, j.admin, tarjeta.id));
+    await hasta(2, "las notas de la tarjeta", () => notasDe(db, j.admin, tarjeta));
+    await hasta(3, "la actividad de la tarjeta", () => listarActividad(db, j.admin, { entidad: tarjeta, limite: 30 }));
+    await hasta(2, "precios de hoy", () => listaGeneralPreciosCompra(db, j.admin));
+  });
+
+  it("la caja inicial del resumen balance se guarda en pocas idas", async () => {
+    await hasta(4, "guardar la caja inicial", () => guardarCajaInicial(j.base.db, j.admin, { fecha: j.manana, monto: "500.000" }));
+    await hasta(4, "quitarla", () => guardarCajaInicial(j.base.db, j.admin, { fecha: j.manana, monto: "" }));
   });
 });
 

@@ -85,6 +85,16 @@ describe("carga visual de pedidos", () => {
     expect(productos.map((p) => p.id)).toEqual(["banana", "cebolla", "lechuga", "papa", "tomate"]);
   });
 
+  it("la búsqueda encuentra también en singular", () => {
+    expect(coincideBusqueda("Papa", "papas")).toBe(true);
+    expect(coincideBusqueda("Limón", "limones")).toBe(true);
+    expect(coincideBusqueda("Tomate redondo", "tomates")).toBe(true);
+    expect(coincideBusqueda("Ajo", "ajos")).toBe(true);
+    expect(coincideBusqueda("Ajo", "ajies")).toBe(false);
+    expect(coincideBusqueda("Ajo", "ajo")).toBe(true);
+    expect(coincideBusqueda("Lechuga", "papas")).toBe(false);
+  });
+
   it("junta las líneas repetidas", () => {
     const juntas = juntarLineas([
       { productoId: "p1", presentacionId: null, cantidad: "2", observaciones: "maduros" },

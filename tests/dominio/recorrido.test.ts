@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { enlaceVerEnMapa, enlaceWaze, enlacesGoogleMaps, textoDeDestino } from "@/dominio/entregas/navegacion";
 import { FACTOR_CALLES, distanciaKm, estimarTramo, planearRecorrido, type Coordenada, type ParadaRecorrido } from "@/dominio/entregas/recorrido";
-import { coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas, mostrarCoordenadas } from "@/dominio/entregas/ubicacion";
+import { coordenadaValida, enLaZona, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, mostrarCoordenadas, ZONA_DEL_NEGOCIO } from "@/dominio/entregas/ubicacion";
 
 const OBELISCO: Coordenada = { lat: -34.6037, lng: -58.3816 };
 const PLAZA_DE_MAYO: Coordenada = { lat: -34.6083, lng: -58.3712 };
@@ -200,5 +200,43 @@ describe("leer una ubicación pegada", () => {
     expect(esEnlaceCortoDeMapa("https://goo.gl/otra")).toBe(false);
     expect(esEnlaceCortoDeMapa("http://maps.app.goo.gl/x")).toBe(false);
     expect(esEnlaceCortoDeMapa("no es un enlace")).toBe(false);
+  });
+
+  it("la zona del negocio: Tucumán (pedido del usuario, 08/10/2026)", () => {
+    expect(enLaZona(ZONA_DEL_NEGOCIO.centro)).toBe(true);
+    expect(enLaZona({ lat: -26.7333, lng: -65.2667 })).toBe(true); // Tafí Viejo
+    expect(enLaZona({ lat: -27.3671, lng: -65.5925 })).toBe(true); // Concepción
+    expect(enLaZona(OBELISCO)).toBe(false);
+    expect(enLaZona({ lat: -27.4692, lng: -55.8612 })).toBe(false); // Posadas
+    expect(enLaZona({ lat: -24.7829, lng: -65.4232 })).toBe(false); // Salta
+  });
+
+  it("los lugares que se sugieren mientras se escribe (Photon, 10/10/2026)", () => {
+    const punto = (lng: number, lat: number) => ({ type: "Point", coordinates: [lng, lat] });
+    const r = lugaresDePhoton({
+      features: [
+        { geometry: punto(-65.2141, -26.8236), properties: { street: "Avenida Mitre", housenumber: "450", city: "San Miguel de Tucumán", state: "Tucumán", countrycode: "ar" } },
+        { geometry: punto(-65.2141, -26.8236), properties: { street: "Avenida Mitre", housenumber: "450", city: "San Miguel de Tucumán", state: "Tucumán", countrycode: "AR" } },
+        { geometry: punto(-65.2038, -26.8303), properties: { name: "Plaza Independencia", street: "24 de Septiembre", district: "Centro", city: "San Miguel de Tucumán", state: "Tucumán" } },
+        { geometry: punto(-65.28, -26.81), properties: { name: "Yerba Buena", county: "Yerba Buena", state: "Tucumán" } },
+        { geometry: punto(-58.38, -34.6), properties: { name: "Montevideo", countrycode: "UY" } },
+        { geometry: punto(0, 0), properties: { name: "Ningún lado" } },
+        { geometry: { coordinates: "mal" }, properties: { name: "Sin lugar" } },
+        { geometry: punto(-65.3, -26.9), properties: {} },
+        {},
+      ],
+    });
+    expect(r).toEqual([
+      { etiqueta: "Avenida Mitre 450", detalle: "San Miguel de Tucumán, Tucumán", coordenada: { lat: -26.8236, lng: -65.2141 } },
+      { etiqueta: "Plaza Independencia", detalle: "24 de Septiembre, Centro, San Miguel de Tucumán, Tucumán", coordenada: { lat: -26.8303, lng: -65.2038 } },
+      { etiqueta: "Yerba Buena", detalle: "Tucumán", coordenada: { lat: -26.81, lng: -65.28 } },
+    ]);
+    // Sin barrio ni ciudad, el renglón de abajo queda vacío; si el nombre es la calle, va la calle con su número.
+    expect(lugaresDePhoton({ features: [{ geometry: punto(-65.2, -26.8), properties: { name: "Mercofrut" } }, { geometry: punto(-65.21, -26.81), properties: { name: "Lavalle", street: "Lavalle", housenumber: "500", locality: "Barrio Sur" } }] })).toEqual([
+      { etiqueta: "Mercofrut", detalle: null, coordenada: { lat: -26.8, lng: -65.2 } },
+      { etiqueta: "Lavalle 500", detalle: "Barrio Sur", coordenada: { lat: -26.81, lng: -65.21 } },
+    ]);
+    expect(lugaresDePhoton(null)).toEqual([]);
+    expect(lugaresDePhoton({ features: "no" })).toEqual([]);
   });
 });

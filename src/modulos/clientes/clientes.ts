@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auditar, diferencias } from "@/db/auditoria";
 import { cliente, jornada, pedido, periodicidadFacturacion, puntoEntrega, tipoCliente } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
+import { coordenadaValida } from "@/dominio/entregas/ubicacion";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
@@ -100,6 +101,11 @@ const esquemaPunto = z
     horarioHasta: horaOpcional,
     diasEntrega: z.array(z.coerce.number().int().min(1).max(7)).default([]),
     instruccionesEntrega: textoOpcional(500),
+    /** Dónde queda, si se eligió al escribir la dirección (10/10/2026). */
+    coordenada: z
+      .object({ lat: z.number(), lng: z.number() })
+      .refine((c) => coordenadaValida(c.lat, c.lng), { message: "Esa ubicación no es válida: elegí la dirección de nuevo." })
+      .nullish(),
   })
   .refine((d) => !d.horarioDesde || !d.horarioHasta || d.horarioDesde < d.horarioHasta, {
     message: "El horario de recepción termina antes de empezar.",
@@ -210,6 +216,7 @@ function valoresPunto(d: z.output<typeof esquemaPunto>) {
     horarioHasta: d.horarioHasta,
     diasEntrega: d.diasEntrega.length > 0 ? [...new Set(d.diasEntrega)].sort() : null,
     instruccionesEntrega: d.instruccionesEntrega,
+    ...(d.coordenada ? { latitud: d.coordenada.lat.toFixed(6), longitud: d.coordenada.lng.toFixed(6) } : {}),
   };
 }
 

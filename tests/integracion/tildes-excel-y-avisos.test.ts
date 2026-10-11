@@ -5,6 +5,7 @@ import { pedido, usuario } from "@/db/esquema";
 import { formatearFecha, sumarDias } from "@/dominio/fechas/fechas";
 import { COLUMNAS_PLANILLA } from "@/dominio/catalogo/importacion";
 import { COLUMNAS_DE_PEDIDOS } from "@/dominio/pedidos/planilla";
+import { RETIRO_A_LA_VISTA, columnaEnCompra } from "@/dominio/pedidos/tablero";
 import { leerXlsx, planillaXlsx, type Celda } from "@/lib/planilla";
 import { previsualizarProductos } from "@/modulos/catalogo/importacion";
 import { hojaDeProductos } from "@/modulos/catalogo/planilla";
@@ -156,7 +157,8 @@ describe("tildar la compra en las tarjetas del tablero", () => {
 
     await marcarNoConseguido(j.base.db, j.comprador, { itemId: hospital.producto("Papa").listaItemId!, motivo: "No se consiguió en el mercado" });
     hospital = await tarjeta("Hospital San Martín");
-    expect(hospital.columna).toBe("comprados");
+    // Con todo resuelto pasa a Retiro (o se queda en la lista, con esa columna guardada).
+    expect(hospital.columna).toBe(columnaEnCompra(true));
     expect(hospital.producto("Papa")).toMatchObject({ hecha: true, compra: "NO_CONSEGUIDO", tildado: false, aviso: "No se consiguió en el mercado" });
 
     // Destildar lo vuelve a dejar por comprar.
@@ -167,14 +169,15 @@ describe("tildar la compra en las tarjetas del tablero", () => {
 
   it("la tarjeta se pasa a Comprado sin tildar todo, y se puede devolver", async () => {
     expect(await marcarPedidoComprado(j.base.db, j.comprador, pedidos.verduleria!)).toBe(1);
-    expect((await tarjeta("Verdulería Don Pepe")).columna).toBe("comprados");
+    expect((await tarjeta("Verdulería Don Pepe")).columna).toBe(columnaEnCompra(true));
+    expect((await tarjeta("Verdulería Don Pepe")).productos.every((p) => p.hecha)).toBe(true);
     expect(await desmarcarPedidoComprado(j.base.db, j.comprador, pedidos.verduleria!)).toBe(1);
     expect((await tarjeta("Verdulería Don Pepe")).columna).toBe("en_lista");
 
     // Lo que ya estaba marcado "no se consiguió" queda así: solo se tilda lo que faltaba.
     expect(await marcarPedidoComprado(j.base.db, j.comprador, pedidos.hospital!)).toBe(1);
     const hospital = await tarjeta("Hospital San Martín");
-    expect([hospital.columna, hospital.producto("Tomate redondo").tildado, hospital.producto("Papa").compra]).toEqual(["comprados", true, "NO_CONSEGUIDO"]);
+    expect([hospital.columna, hospital.producto("Tomate redondo").tildado, hospital.producto("Papa").compra]).toEqual([columnaEnCompra(true), true, "NO_CONSEGUIDO"]);
     // Pasarla de nuevo no hace nada; una tarjeta que no está en la lista no se puede pasar.
     expect(await marcarPedidoComprado(j.base.db, j.comprador, pedidos.hospital!)).toBe(0);
     const suelto = await cargarPedido(j.base.db, maria, { fecha: sumarDias(dia, 1), clienteId: j.ids.restaurante!, lineas: [{ productoId: j.ids.papa!, cantidad: "5" }], confirmar: true });
@@ -268,7 +271,7 @@ describe("avisos de la campanita", () => {
     const b = await avisosPara(j.base.db, j.admin, 40);
     expect(b.nuevos).toBeGreaterThan(0);
     expect(b.avisos.some((a) => a.persona.nombre === "María Pérez" && a.resumen.startsWith("cargó el pedido") && a.entidad?.tipo === "PEDIDO")).toBe(true);
-    expect(b.avisos.some((a) => a.persona.nombre === "Pedro" && a.resumen.startsWith("pasó a Comprado el pedido"))).toBe(true);
+    expect(b.avisos.some((a) => a.persona.nombre === "Pedro" && a.resumen.startsWith(`${RETIRO_A_LA_VISTA ? "pasó a Retiro" : "marcó como comprado"} el pedido`))).toBe(true);
     // El admin editó un producto recién: a él no le avisa, a María sí.
     expect(b.avisos.every((a) => a.persona.nombre !== "Admin Frutas Juan")).toBe(true);
     expect((await avisosPara(j.base.db, maria, 40)).avisos.some((a) => a.resumen === "cambió los datos del producto Champiñón blanco")).toBe(true);

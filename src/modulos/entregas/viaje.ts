@@ -4,7 +4,7 @@ import { z } from "zod";
 import { cliente, destinoFavorito, empresa, entrega, jornada, paradaExtra, puntoEntrega, reparto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import type { Coordenada } from "@/dominio/entregas/recorrido";
-import { coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas } from "@/dominio/entregas/ubicacion";
+import { coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, ZONA_DEL_NEGOCIO, type LugarSugerido } from "@/dominio/entregas/ubicacion";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
@@ -261,12 +261,19 @@ const AGENTE = "SistemaJuan/1.0 (gestion interna de un distribuidor de frutas y 
 
 /**
  * Busca una dirección en OpenStreetMap (Nominatim) y devuelve hasta 5 lugares para elegir. Se
- * usa a pedido de la persona (un botón), nunca en lote.
+ * usa a pedido de la persona (un botón), nunca en lote. Primero busca adentro de la zona del
+ * negocio (Tucumán) y, si ahí no encuentra nada, en todo el país.
  */
 export async function buscarDireccion(texto: string, buscador: Buscador = fetch): Promise<LugarEncontrado[]> {
   const q = texto.trim();
   if (q.length < 4) throw new ErrorDeNegocio("VALIDACION", "Escribí la dirección con la calle, el número y la localidad.");
-  const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({ q, format: "jsonv2", limit: "5", countrycodes: "ar", "accept-language": "es" }).toString()}`;
+  const { caja } = ZONA_DEL_NEGOCIO;
+  const enLaZona = await buscarEnNominatim(buscador, { q, viewbox: `${caja.oeste},${caja.norte},${caja.este},${caja.sur}`, bounded: "1" });
+  return enLaZona.length > 0 ? enLaZona : buscarEnNominatim(buscador, { q });
+}
+
+async function buscarEnNominatim(buscador: Buscador, parametros: Record<string, string>): Promise<LugarEncontrado[]> {
+  const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({ ...parametros, format: "jsonv2", limit: "5", countrycodes: "ar", "accept-language": "es" }).toString()}`;
   let respuesta: Response;
   try {
     respuesta = await buscador(url, { headers: { "User-Agent": AGENTE, Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
@@ -280,6 +287,33 @@ export async function buscarDireccion(texto: string, buscador: Buscador = fetch)
     const lng = Number(d.lon);
     return d.display_name && coordenadaValida(lat, lng) ? [{ etiqueta: d.display_name, coordenada: { lat, lng } }] : [];
   });
+}
+
+/**
+ * Lugares que se sugieren mientras se escribe una dirección (pedido del usuario, 10/10/2026: "que se
+ * vaya autocompletando mientras escribís", orientado a Tucumán). Usa Photon, el buscador de
+ * OpenStreetMap pensado para eso (Nominatim no admite autocompletar): primero adentro de la provincia
+ * y, si ahí no aparece nada, en todo el país, siempre cerca de San Miguel de Tucumán. Se consulta
+ * desde el servidor, un instante después de que se deja de escribir.
+ */
+export async function sugerirLugares(texto: string, buscador: Buscador = fetch): Promise<LugarSugerido[]> {
+  const q = texto.trim();
+  if (q.length < 3) return [];
+  const { caja, centro } = ZONA_DEL_NEGOCIO;
+  const pedir = async (conCaja: boolean) => {
+    const parametros = new URLSearchParams({ q, limit: "6", lat: String(centro.lat), lon: String(centro.lng) });
+    if (conCaja) parametros.set("bbox", `${caja.oeste},${caja.sur},${caja.este},${caja.norte}`);
+    let respuesta: Response;
+    try {
+      respuesta = await buscador(`https://photon.komoot.io/api/?${parametros.toString()}`, { headers: { "User-Agent": AGENTE, Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
+    } catch {
+      throw new ErrorDeNegocio("VALIDACION", "No se pudo consultar el mapa (¿hay internet?).");
+    }
+    if (!respuesta.ok) throw new ErrorDeNegocio("VALIDACION", "El mapa no respondió: probá de nuevo en un rato.");
+    return lugaresDePhoton(await respuesta.json());
+  };
+  const enLaZona = await pedir(true);
+  return enLaZona.length > 0 ? enLaZona : pedir(false);
 }
 
 /**

@@ -6,6 +6,7 @@ import { formatearMoneda } from "@/dominio/dinero/formato";
 import { coincideBusqueda } from "@/dominio/pedidos/carga";
 import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { CampoBuscar } from "@/ui/buscador";
 import { UNIDADES_CORTAS, haceDias } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Encabezado, clasesBoton } from "@/ui/formularios";
@@ -43,7 +44,7 @@ export default async function PreciosDeHoy({ searchParams }: PageProps<"/precios
       </Encabezado>
 
       <form method="get" className="flex flex-wrap items-center gap-2 print:hidden">
-        <input name="texto" defaultValue={texto} placeholder="🔎 Buscar producto o puesto" aria-label="Buscar producto o puesto" className="h-12 min-w-0 flex-1 rounded-xl border-2 border-borde bg-superficie px-3 text-lg" />
+        <CampoBuscar name="texto" defaultValue={texto ?? ""} placeholder="Buscar producto o puesto" aria-label="Buscar producto o puesto" className="min-w-0 flex-1" />
         {soloViejos && <input type="hidden" name="ver" value="viejos" />}
         <button type="submit" className={clasesBoton("secundario")}>
           Buscar

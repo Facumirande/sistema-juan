@@ -112,8 +112,9 @@ export async function fechasDeTrabajo(db: BaseDatos, authUserId: string): Promis
  * ayer) que ya empezó a comprarse, prepararse o repartirse; si no hay, hoy.
  */
 export async function jornadaEnCurso(db: BaseDatos, authUserId: string): Promise<FechaISO> {
-  return ejecutarComoUsuario(db, authUserId, null, async (tx) => {
-    const { hoy } = await hoyYSugerida(tx);
+  return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
+    // La fecha de hoy sale de la zona que ya viene con quien pregunta: no hace falta ir a buscarla.
+    const { hoy } = hoyYSugeridaDe(c);
     const [j] = await tx
       .select({ fecha: jornada.fecha })
       .from(jornada)

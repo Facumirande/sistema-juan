@@ -6,7 +6,8 @@ import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { listarProveedores } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
-import { Campo, Casilla, Encabezado, Filtros, Selector, clasesBoton } from "@/ui/formularios";
+import { CampoBuscar } from "@/ui/buscador";
+import { Casilla, Encabezado, Filtros, Selector, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 
 import { TablaOfertas, permisosOfertas } from "./tabla-ofertas";
@@ -53,7 +54,10 @@ export default async function PaginaPreciosCompra({ searchParams }: PageProps<"/
       </Encabezado>
 
       <Filtros>
-        <Campo etiqueta="Buscar" name="texto" defaultValue={filtros.texto} placeholder="Producto o código" />
+        <label className="flex min-w-56 flex-1 flex-col gap-1">
+          <span className="font-medium">Buscar</span>
+          <CampoBuscar name="texto" defaultValue={filtros.texto ?? ""} placeholder="Producto o código" />
+        </label>
         <Selector etiqueta="Categoría" name="categoria" opciones={categorias.map((c) => ({ valor: c.id, etiqueta: c.nombre }))} vacia="Todas" defaultValue={filtros.categoriaId} />
         {proveedores.length > 0 && (
           <Selector etiqueta="Proveedor" name="proveedor" opciones={proveedores.map((p) => ({ valor: p.id, etiqueta: p.nombre }))} vacia="Todos" defaultValue={filtros.proveedorId} />

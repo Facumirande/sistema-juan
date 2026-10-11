@@ -51,7 +51,15 @@ function datosPunto(datos: FormData, prefijo = "") {
     horarioHasta: campo(datos, `${prefijo}horarioHasta`),
     diasEntrega: datos.getAll(`${prefijo}diasEntrega`).map(String),
     instruccionesEntrega: campo(datos, `${prefijo}instruccionesEntrega`),
+    coordenada: coordenadaDe(datos, prefijo),
   };
+}
+
+/** La ubicación elegida al escribir la dirección (si se eligió). */
+function coordenadaDe(datos: FormData, prefijo: string): { lat: number; lng: number } | null {
+  const lat = Number(campo(datos, `${prefijo}lat`));
+  const lng = Number(campo(datos, `${prefijo}lng`));
+  return campo(datos, `${prefijo}lat`) && campo(datos, `${prefijo}lng`) && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
 export async function crearClienteAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {

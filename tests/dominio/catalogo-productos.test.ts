@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envasesSugeridos, explicarPresentacion, nombreDePresentacion } from "@/dominio/catalogo/productos";
+import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envaseComoUnidad, envasesSugeridos, explicarPresentacion, interpretarUnidad, nombreDePresentacion } from "@/dominio/catalogo/productos";
 
 describe("ayudas para cargar productos", () => {
   it("un dibujo según el nombre, o según el grupo", () => {
@@ -49,5 +49,16 @@ describe("ayudas para cargar productos", () => {
     expect(ejemploDeCostos({ precioEnvase: "100", cantidad: "0", recargoPct: "30" })).toBeNull();
     expect(ejemploDeCostos({ precioEnvase: "100", cantidad: "x", recargoPct: "30" })).toBeNull();
     expect(ejemploDeCostos({ precioEnvase: "-5", cantidad: "2", recargoPct: "30" })).toBeNull();
+  });
+
+  it("los envases como unidad: cajón, caja, bolsa, jaula… sin decir los kilos (10/10/2026)", () => {
+    expect(["Cajón", "cajones", "Caja", "bolsa", "Jaula", "Bolsón", "ristra"].map(envaseComoUnidad)).toEqual(["CAJON", "CAJON", "CAJA", "BOLSA", "JAULA", "BOLSON", "RISTRA"]);
+    // Lo que no es un envase (o trae los kilos) no se cuenta como unidad.
+    expect(envaseComoUnidad("Cajón 18 kg")).toBeNull();
+    expect(envaseComoUnidad("Kilo")).toBeNull();
+    expect(envaseComoUnidad("")).toBeNull();
+    expect(interpretarUnidad("por cajon")).toBe("CAJON");
+    // Sin envases sugeridos: el producto ya se cuenta en ese envase.
+    for (const u of ["CAJON", "CAJA", "BOLSA", "JAULA", "BOLSON", "RISTRA"]) expect(envasesSugeridos(u)).toEqual([]);
   });
 });

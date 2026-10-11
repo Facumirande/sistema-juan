@@ -11,6 +11,8 @@ export type AccionActividad =
   | "CREAR"
   | "CONFIRMAR"
   | "CANCELAR"
+  | "ELIMINAR"
+  | "RECUPERAR"
   | "DUPLICAR"
   | "PRIORIDAD"
   | "ASIGNAR"

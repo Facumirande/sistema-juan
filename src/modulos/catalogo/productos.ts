@@ -28,6 +28,12 @@ export const NOMBRE_UNIDAD: Readonly<Record<UnidadBase, string>> = {
   DOCENA: "docena",
   PAQUETE: "paquete",
   LITRO: "litro",
+  CAJON: "cajón",
+  CAJA: "caja",
+  BOLSA: "bolsa",
+  JAULA: "jaula",
+  BOLSON: "bolsón",
+  RISTRA: "ristra",
 };
 
 export interface ProductoListado {

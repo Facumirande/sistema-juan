@@ -16,13 +16,18 @@ import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { contarPedidosPendientes } from "@/modulos/usuarios/acceso";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { enlaceDeEntidad } from "@/ui/enlaces";
+import { fechaConDia } from "@/ui/etiquetas";
+import { queDiaEs } from "@/ui/fecha-grande";
+import { diaElegido } from "@/ui/dia-elegido";
 import { parametro } from "@/ui/parametros";
+import { RecordarDia } from "@/ui/recordar-dia";
 import { BotonAccion } from "@/ui/boton-accion";
 import { SelectorDeDia } from "@/ui/selector-de-dia";
 
 import { reabrirDiaAccion } from "./acciones";
 import { Modal } from "./modal";
 import { DiaPasoAPaso, TITULOS, plural, tituloDelDia } from "./paso-a-paso";
+import { ResumenBalanceChico, ResumenBalanceGrande, type ResumenParaVer } from "./resumen-balance";
 import { TableroTrello } from "./tablero";
 import { datosParaComprar } from "../lista-compra/datos-para-comprar";
 
@@ -80,7 +85,8 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
     puede("usuarios.administrar") ? contarPedidosPendientes(db, sesion.authUserId) : Promise.resolve(0),
     puede("pagos.ver") && puede("proveedores.ver_credito") ? listarCuentasProveedores(db, sesion.authUserId).then((r) => r.cuentas) : Promise.resolve([]),
     // El tablero viene en la misma transacción que el día: toda la pantalla sale con pocas idas a la base.
-    puede("jornada.ver") ? diaDeTrabajo(db, sesion.authUserId, parametro(sp.fecha), { conTablero: vista === "tablero" }) : Promise.resolve(null),
+    // Sin día en la dirección, el día que se eligió por última vez (en el tablero o en otra pantalla del día).
+    puede("jornada.ver") ? diaElegido().then((elegido) => diaDeTrabajo(db, sesion.authUserId, parametro(sp.fecha) ?? elegido, { conTablero: vista === "tablero" })) : Promise.resolve(null),
     bandejaDeNotas(db, sesion.authUserId, 0),
     pedidoAbierto && UUID.test(pedidoAbierto) && puede("pedidos.ver") ? cargarTarjeta(pedidoAbierto) : Promise.resolve(null),
   ]);
@@ -91,6 +97,19 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
 
   const base = dia ? `/inicio?fecha=${dia.fecha}${vista === "pasos" ? "&vista=pasos" : ""}` : "/inicio";
   const tablero = enTablero ? dia.tablero : null;
+  // El resumen balance (gastos y caja inicial del día): va arriba del tablero.
+  const resumen: ResumenParaVer | null =
+    enTablero && dia.resumen
+      ? {
+          fecha: dia.fecha,
+          gastos: dia.resumen.gastos.toString(),
+          pagado: dia.resumen.pagado.toString(),
+          credito: dia.resumen.credito.toString(),
+          cajaInicial: dia.resumen.cajaInicial?.toString() ?? null,
+          exceso: dia.resumen.exceso?.toString() ?? null,
+          editable: puede("pagos.registrar") && dia.panel.estado !== "CERRADA",
+        }
+      : null;
 
   // El fondo con la imagen va en las dos vistas del día (tablero y paso a paso).
   const sobre = dia !== null;
@@ -100,28 +119,40 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
   const unaNota = bandeja.sinLeer.length === 1 ? bandeja.sinLeer[0]! : null;
 
   return (
+    <>
     <div
       // El tablero ocupa justo la pantalla (la página no se desplaza); el paso a paso, lo que necesite.
       className={
         sobre
           ? // En el tablero, este recuadro es el contenedor "tablero": su ancho (no el de la ventana) decide
             // si se ve como en la computadora o como en el celular.
-            `-m-4 flex flex-col gap-2 p-3 [background:var(--tablero-fondo)] sm:gap-3 sm:px-4 ${enTablero ? "@container/tablero h-[calc(100dvh-3.5rem)] overflow-hidden" : "min-h-[calc(100dvh-3.5rem)]"}`
+            // `a-pantalla-completa`: en el celular llega hasta el borde de abajo con su fondo (globals.css).
+            `a-pantalla-completa -m-3 flex flex-col gap-2 p-3 [background:var(--tablero-fondo)] sm:-m-4 sm:gap-3 sm:px-4 ${enTablero ? "@container/tablero h-[calc(100dvh-3rem)] overflow-hidden sm:h-[calc(100dvh-3.5rem)]" : "min-h-[calc(100dvh-3rem)] pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:min-h-[calc(100dvh-3.5rem)]"}`
           : "flex max-w-3xl flex-col gap-5"
       }
     >
       {/* En el celular, el tablero no lleva este encabezado: el día y las opciones van adentro, en un renglón. */}
       <header className={`shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 ${enTablero ? "hidden @[34rem]/tablero:flex" : "flex"} ${sobre ? "text-white" : ""}`}>
         <div>
-          <h1 className="text-xl leading-tight font-semibold sm:text-3xl">{dia ? (enTablero ? `Pedidos · ${tituloDelDia(dia.fecha, dia.hoy)}` : tituloDelDia(dia.fecha, dia.hoy)) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
+          {dia && enTablero ? (
+            // En el tablero, directamente el día, bien grande (pedido del usuario, 10/10/2026).
+            <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className={`${queDiaEs(dia.fecha, dia.hoy).color} rounded-lg bg-[var(--col-fuerte)] px-2.5 py-1 text-base font-extrabold tracking-wide text-[var(--col-fuerte-texto)]`}>{queDiaEs(dia.fecha, dia.hoy).cartel}</span>
+              <span className="text-3xl leading-tight font-extrabold first-letter:uppercase sm:text-4xl">{fechaConDia(dia.fecha)}</span>
+            </h1>
+          ) : (
+            <h1 className="text-xl leading-tight font-semibold sm:text-3xl">{dia ? tituloDelDia(dia.fecha, dia.hoy) : `Hola, ${sesion.nombre.split(" ")[0]}`}</h1>
+          )}
           {dia && (
             <p className={`hidden sm:block ${sobre ? "text-white/85" : "text-texto-suave"}`}>
               {!dia.panel.estado ? "Todavía sin pedidos para este día" : dia.pasos.actual ? `Ahora toca: ${TITULOS[dia.pasos.actual].toLowerCase()}` : "Día terminado"}
             </p>
           )}
         </div>
+        {/* En el espacio del medio, el resumen balance: tiene todo el lugar ("Tablero / Paso a paso" va abajo, con los filtros). */}
+        {resumen && <ResumenBalanceGrande resumen={resumen} />}
         <div className="flex flex-wrap items-center gap-2">
-          {dia && puede("pedidos.ver") && (
+          {dia && puede("pedidos.ver") && !enTablero && (
             <div role="tablist" aria-label="Cómo ver el día" className={`flex rounded-xl p-1 ${sobre ? "bg-black/25" : "bg-fondo"}`}>
               <Link href={`/inicio?fecha=${dia.fecha}`} role="tab" aria-selected={vista === "tablero"} className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold ${vista === "tablero" ? "bg-white text-[#172b4d]" : sobre ? "text-white" : ""}`}>
                 ▦ Tablero
@@ -131,11 +162,12 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
               </Link>
             </div>
           )}
-          {dia && puede("reportes.ver") && (
+          {/* En el tablero, "Balance del día" va abajo, junto a los días: arriba queda solo el resumen balance. */}
+          {dia && puede("reportes.ver") && !enTablero && (
             <Link
               href={`/balance?dia=${dia.fecha}`}
               title="Lo que se vendió, se compró y quedó ese día"
-              className={`min-h-12 items-center gap-2 rounded-xl px-4 font-semibold ${enTablero ? "hidden sm:flex" : "flex"} ${sobre ? "bg-white/20 text-white hover:bg-white/30" : "border border-borde bg-superficie"}`}
+              className={`flex min-h-12 items-center gap-2 rounded-xl px-4 font-semibold ${sobre ? "bg-white/20 text-white hover:bg-white/30" : "border border-borde bg-superficie"}`}
             >
               💰 Balance del día
             </Link>
@@ -156,7 +188,8 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
       </header>
 
       {/* En el tablero, los días van adentro (en el celular comparten el renglón con las opciones). */}
-      {dia && !enTablero && <SelectorDeDia dias={dia.dias} fecha={dia.fecha} hoy={dia.hoy} enlace={(f) => `/inicio?fecha=${f}&vista=pasos`} sobreFondo={sobre} />}
+      {dia && !enTablero && <SelectorDeDia dias={dia.dias} fecha={dia.fecha} hoy={dia.hoy} ruta="/inicio?fecha={fecha}&vista=pasos" sobreFondo={sobre} />}
+      {dia && <RecordarDia fecha={dia.fecha} />}
 
       {(pedidosDeAcceso > 0 || vencidas.length > 0 || porVencer.length > 0 || bandeja.sinLeer.length > 0) && (
         <div className={enTablero ? "sin-barra -mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 whitespace-nowrap @[34rem]/tablero:flex-wrap @[34rem]/tablero:whitespace-normal" : "flex flex-wrap gap-2"} aria-label="Avisos">
@@ -195,12 +228,19 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
         </div>
       )}
 
+      {resumen && (
+        <div className="@[34rem]/tablero:hidden">
+          <ResumenBalanceChico resumen={resumen} />
+        </div>
+      )}
+
       {tablero && dia ? (
         <TableroTrello
           fecha={dia.fecha}
           columnas={tablero.columnas}
           cancelados={tablero.cancelados}
           personas={tablero.personas}
+          responsables={tablero.responsables}
           yo={tablero.yo}
           base={base}
           puede={{ crear: puedeCargar, armar: puede("lista_compra.generar"), editar: puede("pedidos.editar"), tildar: puede("lista_compra.editar"), salir: puede("repartos.gestionar") && dia.panel.estado !== "CERRADA", preparar: puede("preparacion.registrar"), entregar: puede("entregas.confirmar"), cerrar: puede("jornada.cerrar") }}
@@ -233,6 +273,8 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
         </div>
       )}
 
+    </div>
+      {/* La tarjeta abierta va afuera del recuadro del tablero: es una ventana sobre toda la pantalla. */}
       {tarjeta && (
         <Modal cerrar={base} titulo={`${tarjeta.pedido.cliente} · ${tarjeta.pedido.numero}`}>
           <TarjetaAbierta
@@ -247,6 +289,6 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
           />
         </Modal>
       )}
-    </div>
+    </>
   );
 }

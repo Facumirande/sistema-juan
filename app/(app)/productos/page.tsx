@@ -8,9 +8,10 @@ import { formatearMoneda } from "@/dominio/dinero/formato";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { listarProductos, type ProductoListado } from "@/modulos/catalogo/productos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { CampoBuscar } from "@/ui/buscador";
 import { VistaTarjetasOLista } from "@/ui/cuadricula";
 import { UNIDADES_CORTAS } from "@/ui/etiquetas";
-import { Aviso, Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
+import { Aviso, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 
 import { TableroDeProductos, type GrupoDeProductos, type TarjetaDeProducto } from "./tablero-productos";
@@ -104,7 +105,10 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Filtros>
           {vista === "lista" && <input type="hidden" name="vista" value="lista" />}
-          <Campo etiqueta="Buscar" name="texto" defaultValue={texto} placeholder="Nombre o código" />
+          <label className="flex min-w-56 flex-1 flex-col gap-1">
+            <span className="font-medium">Buscar</span>
+            <CampoBuscar name="texto" defaultValue={texto ?? ""} placeholder="Nombre o código" />
+          </label>
           <Selector etiqueta="Categoría" name="categoria" opciones={categorias.map((c) => ({ valor: c.id, etiqueta: c.nombre }))} vacia="Todas" defaultValue={categoriaId} />
           <Selector etiqueta="Estado" name="estado" opciones={OPCIONES_ESTADO} defaultValue={estado} />
         </Filtros>

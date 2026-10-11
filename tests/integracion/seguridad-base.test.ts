@@ -7,6 +7,7 @@ import { auditar } from "@/db/auditoria";
 import { auditoria, empresa, rol, secuencia, usuario, usuarioRol } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import { cambiarRol, enEmpresa } from "@/db/transaccion";
+import { pulsoDeCambios } from "@/modulos/colaboracion/pulso";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { ROLES_SISTEMA } from "@/seguridad/roles-sistema";
 
@@ -46,6 +47,16 @@ describe("estructura de seguridad", () => {
 
   it("app_servidor sin cambiar de rol no puede leer ninguna tabla (NOINHERIT)", async () => {
     expect(await codigoDeError(base.db.select().from(usuario))).toBe("PERMISO_BD");
+  });
+
+  it("el pulso de los cambios se lee sin cambiar de rol y solo lo suben las transacciones de negocio", async () => {
+    const antes = Number(await pulsoDeCambios(base.db));
+    expect(await codigoDeError(base.db.execute(sql`select nextval('interno.pulso')`))).toBe("PERMISO_BD");
+    await base.db.transaction(async (tx) => {
+      await cambiarRol(tx, "app_negocio");
+      await tx.execute(sql`select nextval('interno.pulso')`);
+    });
+    expect(Number(await pulsoDeCambios(base.db))).toBe(antes + 1);
   });
 
   it("sin empresa fijada no se ve nada, aunque la sesión ya haya usado otra empresa (falla cerrada)", async () => {

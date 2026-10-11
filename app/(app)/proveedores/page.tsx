@@ -7,9 +7,10 @@ import { dec } from "@/dominio/dinero/decimal";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { listarProveedores, type ProveedorListado } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { CampoBuscar } from "@/ui/buscador";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
 import { CONDICIONES_PAGO } from "@/ui/etiquetas";
-import { Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
+import { Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 import { SemaforoCredito } from "@/ui/semaforo";
 
@@ -76,7 +77,10 @@ export default async function PaginaProveedores({ searchParams }: PageProps<"/pr
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Filtros>
           {vista === "lista" && <input type="hidden" name="vista" value="lista" />}
-          <Campo etiqueta="Buscar" name="texto" defaultValue={texto} placeholder="Nombre o ubicación" />
+          <label className="flex min-w-56 flex-1 flex-col gap-1">
+            <span className="font-medium">Buscar</span>
+            <CampoBuscar name="texto" defaultValue={texto ?? ""} placeholder="Nombre o ubicación" />
+          </label>
           <Selector etiqueta="Estado" name="estado" opciones={OPCIONES_ESTADO} defaultValue={estado} />
         </Filtros>
         <VistaTarjetasOLista vista={vista} enlace={enlaceVista} />

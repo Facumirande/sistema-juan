@@ -5,6 +5,7 @@ import type { BaseDatos } from "@/db/tipos";
 import { agruparAvisos } from "@/dominio/colaboracion/avisos";
 import { hoyEnEmpresa } from "@/dominio/fechas/fechas";
 import { productosParaRevisar } from "@/modulos/catalogo/revision";
+import { diasConCajaSuperada, type CajaSuperada } from "@/modulos/jornadas/caja";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 
 import { tiposVisibles } from "./actividad";
@@ -45,6 +46,8 @@ export interface BandejaDeAvisos {
   personas: PersonaVisible[];
   /** Productos con algo esencial para arreglar (sin precio de compra, o vendidos por debajo de lo que cuestan). */
   paraRevisar: { id: string; producto: string; problemas: string[]; href: string }[];
+  /** Los días cercanos en los que los gastos superan la caja inicial (RN-180). */
+  cajaSuperada: (CajaSuperada & { hoy: string; href: string })[];
 }
 
 /** Cuántos productos para revisar se listan en la campanita como mucho. */
@@ -62,9 +65,11 @@ export async function avisosPara(db: BaseDatos, authUserId: string, limite = 15)
     // "Nuevo" es lo que pasó después de la última vez que abrió la campanita (o en el último día, si
     // nunca la abrió). Va dentro de la consulta para que todo salga junto, en una sola ida a la base.
     const desdeCuando = sql`coalesce((select u.avisos_vistos_en from ${usuario} u where u.id = ${c.usuarioId}), now() - interval '24 hours')`;
-    const [personas, revisar, [yo], acciones, [actividadNueva], notas, [notasNuevas]] = await Promise.all([
+    const hoy = hoyEnEmpresa(new Date(), c.zonaHoraria);
+    const [personas, revisar, superadas, [yo], acciones, [actividadNueva], notas, [notasNuevas]] = await Promise.all([
       personasDelNegocio(tx),
-      productosParaRevisar(tx, c, hoyEnEmpresa(new Date(), c.zonaHoraria)),
+      productosParaRevisar(tx, c, hoy),
+      diasConCajaSuperada(tx, c, hoy),
       tx.select({ vistos: usuario.avisosVistosEn }).from(usuario).where(eq(usuario.id, c.usuarioId)),
       tx.select().from(actividad).where(deOtros).orderBy(desc(actividad.ocurridaEn)).limit(limite * 3),
       tx.select({ n: count() }).from(actividad).where(and(deOtros, sql`${actividad.ocurridaEn} > ${desdeCuando}`)),
@@ -73,7 +78,8 @@ export async function avisosPara(db: BaseDatos, authUserId: string, limite = 15)
     ]);
     const otras = personas.filter((p) => p.activa && p.id !== c.usuarioId).map(soloVisible);
     const paraRevisar = revisar.slice(0, MAXIMO_PARA_REVISAR).map((p) => ({ id: p.productoId, producto: p.producto, problemas: p.problemas, href: `/productos/${p.productoId}` }));
-    if (!hayTipos) return { nuevos: 0, notasSinLeer: 0, avisos: [], personas: otras, paraRevisar };
+    const cajaSuperada = superadas.map((s) => ({ ...s, hoy, href: `/inicio?fecha=${s.fecha}` }));
+    if (!hayTipos) return { nuevos: 0, notasSinLeer: 0, avisos: [], personas: otras, paraRevisar, cajaSuperada };
     const porId = new Map(personas.map((p) => [p.id, soloVisible(p)]));
     const persona = (id: string | null): PersonaVisible => porId.get(id ?? "") ?? { id: id ?? "", nombre: "Alguien", color: "#46505e" };
     const desde = yo?.vistos ?? new Date(Date.now() - PRIMERA_VEZ_MS);
@@ -112,6 +118,7 @@ export async function avisosPara(db: BaseDatos, authUserId: string, limite = 15)
       notasSinLeer: Number(notasNuevas?.n ?? 0),
       personas: otras,
       paraRevisar,
+      cajaSuperada,
       avisos: agrupados.map((m) => {
         const e = m.ref ? entidades.get(claveDeReferencia(m.ref)) : undefined;
         return {

@@ -13,6 +13,7 @@ import { guardarCliente } from "@/modulos/clientes/clientes";
 import { anularCompra, listarCompras, obtenerCompra, registrarCompra, registrarSaldoInicial } from "@/modulos/compras/compras";
 import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
 import { cuentaDeProveedor } from "@/modulos/compras/cuenta";
+import { pagadoDesdeLaLista } from "@/modulos/compras/pagos";
 import { cambiarLineaLista, generarListaCompra, marcarNoConseguido, obtenerListaCompra } from "@/modulos/compras/lista-compra";
 import { agregarLinea, confirmarPedido, crearPedido, obtenerPedido } from "@/modulos/pedidos/pedidos";
 import { crearOferta } from "@/modulos/precios-compra/ofertas";
@@ -330,6 +331,24 @@ describe("✓ Lo compré, desde la lista de compras", () => {
     expect(dec((await linea("Banana")).compradoBase).minus(banana.compradoBase).toString()).toBe("20");
     const compra = await obtenerCompra(base.db, admin, r.compraId);
     expect([compra.condicion, compra.fechaJornada]).toEqual(["CONTADO", manana]);
+  });
+
+  it("el interruptor del final del renglón la deja a cuenta y la vuelve a pagar (RN-179)", async () => {
+    const banana = await linea("Banana");
+    const deuda = async () => dec((await cuenta("D")).indicadores.saldoNeto);
+    // Lo que había quedado a cuenta se paga primero.
+    await pagadoDesdeLaLista(base.db, admin, { itemId: banana.id, pagado: true });
+    expect((await linea("Banana")).compras.every((k) => !k.aCuenta)).toBe(true);
+    const antes = await deuda();
+    await pagadoDesdeLaLista(base.db, admin, { itemId: banana.id, pagado: false });
+    expect((await linea("Banana")).compras.map((k) => k.aCuenta)).toEqual(banana.compras.map(() => true));
+    expect((await deuda()).gt(antes)).toBe(true);
+    await pagadoDesdeLaLista(base.db, admin, { itemId: banana.id, pagado: true });
+    expect((await linea("Banana")).compras.every((k) => !k.aCuenta)).toBe(true);
+    expect((await deuda()).toString()).toBe(antes.toString());
+    // Sin compras anotadas no hay nada que pagar.
+    const sinCompra = (await obtenerListaCompra(base.db, admin, manana))!.plan.flatMap((p) => p.lineas).find((l) => l.compras.length === 0);
+    if (sinCompra) expect(await codigoDeError(pagadoDesdeLaLista(base.db, admin, { itemId: sinCompra.id, pagado: true }))).toBe("VALIDACION");
   });
 
   it("no deja anotar en un puesto o un envase de otro producto", async () => {

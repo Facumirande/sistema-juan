@@ -1,0 +1,1 @@
+ALTER TABLE "empresa" ADD COLUMN "responsables_etapa" jsonb DEFAULT '{}'::jsonb NOT NULL;

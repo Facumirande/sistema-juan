@@ -177,7 +177,10 @@ export function grupoDeProducto(nombre: string, grupoCategoria?: string | null):
   return grupoCategoria === "FRUTA" || grupoCategoria === "VERDURA" ? grupoCategoria : "OTRO";
 }
 
-export type UnidadDeVenta = "KG" | "UNIDAD" | "ATADO" | "MAPLE" | "BANDEJA" | "DOCENA" | "PAQUETE" | "LITRO";
+export type UnidadDeVenta = "KG" | "UNIDAD" | "ATADO" | "MAPLE" | "BANDEJA" | "DOCENA" | "PAQUETE" | "LITRO" | "CAJON" | "CAJA" | "BOLSA" | "JAULA" | "BOLSON" | "RISTRA";
+
+/** Las que son un envase: el producto se cuenta en cajones, cajas… y no hace falta decir cuántos kilos traen. */
+export const UNIDADES_ENVASE: ReadonlySet<UnidadDeVenta> = new Set(["CAJON", "CAJA", "BOLSA", "JAULA", "BOLSON", "RISTRA"]);
 
 /** Cómo se dice cada forma de vender en la planilla (y las listas para elegir). */
 export const UNIDADES_EN_PALABRAS: Readonly<Record<UnidadDeVenta, string>> = {
@@ -189,6 +192,12 @@ export const UNIDADES_EN_PALABRAS: Readonly<Record<UnidadDeVenta, string>> = {
   DOCENA: "Docena",
   PAQUETE: "Paquete",
   LITRO: "Litro",
+  CAJON: "Cajón",
+  CAJA: "Caja",
+  BOLSA: "Bolsa",
+  JAULA: "Jaula",
+  BOLSON: "Bolsón",
+  RISTRA: "Ristra",
 };
 
 const SINONIMOS_UNIDAD: readonly [UnidadDeVenta, readonly string[]][] = [
@@ -200,6 +209,12 @@ const SINONIMOS_UNIDAD: readonly [UnidadDeVenta, readonly string[]][] = [
   ["DOCENA", ["docena", "docenas", "doc"]],
   ["PAQUETE", ["paquete", "paquetes", "paq"]],
   ["LITRO", ["litro", "litros", "l", "lt", "lts"]],
+  ["CAJON", ["cajon", "cajones", "por cajon"]],
+  ["CAJA", ["caja", "cajas", "por caja"]],
+  ["BOLSA", ["bolsa", "bolsas", "por bolsa"]],
+  ["JAULA", ["jaula", "jaulas", "por jaula"]],
+  ["BOLSON", ["bolson", "bolsones", "por bolson"]],
+  ["RISTRA", ["ristra", "ristras", "por ristra"]],
 ];
 
 /**
@@ -210,6 +225,15 @@ export function interpretarUnidad(texto: string): UnidadDeVenta | "NINGUNA" | nu
   const t = sinAcentos(texto).replace(/[.\s]+$/, "").replace(/\s+/g, " ").trim();
   if (!t || ["ninguna", "ninguno", "-", "nada"].includes(t)) return "NINGUNA";
   return SINONIMOS_UNIDAD.find(([, sinonimos]) => sinonimos.includes(t))?.[0] ?? null;
+}
+
+/**
+ * Un envase escrito sin decir cuánto trae ("Cajón", "Bolsa"): si es uno de los que pueden ser
+ * unidad, el producto se cuenta en ese envase y los kilos no hacen falta (10/10/2026). Si no, nulo.
+ */
+export function envaseComoUnidad(envase: string): UnidadDeVenta | null {
+  const u = interpretarUnidad(envase);
+  return u && u !== "NINGUNA" && UNIDADES_ENVASE.has(u) ? u : null;
 }
 
 const SE_VENDE_POR: readonly [string, UnidadDeVenta][] = [

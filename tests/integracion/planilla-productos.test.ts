@@ -32,7 +32,7 @@ describe("planilla de productos", () => {
     const listas = hojas[2]!.filas.map((f) => f[0]).filter(Boolean);
     expect(listas).toEqual(["Duras", "Blandas", "De hoja", "Aromáticas", "Frágiles", "Secos", "Ninguna"]);
     expect(hojas[2]!.filas.map((f) => f[1]).filter(Boolean)).toContain("Ninguna");
-    expect(hojas[0]!.listas?.map((l) => l.opciones)).toEqual(["Listas!$A$2:$A$8", "Listas!$B$2:$B$10", "Listas!$C$2:$C$11"]);
+    expect(hojas[0]!.listas?.map((l) => l.opciones)).toEqual(["Listas!$A$2:$A$8", "Listas!$B$2:$B$16", "Listas!$C$2:$C$11"]);
     // Se baja como .xlsx y se vuelve a leer igual.
     expect(leerXlsx(planillaXlsx(hojas))[0]!.filas[0]).toEqual(["Producto", "Categoría", "Se vende por", "Envase en que se compra", "Cuánto trae el envase", "Ganancia %", "Código"]);
   });

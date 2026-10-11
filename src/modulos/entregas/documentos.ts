@@ -6,7 +6,7 @@ import type { Transaccion } from "@/db/tipos";
 import { aNumeric, dec } from "@/dominio/dinero/decimal";
 import { importeLinea, totalesEntrega } from "@/dominio/entregas/entregas";
 import { ErrorDeNegocio } from "@/dominio/errores";
-import type { FechaISO } from "@/dominio/fechas/fechas";
+import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
 import { calcularPrecios } from "@/modulos/precios-venta/calculo";
 import { numeroPedido } from "@/modulos/pedidos/pedidos";
 import type { ContextoUsuario } from "@/modulos/seguridad/contexto";
@@ -36,7 +36,7 @@ export interface Recepcion {
 
 interface Encabezado {
   /** Quien emite (09 §5.1). */
-  empresa: { nombre: string; razonSocial: string | null; identificacionFiscal: string | null; direccion: string | null; telefono: string | null };
+  empresa: { nombre: string; razonSocial: string | null; identificacionFiscal: string | null; direccion: string | null; telefono: string | null; condicionFiscal?: string | null };
   numero: string;
   version: number;
   fechaEntrega: FechaISO;
@@ -47,6 +47,12 @@ interface Encabezado {
   pedidos: string[];
   recibido: Recepcion | null;
   emitido: { en: string; por: string };
+  // Desde el 08/10/2026 (modelo de remito con recuadros de cliente y entrega); lo emitido antes no los tiene.
+  /** CUIT y condición de IVA del cliente. */
+  clienteCuit?: string | null;
+  clienteCondicionFiscal?: string | null;
+  /** El día en que se cargó el pedido (el más viejo, si son varios). */
+  pedidoDel?: FechaISO | null;
 }
 
 /** DOC-02: ningún importe (RN-124). */
@@ -104,12 +110,15 @@ async function encabezado(tx: Transaccion, entregaId: string, emitido: { en: Dat
         recibidoPor: entrega.recibidoPor,
         recibidoCargo: entrega.recibidoCargo,
         recibidoEn: entrega.recibidoEn,
+        clienteCuit: entrega.clienteIdentificacionFiscal,
+        clienteCondicion: cliente.condicionFiscal,
       })
       .from(entrega)
       .innerJoin(jornada, eq(jornada.id, entrega.jornadaId))
+      .leftJoin(cliente, eq(cliente.id, entrega.clienteId))
       .where(eq(entrega.id, entregaId)),
     tx
-      .selectDistinct({ numero: pedido.numero })
+      .selectDistinct({ numero: pedido.numero, cargado: pedido.creadoEn })
       .from(entregaItem)
       .innerJoin(pedidoItem, eq(pedidoItem.id, entregaItem.pedidoItemId))
       .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
@@ -119,7 +128,7 @@ async function encabezado(tx: Transaccion, entregaId: string, emitido: { en: Dat
   ]);
   if (!f) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró la entrega.");
   return {
-    empresa: { nombre: emp.nombre, razonSocial: emp.razonSocial, identificacionFiscal: emp.identificacionFiscal, direccion: emp.direccion, telefono: emp.telefono },
+    empresa: { nombre: emp.nombre, razonSocial: emp.razonSocial, identificacionFiscal: emp.identificacionFiscal, direccion: emp.direccion, telefono: emp.telefono, condicionFiscal: emp.condicionFiscal },
     numero: numeroEntrega(f.numero),
     version: f.version,
     fechaEntrega: f.fecha,
@@ -130,6 +139,9 @@ async function encabezado(tx: Transaccion, entregaId: string, emitido: { en: Dat
     pedidos: pedidos.map((p) => numeroPedido(p.numero)),
     recibido: f.recibidoPor && f.recibidoEn ? { por: f.recibidoPor, cargo: f.recibidoCargo, en: f.recibidoEn.toISOString() } : null,
     emitido: { en: emitido.en.toISOString(), por: emitido.por },
+    clienteCuit: f.clienteCuit,
+    clienteCondicionFiscal: f.clienteCondicion,
+    pedidoDel: pedidos.length ? hoyEnEmpresa(new Date(Math.min(...pedidos.map((p) => p.cargado.getTime()))), emp.zonaHoraria) : null,
   };
 }
 

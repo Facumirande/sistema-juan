@@ -5,6 +5,7 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { viajeDelDia } from "@/modulos/entregas/viaje";
 import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
+import { diaElegido } from "@/ui/dia-elegido";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
 import { fechaConDia } from "@/ui/etiquetas";
@@ -30,7 +31,7 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
   const sesion = await sesionParaPantalla("repartos.ver");
   const db = obtenerBaseDatos();
   const pedida = parametro((await searchParams).fecha);
-  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : await jornadaEnCurso(db, sesion.authUserId);
+  const fecha = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : ((await diaElegido()) ?? (await jornadaEnCurso(db, sesion.authUserId)));
   const { salida, paradas, recorrido, favoritos, cerrado } = await viajeDelDia(db, sesion.authUserId, fecha);
   const puedeGestionar = sesion.permisos.includes("repartos.gestionar") && !cerrado;
   const puedeEntregar = sesion.permisos.includes("entregas.confirmar");

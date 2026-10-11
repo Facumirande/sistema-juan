@@ -233,7 +233,7 @@ export async function iniciarPreparacion(
       tx.select({ borradores: count() }).from(pedido).where(and(eq(pedido.jornadaId, j.id), eq(pedido.estado, "BORRADOR"))),
       empieza ? tx.update(jornada).set({ estado: "PREPARANDO", preparacionIniciadaEn: sql`now()`, actualizadoPor: c.usuarioId }).where(eq(jornada.id, j.id)) : null,
       empieza || r.entregasNuevas > 0
-        ? registrarActividad(tx, c, { accion: "PREPARAR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `empezó a preparar los pedidos del ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}` })
+        ? registrarActividad(tx, c, { accion: "PREPARAR", entidadTipo: "JORNADA", entidadId: j.id, jornadaId: j.id, resumen: `empezó a preparar los pedidos del ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`, paraUsuarioId: c.responsables.preparando ?? null })
         : null,
     ]);
     return { ...r, borradores: Number(unico(filasBorradores).borradores) };
@@ -691,7 +691,7 @@ export async function marcarPreparada(db: BaseDatos, authUserId: string, datos: 
     await Promise.all([
       tx.update(entrega).set({ estado: "PREPARADA", cantidadBultos: bultos ?? e.cantidadBultos, actualizadoPor: c.usuarioId }).where(eq(entrega.id, e.id)),
       moverPedidosDeEntrega(tx, e.id, ["CONFIRMADO", "EN_COMPRA", "EN_PREPARACION"], "PREPARADO"),
-      yaEstaba ? null : registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${cli?.nombre ?? "un cliente"}` }),
+      yaEstaba ? null : registrarActividad(tx, c, { accion: "PREPARADA", entidadTipo: "ENTREGA", entidadId: e.id, jornadaId: e.jornadaId, resumen: `terminó de preparar el pedido de ${cli?.nombre ?? "un cliente"}`, paraUsuarioId: c.responsables.en_camino ?? null }),
     ]);
     if (yaEstaba) return { documentos: await reemitirSiCorresponde(tx, c, e.id) };
     if (!empresa.emitirDocumentosAlPreparar) return { documentos: null };

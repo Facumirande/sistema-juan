@@ -17,6 +17,7 @@ import {
 import type { PrioridadPedido } from "@/dominio/pedidos/tablero";
 import type { ClienteParaCargar, DatosDeCarga, PedidoDelHistorial, ProductoParaCargar } from "@/modulos/pedidos/carga";
 import type { PedidoCargado } from "@/modulos/pedidos/pedidos";
+import { Buscador } from "@/ui/buscador";
 import { NombreDeProducto } from "@/ui/checklist";
 import { fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente } from "@/ui/etiquetas-tablero";
@@ -397,6 +398,8 @@ export function CargadorDePedido({
     const inicial = presentacionInicial(p.presentaciones, p.presentacionDefectoId);
     setEntradas((previas) => [...previas, { clave: nuevaClave(), productoId: p.id, presentacionId: inicial && !inicial.esUnidadBase ? inicial.id : null, cantidad: "1", nota: "" }]);
     mostrarAgregado(p.id);
+    // Si se lo encontró buscando, la búsqueda se borra: queda la lista con lo agregado primero, a la vista.
+    setBuscarProducto("");
     setProblema(null);
   };
   const cambiar = (productoId: string, cambios: Partial<Entrada>) => {
@@ -404,6 +407,8 @@ export function CargadorDePedido({
     if (problema?.producto === productoId) setProblema(null);
   };
   const quitar = (clave: string) => setEntradas((previas) => previas.filter((e) => e.clave !== clave));
+  // "Quitar todos" (10/10/2026): pide un segundo toque para no vaciar el pedido sin querer.
+  const [vaciando, setVaciando] = useState(false);
   const recuadro = (p: ProductoParaCargar) => (
     <RecuadroProducto
       key={p.id}
@@ -612,13 +617,7 @@ export function CargadorDePedido({
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  <input
-                    value={buscarCliente}
-                    onChange={(e) => setBuscarCliente(e.target.value)}
-                    placeholder="🔎 Buscar cliente…"
-                    aria-label="Buscar cliente"
-                    className="h-11 rounded-xl border-2 border-borde bg-superficie px-3"
-                  />
+                  <Buscador valor={buscarCliente} alCambiar={setBuscarCliente} placeholder="Buscar cliente…" aria-label="Buscar cliente" />
                   {!buscarCliente.trim() && recientes.length > 0 && (
                     <div className="flex flex-col gap-1.5">
                       <h3 className="text-sm font-semibold text-texto-suave">🕘 Clientes recientes</h3>
@@ -787,13 +786,8 @@ export function CargadorDePedido({
                 )}
               </div>
             )}
-            <input
-              value={buscarProducto}
-              onChange={(e) => setBuscarProducto(e.target.value)}
-              placeholder="🔎 Buscar producto por nombre o código…"
-              aria-label="Buscar producto"
-              className="h-12 rounded-xl border-2 border-borde bg-superficie px-3 text-lg"
-            />
+            {/* La búsqueda queda arriba a mano mientras se recorre la lista (en el celular, pegada arriba). */}
+            <Buscador valor={buscarProducto} alCambiar={setBuscarProducto} placeholder="Buscar producto por nombre o código…" aria-label="Buscar producto" className="sticky top-2 z-10 rounded-xl bg-superficie shadow-sm lg:static lg:shadow-none" />
             {productosVisibles.length === 0 ? (
               <p className="text-texto-suave">
                 No hay productos con ese nombre.{" "}
@@ -832,6 +826,28 @@ export function CargadorDePedido({
               <h2 id="resumen-titulo" className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
                 🧺 El pedido
                 <span className="rounded-full bg-marca px-2.5 py-0.5 text-base font-bold text-marca-texto">{entradas.length === 1 ? "1 producto" : `${entradas.length} productos`}</span>
+                {entradas.length > 1 &&
+                  (vaciando ? (
+                    <span className="flex items-center gap-1 text-base">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEntradas([]);
+                          setVaciando(false);
+                        }}
+                        className="min-h-9 rounded-lg bg-error px-3 font-bold text-white"
+                      >
+                        Sí, quitar todos
+                      </button>
+                      <button type="button" onClick={() => setVaciando(false)} className="min-h-9 rounded-lg border border-borde px-3 font-semibold">
+                        No
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => setVaciando(true)} className="ml-auto min-h-9 rounded-lg border border-borde px-3 text-base font-semibold hover:border-error hover:text-error">
+                      🗑 Quitar todos
+                    </button>
+                  ))}
               </h2>
               <p className="text-texto-suave">
                 {cliente ? cliente.nombre : "Sin cliente"} · {fechaConDia(fecha)}

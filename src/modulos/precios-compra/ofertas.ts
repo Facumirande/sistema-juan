@@ -98,10 +98,9 @@ async function parametros(tx: Transaccion): Promise<ParametrosPreciosCompra & { 
  * Ofertas activas (de productos y proveedores activos) con la comparación entre proveedores.
  * La comparación se calcula siempre con todas las ofertas de cada producto, aunque se filtre por proveedor.
  */
-async function consultarOfertas(tx: Transaccion, filtros: FiltrosOfertas): Promise<OfertaListada[]> {
-  const p = await parametros(tx);
+async function consultarOfertas(tx: Transaccion, filtros: FiltrosOfertas, parametrosYaPedidos?: Promise<ParametrosPreciosCompra & { zonaHoraria: string }>): Promise<OfertaListada[]> {
   const texto = filtros.texto?.trim();
-  const filas = await tx
+  const consultaDeOfertas = tx
     .select({
       oferta: proveedorProducto,
       producto: producto.nombre,
@@ -130,6 +129,8 @@ async function consultarOfertas(tx: Transaccion, filtros: FiltrosOfertas): Promi
       ),
     )
     .orderBy(asc(categoria.orden), asc(categoria.nombre), asc(producto.nombre), asc(proveedorProducto.costoBase));
+  // Los parámetros del negocio y las ofertas salen juntos, en una sola ida a la base.
+  const [p, filas] = await Promise.all([parametrosYaPedidos ?? parametros(tx), consultaDeOfertas]);
 
   const hoy = hoyEnEmpresa(new Date(), p.zonaHoraria);
   const comparacion = compararOfertas(
@@ -195,11 +196,9 @@ export async function listaGeneralPreciosCompra(
   filtros: FiltrosOfertas = {},
 ): Promise<{ ofertas: OfertaListada[]; parametros: ParametrosPreciosCompra }> {
   return ejecutarComoUsuario(db, authUserId, "precios.ver_costos", async (tx) => {
-    const p = await parametros(tx);
-    return {
-      ofertas: await consultarOfertas(tx, filtros),
-      parametros: { diasAlertaDesactualizado: p.diasAlertaDesactualizado, variacionBruscaPct: p.variacionBruscaPct },
-    };
+    const pedidos = parametros(tx);
+    const [p, ofertas] = await Promise.all([pedidos, consultarOfertas(tx, filtros, pedidos)]);
+    return { ofertas, parametros: { diasAlertaDesactualizado: p.diasAlertaDesactualizado, variacionBruscaPct: p.variacionBruscaPct } };
   });
 }
 

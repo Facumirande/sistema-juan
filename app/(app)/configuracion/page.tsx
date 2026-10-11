@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { REDONDEOS, configuracionDeEmpresa, type ClaveRedondeo } from "@/modulos/configuracion/empresa";
+import { ETAPAS_PARA_ELEGIR } from "@/dominio/pedidos/responsables";
+import { REDONDEOS, configuracionDeEmpresa, responsablesDelNegocio, type ClaveRedondeo } from "@/modulos/configuracion/empresa";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, CampoNumero, Encabezado, Selector } from "@/ui/formularios";
 
-import { guardarConfiguracionAccion } from "./acciones";
+import { guardarConfiguracionAccion, guardarResponsablesAccion } from "./acciones";
 
 export const metadata: Metadata = { title: "Configuración · Sistema Repartos" };
 
@@ -24,7 +25,8 @@ function Grupo({ titulo, ayuda, children }: { titulo: string; ayuda: string; chi
 /** P-95 Configuración del negocio: datos de los documentos y ajustes (se pueden dejar como vienen). */
 export default async function Configuracion() {
   const sesion = await sesionParaPantalla("configuracion.ver");
-  const c = await configuracionDeEmpresa(obtenerBaseDatos(), sesion.authUserId);
+  const db = obtenerBaseDatos();
+  const [c, r] = await Promise.all([configuracionDeEmpresa(db, sesion.authUserId), responsablesDelNegocio(db, sesion.authUserId)]);
   const editable = sesion.permisos.includes("configuracion.editar");
   const redondeos = (Object.keys(REDONDEOS) as ClaveRedondeo[]).map((k) => ({ valor: k, etiqueta: REDONDEOS[k].texto }));
 
@@ -38,7 +40,9 @@ export default async function Configuracion() {
         <fieldset disabled={!editable} className="flex flex-col gap-6">
           <Grupo titulo="Datos del negocio" ayuda="Salen en el encabezado de los remitos, las listas contables y los comprobantes.">
             <Campo etiqueta="Nombre" name="nombre" defaultValue={c.nombre} required />
+            <Campo etiqueta="Razón social (opcional, sale en el remito)" name="razonSocial" defaultValue={c.razonSocial ?? ""} placeholder="Ej. Frutas Juan S.R.L." />
             <Campo etiqueta="CUIT (opcional)" name="identificacionFiscal" defaultValue={c.identificacionFiscal ?? ""} />
+            <Campo etiqueta="Condición de IVA (opcional)" name="condicionFiscal" defaultValue={c.condicionFiscal ?? ""} placeholder="Ej. Responsable inscripto, Monotributo" />
             <Campo etiqueta="Dirección (opcional)" name="direccion" defaultValue={c.direccion ?? ""} />
             <Campo etiqueta="Teléfono (opcional)" name="telefono" type="tel" defaultValue={c.telefono ?? ""} />
             <Campo etiqueta="Correo (opcional)" name="email" type="email" defaultValue={c.email ?? ""} />
@@ -95,6 +99,25 @@ export default async function Configuracion() {
               ayuda="Si lo preparado difiere menos que esto de lo pedido, no se marca como diferencia."
             />
           </Grupo>
+        </fieldset>
+      </FormularioAccion>
+      {/* Quién se encarga de cada paso, de manera fija (10/10/2026, RN-190). */}
+      <FormularioAccion accion={guardarResponsablesAccion} boton="Guardar quién se encarga" className="flex flex-col gap-4">
+        <fieldset disabled={!editable} className="flex flex-col gap-4 rounded-lg border border-borde bg-superficie p-4">
+          <legend className="px-1 text-lg font-semibold">👥 Quién se encarga de cada paso</legend>
+          <p className="-mt-2 text-sm text-texto-suave">Se ve en la columna del tablero y a esa persona le llega un aviso cuando le toca.</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {ETAPAS_PARA_ELEGIR.map((e) => (
+              <Selector
+                key={e.clave}
+                etiqueta={`${e.titulo} · ${e.ayuda}`}
+                name={e.clave}
+                opciones={r.personas.map((p) => ({ valor: p.id, etiqueta: p.nombre }))}
+                vacia="Nadie en particular"
+                defaultValue={r.responsables[e.clave] ?? ""}
+              />
+            ))}
+          </div>
         </fieldset>
       </FormularioAccion>
       <p className="text-sm text-texto-suave">

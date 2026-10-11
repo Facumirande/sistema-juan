@@ -6,7 +6,8 @@ import type { Coordenada } from "@/dominio/entregas/recorrido";
 import { esErrorDeNegocio } from "@/dominio/errores";
 import { agregarDestino, guardarComoFavorito, guardarOrdenDelRecorrido, marcarDestino, quitarDestino, quitarFavorito, renombrarFavorito } from "@/modulos/entregas/recorrido";
 import { armarRepartoConOrden, fijarOrdenDeReparto } from "@/modulos/entregas/repartos";
-import { buscarDireccion, resolverEnlaceDeMapa, ubicarPuntoDeEntrega, ubicarSalida, type LugarEncontrado } from "@/modulos/entregas/viaje";
+import { buscarDireccion, resolverEnlaceDeMapa, sugerirLugares, ubicarPuntoDeEntrega, ubicarSalida, type LugarEncontrado } from "@/modulos/entregas/viaje";
+import type { LugarSugerido } from "@/dominio/entregas/ubicacion";
 import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
 import { ejecutarAccion } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
@@ -45,6 +46,17 @@ export async function buscarEnMapaAccion(texto: string): Promise<{ lugares: Luga
     return { lugares, mensaje: lugares.length ? null : "No se encontró esa dirección: probá con la calle, el número y la localidad, o marcala estando en el lugar." };
   } catch (error) {
     if (esErrorDeNegocio(error)) return { lugares: [], mensaje: error.message };
+    throw error;
+  }
+}
+
+/** Los lugares que se sugieren mientras se escribe una dirección (vacío si no se pudo consultar). */
+export async function sugerirLugaresAccion(texto: string): Promise<LugarSugerido[]> {
+  if (!(await obtenerAuthUserId())) return [];
+  try {
+    return await sugerirLugares(texto);
+  } catch (error) {
+    if (esErrorDeNegocio(error)) return [];
     throw error;
   }
 }

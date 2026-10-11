@@ -1,3 +1,4 @@
+import { sumarDias } from "@/dominio/fechas/fechas";
 import type { Opcion } from "./formularios";
 
 // Textos para mostrar los valores de las enumeraciones (03 §3).
@@ -11,6 +12,12 @@ export const UNIDADES: Readonly<Record<string, string>> = {
   DOCENA: "Docena",
   PAQUETE: "Paquete",
   LITRO: "Litro",
+  CAJON: "Cajón",
+  CAJA: "Caja",
+  BOLSA: "Bolsa",
+  JAULA: "Jaula",
+  BOLSON: "Bolsón",
+  RISTRA: "Ristra",
 };
 
 /** Abreviatura para "$975/kg" o "18 kg". */
@@ -23,6 +30,12 @@ export const UNIDADES_CORTAS: Readonly<Record<string, string>> = {
   DOCENA: "docena",
   PAQUETE: "paquete",
   LITRO: "l",
+  CAJON: "cajón",
+  CAJA: "caja",
+  BOLSA: "bolsa",
+  JAULA: "jaula",
+  BOLSON: "bolsón",
+  RISTRA: "ristra",
 };
 
 export const GRUPOS: Readonly<Record<string, string>> = { VERDURA: "Verdura", FRUTA: "Fruta", OTRO: "Otro" };
@@ -117,6 +130,14 @@ export const ALERTAS_PRECIO: Readonly<Record<string, string>> = {
   COSTO_DESACTUALIZADO: "El costo es de un precio de compra viejo",
   PRECIO_FIJO_POR_VENCER: "El precio pactado vence pronto",
 };
+
+/** "Hoy", "Mañana", "Ayer" o el día de la semana abreviado ("jue"). */
+export function nombreDelDia(fecha: string, hoy: string): string {
+  if (fecha === hoy) return "Hoy";
+  if (fecha === sumarDias(hoy, 1)) return "Mañana";
+  if (fecha === sumarDias(hoy, -1)) return "Ayer";
+  return fechaConDia(fecha).split(" ")[0]!.slice(0, 3);
+}
 
 /** "jueves 24/09" */
 export function fechaConDia(fecha: string): string {

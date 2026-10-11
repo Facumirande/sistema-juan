@@ -35,8 +35,11 @@ export function ChecklistVivo({ productos, modo, fecha, etiqueta, paraComprar }:
   const [vista, cambiar] = useOptimistic(productos, (actual: ProductoDeChecklist[], c: Cambio) => actual.map((p, i) => (i === c.indice ? c.producto : p)));
   const [mensaje, setMensaje] = useState<EstadoAccion>(ESTADO_INICIAL);
   const [, empezar] = useTransition();
+  // Lo último que se mandó, por si el servidor pide confirmarlo (destildar una compra anotada).
+  const [ultimo, setUltimo] = useState<{ cambio: Cambio; accion: Accion; datos: Record<string, string> } | null>(null);
 
   const guardar = (cambio: Cambio, accion: Accion, datos: Record<string, string>) => {
+    setUltimo({ cambio, accion, datos });
     const fd = new FormData();
     for (const [clave, valor] of Object.entries(datos)) fd.append(clave, valor);
     empezar(async () => {
@@ -64,6 +67,11 @@ export function ChecklistVivo({ productos, modo, fecha, etiqueta, paraComprar }:
       {mensaje.mensaje && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl bg-[var(--vence-fondo)] px-4 py-3 font-medium text-[var(--vence-texto)]">
           <span className="min-w-0 flex-1">{mensaje.mensaje}</span>
+          {mensaje.requiereConfirmacion && ultimo && (
+            <button type="button" onClick={() => guardar(ultimo.cambio, ultimo.accion, { ...ultimo.datos, confirmarVariacion: "on" })} className="rounded-lg bg-white px-3 py-2 font-bold text-[#172b4d] shadow-sm">
+              Confirmar
+            </button>
+          )}
           {mensaje.enlace && (
             <Link href={mensaje.enlace.href} className="rounded-lg bg-white px-3 py-2 font-semibold text-[#172b4d] shadow-sm">
               {mensaje.enlace.texto}{"\u00a0→"}

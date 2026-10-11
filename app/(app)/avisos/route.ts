@@ -7,7 +7,7 @@ export async function GET(): Promise<Response> {
   const authUserId = await obtenerAuthUserId();
   if (!authUserId) return new Response(null, { status: 401 });
   try {
-    return Response.json(await avisosPara(obtenerBaseDatos(), authUserId), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await avisosPara(obtenerBaseDatos(), authUserId, 40), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     // Todavía sin acceso habilitado, o la base no responde: no hay avisos que mostrar.
     console.error("No se pudieron leer los avisos:", error);

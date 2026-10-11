@@ -25,12 +25,20 @@ const UNIDADES = [
   { valor: "KG", icono: "⚖️", nombre: "Por kilo", ejemplo: "tomate, papa, banana", corta: "kg", fraccion: true, comun: true },
   { valor: "UNIDAD", icono: "🔢", nombre: "Por unidad", ejemplo: "lechuga, palta, ananá", corta: "u", fraccion: false, comun: true },
   { valor: "ATADO", icono: "🌿", nombre: "Por atado", ejemplo: "perejil, acelga, rúcula", corta: "atado", fraccion: false, comun: true },
-  { valor: "DOCENA", icono: "🔟", nombre: "Por docena", ejemplo: "limones, naranjas", corta: "docena", fraccion: false, comun: true },
+  { valor: "CAJON", icono: "🧺", nombre: "Por cajón", ejemplo: "sin decir los kilos", corta: "cajón", fraccion: false, comun: true },
+  { valor: "BOLSA", icono: "🛍️", nombre: "Por bolsa", ejemplo: "papa, cebolla", corta: "bolsa", fraccion: false, comun: true },
+  { valor: "CAJA", icono: "📦", nombre: "Por caja", ejemplo: "banana, manzana", corta: "caja", fraccion: false, comun: true },
+  { valor: "JAULA", icono: "🥬", nombre: "Por jaula", ejemplo: "lechuga, repollo", corta: "jaula", fraccion: false, comun: true },
+  { valor: "DOCENA", icono: "🔟", nombre: "Por docena", ejemplo: "limones, naranjas", corta: "docena", fraccion: false, comun: false },
   { valor: "MAPLE", icono: "🥚", nombre: "Por maple", ejemplo: "huevos", corta: "maple", fraccion: false, comun: false },
   { valor: "BANDEJA", icono: "🧺", nombre: "Por bandeja", ejemplo: "frutillas, champiñones", corta: "bandeja", fraccion: false, comun: false },
   { valor: "PAQUETE", icono: "📦", nombre: "Por paquete", ejemplo: "hierbas, brotes", corta: "paquete", fraccion: false, comun: false },
   { valor: "LITRO", icono: "💧", nombre: "Por litro", ejemplo: "jugos", corta: "l", fraccion: true, comun: false },
+  { valor: "BOLSON", icono: "🛍️", nombre: "Por bolsón", ejemplo: "zanahoria", corta: "bolsón", fraccion: false, comun: false },
+  { valor: "RISTRA", icono: "🧄", nombre: "Por ristra", ejemplo: "ajo", corta: "ristra", fraccion: false, comun: false },
 ] as const;
+/** Las que son un envase: se cuenta en ese envase y no se pregunta cuántos kilos trae (10/10/2026). */
+const DE_ENVASE: ReadonlySet<string> = new Set(["CAJON", "CAJA", "BOLSA", "JAULA", "BOLSON", "RISTRA"]);
 
 const FRANJA: Readonly<Record<string, string>> = { VERDURA: "var(--etiqueta-verde)", FRUTA: "var(--etiqueta-naranja)", OTRO: "var(--etiqueta-gris)" };
 
@@ -172,12 +180,19 @@ export function FormularioProducto({
           </div>
           {!verTodas && (
             <button type="button" onClick={() => setVerTodas(true)} className="self-start text-sm font-medium underline underline-offset-2">
-              Otra forma (maple, bandeja, paquete, litro)
+              Otra forma (docena, maple, bandeja, paquete, litro, bolsón, ristra)
             </button>
           )}
         </Pregunta>
 
-        <Pregunta n={3} titulo="¿En qué envase lo comprás?" ayuda="Para calcular cuánto cuesta cada kilo o unidad. Si se compra suelto, elegí “Suelto”.">
+        {DE_ENVASE.has(unidad) ? (
+          <Pregunta n={3} titulo="¿En qué envase lo comprás?" ayuda="">
+            <p className="rounded-xl bg-fondo px-3 py-2 font-medium">
+              👉 Se compra y se vende por {u.corta}: no hace falta decir cuántos kilos trae.
+            </p>
+          </Pregunta>
+        ) : (
+        <Pregunta n={3} titulo="¿En qué envase lo comprás?" ayuda="Para calcular cuánto cuesta cada kilo o unidad. Si se compra suelto, elegí “Suelto”. Si no sabés cuánto trae, dejalo vacío: se cuenta por ese envase.">
           <div className="flex flex-wrap gap-2">
             {envasesSugeridos(unidad).map((e) => {
               const activo = !otroEnvase && envase === e.envase && cantidad === e.cantidad;
@@ -220,7 +235,7 @@ export function FormularioProducto({
                 <input value={envase} onChange={(e) => setEnvase(e.target.value)} placeholder="Ej. Jaula, bolsa" className={`${campoGrande} w-44`} />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="font-medium">Cuánto trae</span>
+                <span className="font-medium">Cuánto trae (opcional)</span>
                 <span className="flex items-center gap-2">
                   <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="18" className={`${campoGrande} w-24`} />
                   <span className="font-medium">{u.corta}</span>
@@ -230,6 +245,7 @@ export function FormularioProducto({
           )}
           {explicacion && <p className="rounded-xl bg-fondo px-3 py-2 font-medium">👉 {explicacion}</p>}
         </Pregunta>
+        )}
 
         <details className="rounded-2xl border border-borde bg-superficie p-4">
           <summary className="cursor-pointer text-lg font-semibold">Más opciones (se pueden dejar como están)</summary>

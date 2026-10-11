@@ -90,7 +90,7 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `pedidos.editar` | Modificar pedidos en BORRADOR o CONFIRMADO (líneas, cantidades, observaciones, punto de entrega). | Solo si está CONFIRMADO | O |
 | `pedidos.confirmar` | Pasar un pedido de BORRADOR a CONFIRMADO (entra en la lista de compras). | No | O |
 | `pedidos.editar_en_curso` | Modificar pedidos EN_COMPRA; cargar pedidos (o agregar líneas) en jornadas PREPARANDO o REPARTIENDO (afecta la lista de compras o la preparación en curso). | Sí | O |
-| `pedidos.cancelar` | Cancelar pedidos en BORRADOR, CONFIRMADO o EN_COMPRA, con motivo. | Sí | O |
+| `pedidos.cancelar` | Cancelar pedidos en BORRADOR, CONFIRMADO o EN_COMPRA, con motivo, y eliminar uno en proceso desde el tablero (con `preparacion.registrar` o `repartos.gestionar` si hay que deshacer su preparación o su salida, RN-189). | Sí | O |
 | `jornada.ver` | Ver jornadas y su estado. | No | O |
 | `jornada.gestionar` | Iniciar la preparación y avanzar manualmente el estado de la jornada cuando no lo hace una acción (ver 04-procesos-y-flujos.md). | Sí | O |
 | `jornada.cerrar` | Cerrar la jornada (REPARTIENDO → CERRADA) con sus validaciones y resumen. | Sí | O |
@@ -107,8 +107,8 @@ Columna **Auditado**: la acción deja registro en `auditoria` con usuario, fecha
 | `compras.registrar` | Registrar compras (CONTADO, CREDITO o MIXTA), incluido el pago en el momento. | Sí (si cambia el precio de lista) | C |
 | `compras.anular` | Anular una compra con motivo (genera movimiento compensatorio en la cuenta del proveedor). | Sí | C |
 | `compras.exceder_limite` | Confirmar una compra a crédito que supera el límite del proveedor, con motivo. | Sí | F |
-| `pagos.ver` | Ver la cuenta corriente de cada proveedor ("A pagar"): movimientos, pagos, imputaciones, vencimientos, historial. Ver los gastos e ingresos generales. | No | F |
-| `pagos.registrar` | Registrar pagos a proveedores e imputarlos (FIFO automático o manual). Anotar gastos e ingresos generales y manejar sus rubros. | Sí | F |
+| `pagos.ver` | Ver la cuenta corriente de cada proveedor ("A pagar"): movimientos, pagos, imputaciones, vencimientos, historial. Ver los gastos e ingresos generales. Con `precios.ver_costos`, ver el resumen balance del tablero (gastos, pagado, crédito y caja inicial, RN-180). | No | F |
+| `pagos.registrar` | Registrar pagos a proveedores e imputarlos (FIFO automático o manual). Anotar gastos e ingresos generales y manejar sus rubros. Cargar la caja inicial de cada día (RN-194). | Sí | F |
 | `pagos.anular` | Anular un pago con motivo (genera movimiento compensatorio) y reimputar pagos. Anular un gasto o un ingreso. | Sí | F |
 | `pagos.ajustar` | Registrar ajustes de cuenta corriente (débito/crédito, ej. nota de crédito del proveedor) y saldos iniciales. | Sí | F |
 
@@ -242,6 +242,8 @@ Observaciones:
 - `reportes.ver` para VENDEDOR o COMPRADOR muestra solo los montos que sus otros permisos habilitan (el VENDEDOR ve ventas pero no costos ni márgenes; el COMPRADOR ve compras pero no ventas).
 - `compras.exceder_limite` como opcional del COMPRADOR se recomienda solo para un comprador de confianza (en la práctica, el dueño cuando compra él mismo ya lo tiene como ADMIN).
 - El pago en el momento de una compra CONTADO o MIXTA se registra con `compras.registrar`; los pagos posteriores requieren `pagos.registrar`.
+- El interruptor "Pagado / A cuenta" de la lista de compras (RN-179) usa `pagos.registrar` para pagar y `pagos.anular` para dejar a cuenta (anula el pago).
+- Destildar una compra anotada (RN-186) usa `compras.anular`; ponerle precio sobre la marcha a un producto (RN-188), `precios.override_linea`; recuperar un pedido eliminado (RN-189), `pedidos.editar`; elegir quién se encarga de cada paso (RN-190), `configuracion.editar`.
 - Los valores por defecto recogen las sugerencias de roles de 07-reglas-de-negocio.md (sección "Permisos referenciados"); esta matriz es la asignación definitiva.
 - `precios.ver_venta` muestra el precio y el **origen** de la regla (nivel y descripción, ej. "Precio fijo — Licitación 45/2026"); el porcentaje de recargo, el recargo equivalente y el margen requieren `precios.ver_margenes`.
 

@@ -4,10 +4,11 @@ import Link from "next/link";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { listarClientes, type ClienteListado } from "@/modulos/clientes/clientes";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import { CampoBuscar } from "@/ui/buscador";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
 import { PERIODICIDADES, TIPOS_CLIENTE, fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente, etiquetaDeTipo } from "@/ui/etiquetas-tablero";
-import { Campo, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
+import { Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
 
 export const metadata: Metadata = { title: "Clientes · Sistema Repartos" };
@@ -83,7 +84,10 @@ export default async function PaginaClientes({ searchParams }: PageProps<"/clien
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Filtros>
           {vista === "lista" && <input type="hidden" name="vista" value="lista" />}
-          <Campo etiqueta="Buscar" name="texto" defaultValue={texto} placeholder="Nombre o CUIT" />
+          <label className="flex min-w-56 flex-1 flex-col gap-1">
+            <span className="font-medium">Buscar</span>
+            <CampoBuscar name="texto" defaultValue={texto ?? ""} placeholder="Nombre o CUIT" />
+          </label>
           <Selector etiqueta="Estado" name="estado" opciones={OPCIONES_ESTADO} defaultValue={estado} />
         </Filtros>
         <VistaTarjetasOLista vista={vista} enlace={enlaceVista} />

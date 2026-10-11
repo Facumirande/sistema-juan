@@ -1,0 +1,2 @@
+ALTER TABLE "jornada" ADD COLUMN "caja_inicial" numeric(14, 2);--> statement-breakpoint
+ALTER TABLE "jornada" ADD CONSTRAINT "jornada_caja_inicial" CHECK ("jornada"."caja_inicial" is null or "jornada"."caja_inicial" >= 0);

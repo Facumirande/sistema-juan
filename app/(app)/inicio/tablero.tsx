@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition, type PointerEvent as EventoPuntero } from "react";
+import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useSyncExternalStore, useTransition, type PointerEvent as EventoPuntero } from "react";
+import { createPortal } from "react-dom";
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
-import { COLUMNAS_ARRASTRABLES, PASO_SIGUIENTE, accionAlMover, columnaParaEmpezar, porQueNoSeMueve, resumenDeSeleccion, type ClaveColumna } from "@/dominio/pedidos/tablero";
+import { COLUMNAS_ARRASTRABLES, PASO_SIGUIENTE, RETIRO_A_LA_VISTA, accionAlMover, columnaEnCompra, columnaParaEmpezar, porQueNoSeMueve, resumenDeSeleccion, type ClaveColumna } from "@/dominio/pedidos/tablero";
 import type { PersonaVisible } from "@/modulos/colaboracion/personas";
 import type { ColumnaDelTablero, ProductoDeTarjeta, TarjetaPedido } from "@/modulos/pedidos/tablero";
 import { Avatar } from "@/ui/avatar";
@@ -28,15 +29,17 @@ import {
 
 // Tablero de pedidos estilo Trello: una columna de color por etapa y una tarjeta grande por pedido,
 // con lo que lleva a la vista, etiquetas, plazo, notas, avance y quién se encarga. Las tarjetas se
-// arrastran entre Pedidos, Lista de compras y Comprado (con el mouse o manteniendo el dedo apretado
-// en el celular), soltarlas en Preparando empieza a preparar el día, y de Preparando a En camino
+// arrastran entre Pedidos y Lista de compras (con el mouse o manteniendo el dedo apretado en el
+// celular), soltarlas en Preparando empieza a preparar ese pedido, y de Preparando a En camino
 // salen a entregar (se termina de preparar, se hace el remito y sale el reparto). En "Lista de compras" se
 // tilda en la misma tarjeta lo que ya se compró y lo que no se consiguió. En "Elegir pedidos" se
-// marcan varias (o todas) para mandarlas juntas a la lista de compras o a entregar.
+// marcan varias (o todas) para mandarlas juntas a la lista de compras o a entregar. La columna
+// "Retiro" (lo comprado, antes de preparar) está guardada por ahora: `RETIRO_A_LA_VISTA` en
+// `src/dominio/pedidos/tablero.ts`; el tablero dibuja las columnas que le llegan, sean cinco o seis.
 //
 // En el celular (08/10/2026, inspirado en Trello): se ve una columna por vez, casi a todo el ancho,
 // con la siguiente asomando; se pasa de una a otra deslizando el dedo (se acomoda sola) o tocando
-// el indicador de arriba, que muestra las seis etapas con cuántos pedidos tiene cada una. El día va
+// el indicador de arriba, que muestra las etapas con cuántos pedidos tiene cada una. El día va
 // en un renglón y lo secundario (filtros, elegir varios, Excel, paso a paso) en una hoja que sube
 // desde abajo. Qué disposición se usa lo decide el ancho de la pantalla del tablero (el contenedor
 // `tablero` que pone la página), no el de la ventana.
@@ -49,6 +52,8 @@ interface Props {
   columnas: ColumnaDelTablero[];
   cancelados: TarjetaPedido[];
   personas: PersonaVisible[];
+  /** Quién se encarga de cada columna, de manera fija (se elige en la configuración). */
+  responsables: Partial<Record<ClaveColumna, PersonaVisible>>;
   yo: string;
   /** "/inicio?fecha=…": las tarjetas se abren agregando `&pedido=…`. */
   base: string;
@@ -81,12 +86,21 @@ const COLOR_COLUMNA: Record<ClaveColumna, string> = {
 const EN_CORTO: Record<ClaveColumna, { titulo: string; dibujo: string }> = {
   pedidos: { titulo: "Pedidos", dibujo: "📝" },
   en_lista: { titulo: "Lista", dibujo: "🛒" },
-  comprados: { titulo: "Comprado", dibujo: "🧺" },
+  comprados: { titulo: "Retiro", dibujo: "🧺" },
   preparando: { titulo: "Preparando", dibujo: "📦" },
   en_camino: { titulo: "En camino", dibujo: "🚚" },
   entregados: { titulo: "Entregados", dibujo: "✅" },
 };
 const GUARDADA = (fecha: string) => `tablero-columna:${fecha}`;
+
+/**
+ * Desde qué ancho de tablero las columnas van todas en una fila. Con cinco (la de Retiro guardada)
+ * cada una es más ancha, así que entran un poco antes que las seis.
+ */
+const EN_UNA_FILA: Readonly<Record<number, string>> = {
+  5: "@[60rem]/tablero:grid-cols-5 @[60rem]/tablero:grid-rows-1 @[60rem]/tablero:overflow-visible",
+  6: "@[64rem]/tablero:grid-cols-6 @[64rem]/tablero:grid-rows-1 @[64rem]/tablero:overflow-visible",
+};
 
 const PRODUCTOS_A_LA_VISTA = 4;
 /** Cuánto hay que mantener el dedo apretado para levantar una tarjeta (si se mueve antes, es un deslizamiento). */
@@ -98,6 +112,51 @@ const PLAZO: Record<TarjetaPedido["estadoPlazo"], string> = {
   pronto: "bg-[var(--pronto-fondo)] text-[var(--pronto-texto)]",
   a_tiempo: "bg-black/5 dark:bg-white/10",
 };
+
+// Tarjetas minimizadas (pedido del usuario, 10/10/2026): se recuerdan en este aparato.
+const CLAVE_PLEGADAS = "tablero:plegadas";
+const AVISO_PLEGADAS = "tablero:plegadas-cambio";
+const VACIAS: ReadonlySet<string> = new Set();
+let plegadasLeidas: { texto: string | null; valor: ReadonlySet<string> } = { texto: null, valor: VACIAS };
+function leerPlegadas(): ReadonlySet<string> {
+  let texto: string | null = null;
+  try {
+    texto = window.localStorage.getItem(CLAVE_PLEGADAS);
+  } catch {
+    // Sin almacenamiento (modo privado): ninguna queda minimizada al volver.
+  }
+  if (texto !== plegadasLeidas.texto) {
+    let ids: string[] = [];
+    try {
+      const v: unknown = JSON.parse(texto ?? "[]");
+      ids = Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    } catch {
+      ids = [];
+    }
+    plegadasLeidas = { texto, valor: new Set(ids) };
+  }
+  return plegadasLeidas.valor;
+}
+const suscribirPlegadas = (avisar: () => void) => {
+  window.addEventListener(AVISO_PLEGADAS, avisar);
+  window.addEventListener("storage", avisar);
+  return () => {
+    window.removeEventListener(AVISO_PLEGADAS, avisar);
+    window.removeEventListener("storage", avisar);
+  };
+};
+function alternarPlegada(id: string) {
+  const nuevas = new Set(leerPlegadas());
+  if (nuevas.has(id)) nuevas.delete(id);
+  else nuevas.add(id);
+  try {
+    // Solo las últimas 200: las de días viejos se van solas.
+    window.localStorage.setItem(CLAVE_PLEGADAS, JSON.stringify([...nuevas].slice(-200)));
+  } catch {
+    // Sin almacenamiento no se puede recordar.
+  }
+  window.dispatchEvent(new Event(AVISO_PLEGADAS));
+}
 
 const sinProductos = (t: TarjetaPedido) => ({
   ok: false,
@@ -112,7 +171,12 @@ function conElCambio(columnas: ColumnaDelTablero[], cambio: CambioALaVista): Col
     .map((t): TarjetaPedido => {
       if (cambio.tipo === "mover") {
         if (t.id !== cambio.id) return t;
-        // Al pasar a Comprado queda todo tildado; al volver a la lista, se van los tildes puestos a mano.
+        // Al empezar a prepararse, lo suyo queda todo por separar (los tildes de compra no son los de separar).
+        if (cambio.hacia === "preparando" && t.columna !== "en_camino") {
+          const porSeparar = t.productos.map((p): ProductoDeTarjeta => ({ ...p, hecha: false, entregaItemId: null }));
+          return { ...t, columna: cambio.hacia, productos: porSeparar, avance: { que: "preparado", hechos: 0, total: porSeparar.length } };
+        }
+        // Al pasar a Retiro queda todo tildado; al volver a la lista, se van los tildes puestos a mano.
         const productos = t.productos.map((p): ProductoDeTarjeta =>
           cambio.hacia === "comprados" && !p.hecha ? { ...p, hecha: true, compra: "COMPRADO", tildado: true } : cambio.hacia === "en_lista" && p.tildado ? { ...p, hecha: false, compra: "PENDIENTE", tildado: false } : p,
         );
@@ -131,7 +195,7 @@ function conElCambio(columnas: ColumnaDelTablero[], cambio: CambioALaVista): Col
       return {
         ...t,
         productos,
-        columna: enCompra ? (productos.every((p) => p.hecha) ? "comprados" : "en_lista") : t.columna,
+        columna: enCompra ? columnaEnCompra(productos.every((p) => p.hecha)) : t.columna,
         avance: t.avance ? { ...t.avance, hechos: productos.filter((p) => p.hecha).length } : t.avance,
       };
     });
@@ -140,7 +204,8 @@ function conElCambio(columnas: ColumnaDelTablero[], cambio: CambioALaVista): Col
 
 function Insignias({ t }: { t: TarjetaPedido }) {
   const avanceCompleto = t.avance && t.avance.total > 0 && t.avance.hechos === t.avance.total;
-  if (!t.plazo && t.notas.total === 0 && !(t.avance && t.avance.total > 0) && !(t.totalEstimado !== null && t.lineas > 0)) return null;
+  const sinPrecio = t.productos.filter((p) => p.sinPrecio).length;
+  if (!t.plazo && t.notas.total === 0 && !(t.avance && t.avance.total > 0) && !(t.totalEstimado !== null && t.lineas > 0) && sinPrecio === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-tarjeta-suave @[18rem]:gap-x-3">
       {t.plazo && (
@@ -166,6 +231,11 @@ function Insignias({ t }: { t: TarjetaPedido }) {
           {t.avance.hechos}/{t.avance.total} {t.avance.que === "comprado" ? "comprado" : "preparado"}
         </span>
       )}
+      {sinPrecio > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--pronto-fondo)] px-2 py-1 font-bold text-[var(--pronto-texto)]" title="Abrí la tarjeta para ponerles precio">
+          💲 {sinPrecio === 1 ? "1 sin precio" : `${sinPrecio} sin precio`}
+        </span>
+      )}
       {t.totalEstimado !== null && t.lineas > 0 && <span className="ml-auto font-semibold text-tarjeta-texto tabular-nums">{formatearMoneda(t.totalEstimado)}</span>}
     </div>
   );
@@ -180,18 +250,23 @@ function Tarjeta({
   alTildar,
   alSeparar,
   siguiente,
+  plegada = false,
+  alPlegar,
 }: {
   t: TarjetaPedido;
   href: string;
   eligiendo?: boolean;
   elegida?: boolean;
   alElegir?: () => void;
-  /** Con esto, los productos se pueden tildar en la tarjeta (columnas Lista de compras y Comprado). */
+  /** Con esto, los productos se pueden tildar en la tarjeta (columnas Lista de compras y Retiro). */
   alTildar?: (p: ProductoDeTarjeta, valor: Tilde) => void;
   /** Con esto, los productos se tildan como separados en la tarjeta (columna Preparando). */
   alSeparar?: (p: ProductoDeTarjeta, separado: boolean) => void;
   /** El botón verde que la hace avanzar al paso que sigue. */
   siguiente?: { texto: string; alTocar: () => void; ocupado: boolean } | null;
+  /** Minimizada: solo el cliente y un renglón con lo que lleva. */
+  plegada?: boolean;
+  alPlegar?: () => void;
 }) {
   const etiquetas = etiquetasDePedido(t);
   // El mismo checklist en todas las columnas: con tildes donde se compra o se prepara, y a la vista en las demás.
@@ -210,20 +285,31 @@ function Tarjeta({
       etiqueta={`Lo que lleva ${t.cliente}${alTildar ? ": tildá lo que ya se compró" : alSeparar ? ": tildá lo que ya separaste" : ""}`}
     />
   );
+  // En una columna angosta el nombre del cliente tiene el renglón entero para él (el número y quién
+  // se encarga van debajo) y su letra se acomoda al ancho de la columna: una palabra larga, como
+  // "SANATORIO", entra completa en vez de partirse en dos renglones. Con lugar (`@[18rem]`), todo en
+  // una fila: el dibujo, el nombre grande y quién se encarga a la derecha.
   const cabecera = (
-    <div className="flex items-center gap-2 bg-[var(--col-fuerte)] px-2 py-2 text-[var(--col-fuerte-texto)] @[18rem]:gap-3 @[18rem]:px-3 @[18rem]:py-2.5">
+    <div className={`flex items-center gap-2 bg-[var(--col-fuerte)] px-2 py-1.5 text-[var(--col-fuerte-texto)] @[18rem]:gap-3 @[18rem]:px-3 @[18rem]:py-2.5 ${alPlegar ? "@[18rem]:pr-12" : ""}`}>
       <span aria-hidden className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-white/25 text-2xl @[18rem]:flex">
         {dibujoDeCliente(t.tipoCliente)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-lg leading-tight font-bold [overflow-wrap:anywhere] @[18rem]:text-xl">{t.cliente}</p>
-        <p className="text-sm opacity-90">
-          {t.numero}
-          {t.observaciones && <span title={t.observaciones}> · 📝 con nota</span>}
+        <p className={`text-[clamp(0.9rem,8.4cqw,1.2rem)] leading-tight font-bold text-balance [overflow-wrap:anywhere] @[18rem]:text-xl ${alPlegar ? "pr-7 @[18rem]:pr-0" : ""}`}>{t.cliente}</p>
+        <p className="flex items-center justify-between gap-1.5 text-sm">
+          <span className="min-w-0 opacity-90">
+            {t.numero}
+            {t.observaciones && <span title={t.observaciones}> · 📝 con nota</span>}
+          </span>
+          {t.responsable && (
+            <span title={`Se encarga ${t.responsable.nombre}`} className="shrink-0 @[18rem]:hidden">
+              <Avatar persona={t.responsable} tamano="chico" />
+            </span>
+          )}
         </p>
       </div>
       {t.responsable && (
-        <span title={`Se encarga ${t.responsable.nombre}`} className="shrink-0">
+        <span title={`Se encarga ${t.responsable.nombre}`} className="hidden shrink-0 @[18rem]:block">
           <Avatar persona={t.responsable} tamano="chico" />
         </span>
       )}
@@ -269,10 +355,44 @@ function Tarjeta({
       {"\u00a0→"}
     </button>
   );
+  const plegar = alPlegar && (
+    <button
+      type="button"
+      data-sin-arrastre
+      onClick={alPlegar}
+      aria-expanded={!plegada}
+      aria-label={plegada ? `Mostrar lo que lleva ${t.cliente}` : `Minimizar la tarjeta de ${t.cliente}`}
+      title={plegada ? "Mostrar" : "Minimizar"}
+      className="absolute top-1 right-1 z-10 flex size-7 items-center justify-center rounded-full bg-black/15 text-base leading-none font-bold text-[var(--col-fuerte-texto)] hover:bg-black/30 @[18rem]:top-2 @[18rem]:right-2 @[18rem]:size-8"
+    >
+      <span aria-hidden>{plegada ? "▸" : "▾"}</span>
+    </button>
+  );
+  if (plegada) {
+    const n = t.productos.length;
+    return (
+      <article className={`${clases} relative`}>
+        <Link href={destino} scroll={false} draggable={false} className="block" aria-label={`Abrir ${t.numero} de ${t.cliente}`}>
+          {cabecera}
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 text-sm font-semibold @[18rem]:px-3">
+            <span>{n === 1 ? "1 producto" : `${n} productos`}</span>
+            {t.avance && t.avance.total > 0 && (
+              <span className="text-tarjeta-suave">
+                ☑ {t.avance.hechos}/{t.avance.total}
+              </span>
+            )}
+            {t.totalEstimado !== null && t.lineas > 0 && <span className="ml-auto tabular-nums">{formatearMoneda(t.totalEstimado)}</span>}
+          </span>
+        </Link>
+        {plegar}
+      </article>
+    );
+  }
   if ((alTildar || alSeparar || botonSiguiente) && t.productos.length > 0) {
     // Los tildes y el botón verde son botones: no pueden ir dentro del enlace que abre la tarjeta.
     return (
-      <article className={clases}>
+      <article className={`${clases} relative`}>
+        {plegar}
         <Link href={destino} scroll={false} draggable={false} className="block" aria-label={`Abrir ${t.numero} de ${t.cliente}`}>
           {cabecera}
         </Link>
@@ -288,14 +408,17 @@ function Tarjeta({
     );
   }
   return (
-    <Link href={destino} scroll={false} draggable={false} className={clases}>
-      {cabecera}
-      <span className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
-        {etiquetasALaVista}
-        {t.productos.length > 0 ? productos : vacia}
-        <Insignias t={t} />
-      </span>
-    </Link>
+    <article className={`${clases} relative`}>
+      {plegar}
+      <Link href={destino} scroll={false} draggable={false} className="block">
+        {cabecera}
+        <span className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
+          {etiquetasALaVista}
+          {t.productos.length > 0 ? productos : vacia}
+          <Insignias t={t} />
+        </span>
+      </Link>
+    </article>
   );
 }
 
@@ -342,9 +465,10 @@ interface Agarre {
   reloj: ReturnType<typeof setTimeout> | null;
 }
 
-export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, yo, base, puede, cerrado, enlaces, dias, hoy, titulo, otras }: Props) {
+export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, responsables, yo, base, puede, cerrado, enlaces, dias, hoy, titulo, otras }: Props) {
   const [eligiendo, setEligiendo] = useState(false);
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
+  const plegadas = useSyncExternalStore(suscribirPlegadas, leerPlegadas, () => VACIAS);
   const [filtroPersona, setFiltroPersona] = useState<string | null>(null);
   const [soloUrgentes, setSoloUrgentes] = useState(false);
   const [arrastrando, setArrastrando] = useState<{ id: string; desde: ClaveColumna; ancho: number } | null>(null);
@@ -440,7 +564,8 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
     ejecutar(separarProductoAccion, { itemId: p.entregaItemId, separado: separado ? "si" : "no" }, { aLaVista: { tipo: "separar", entregaItemId: p.entregaItemId, separado } });
   };
   /** Quién puede hacer avanzar una tarjeta de cada columna. */
-  const puedeAvanzar: Record<ClaveColumna, boolean> = { pedidos: puede.armar, en_lista: puede.tildar, comprados: puede.preparar, preparando: puede.salir, en_camino: puede.entregar, entregados: false };
+  // Con la columna Retiro guardada, de la lista de compras se pasa directo a preparar: hacen falta los dos permisos.
+  const puedeAvanzar: Record<ClaveColumna, boolean> = { pedidos: puede.armar, en_lista: RETIRO_A_LA_VISTA ? puede.tildar : puede.tildar && puede.preparar, comprados: puede.preparar, preparando: puede.salir, en_camino: puede.entregar, entregados: false };
 
   const soltar = (id: string, desde: ClaveColumna, hacia: ClaveColumna) => {
     const tarjeta = todas.find((t) => t.id === id);
@@ -684,8 +809,17 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
       <div className="flex shrink-0 items-center gap-2">
         <h1 className="sr-only @[34rem]/tablero:hidden">Pedidos · {titulo}</h1>
         <div className="min-w-0 flex-1">
-          <SelectorDeDia dias={dias} fecha={fecha} hoy={hoy} enlace={(f) => `/inicio?fecha=${f}`} sobreFondo compacto />
+          <SelectorDeDia dias={dias} fecha={fecha} hoy={hoy} ruta="/inicio?fecha={fecha}" sobreFondo />
         </div>
+        {/* En la computadora, el balance completo de ese día va junto a los días (arriba queda solo el resumen balance). En el celular está en las opciones (⋯). */}
+        {otras.balance && (
+          <Link href={otras.balance} title="Lo que se vendió, se compró y quedó ese día" className="mt-1 hidden min-h-12 shrink-0 items-center gap-2 rounded-xl bg-white/20 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-white/30 @[34rem]/tablero:flex">
+            <span aria-hidden className="text-xl leading-none">
+              💰
+            </span>
+            Balance del día
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => setConOpciones(true)}
@@ -698,12 +832,22 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         </button>
       </div>
 
-      <div className="sin-barra -mx-1 hidden shrink-0 items-center gap-2 overflow-x-auto px-1 @[34rem]/tablero:flex lg:overflow-visible" role="toolbar" aria-label="Filtros y selección">
-        <div className="flex shrink-0 items-center gap-2 lg:flex-1 lg:shrink lg:flex-wrap">
+      {/* Con lugar, todo en un renglón; si no entra, los botones bajan enteros a un segundo renglón, a la derecha (los filtros no se parten de a uno). */}
+      <div className="sin-barra -mx-1 hidden shrink-0 items-center gap-2 overflow-x-auto px-1 @[34rem]/tablero:flex lg:flex-wrap lg:overflow-visible" role="toolbar" aria-label="Filtros y selección">
+        <div className="flex shrink-0 items-center gap-2 lg:shrink lg:flex-wrap">
           <span className="shrink-0 text-sm font-medium text-white/90">Ver:</span>
           {filtros(true)}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+          {/* Cómo ver el día: acá, a la izquierda de "Elegir pedidos", para que arriba el resumen balance tenga todo el lugar. */}
+          <div role="group" aria-label="Cómo ver el día" className="flex shrink-0 rounded-lg bg-black/25 p-0.5">
+            <span aria-current="page" className="flex min-h-9 items-center rounded-md bg-white px-3 text-sm font-semibold text-[#172b4d]">
+              ▦ Tablero
+            </span>
+            <Link href={otras.pasos} className="flex min-h-9 items-center rounded-md px-3 text-sm font-semibold text-white hover:bg-white/15">
+              ☰ Paso a paso
+            </Link>
+          </div>
           {puede.armar && paraLaLista > 0 && !eligiendo && (
             <button type="button" onClick={elegirFaltantes} className="min-h-10 rounded-lg bg-white px-4 text-sm font-semibold text-[#172b4d] hover:bg-white/90">
               🛒 Elegir todos los pedidos para la lista ({paraLaLista})
@@ -731,7 +875,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
       )}
       {mensaje.mensaje && <Aviso estado={mensaje} cerrar={() => setMensaje(ESTADO_INICIAL)} confirmar={pendiente ? null : confirmarUltimo} />}
 
-      {/* En el celular: las seis etapas de un vistazo, cada una con su color y cuántos pedidos tiene.
+      {/* En el celular: las etapas de un vistazo, cada una con su color y cuántos pedidos tiene.
           La que se está viendo va abierta, con su nombre; tocar otra lleva el tablero hasta ella, y
           una tarjeta que se está arrastrando se puede soltar encima. */}
       <nav aria-label="Etapas del día" className="flex shrink-0 items-stretch gap-1.5 @[34rem]/tablero:hidden">
@@ -772,17 +916,18 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
       </nav>
 
       {/* El tablero ocupa el alto que queda de la pantalla: la página no se desplaza, se desplaza
-          adentro de cada columna. Con lugar, las seis columnas van en una fila; con menos ancho, en
-          dos filas de tres (cada fila toma el alto que necesita, hasta repartirse el que hay). En el
+          adentro de cada columna. Con lugar, las columnas van en una fila; con menos ancho, en
+          dos filas de a tres (cada fila toma el alto que necesita, hasta repartirse el que hay). En el
           celular van de costado, una por pantalla y con la de al lado asomando: se deslizan con el
           dedo y se acomodan solas al soltar (de a una por vez). El ancho que cuenta es el del
           tablero, no el de la ventana (consultas de contenedor). */}
       <div className="flex min-h-0 flex-1 flex-col gap-2" aria-busy={pendiente}>
         <div
           ref={caja}
-          className={`relative -mx-3 flex min-h-0 flex-1 items-start gap-2 overflow-x-auto overscroll-x-contain px-[1.375rem] pb-1 [scrollbar-width:none] ${
+          // En el celular, las columnas terminan arriba de la barra de gestos (el fondo sí llega hasta el borde).
+          className={`relative -mx-3 flex min-h-0 flex-1 items-start gap-2 overflow-x-auto overscroll-x-contain px-[1.375rem] pb-[max(0.25rem,env(safe-area-inset-bottom))] [scrollbar-width:none] @[34rem]/tablero:pb-1 ${
             arrastrando ? "" : "snap-x snap-mandatory"
-          } @[34rem]/tablero:mx-0 @[34rem]/tablero:grid @[34rem]/tablero:snap-none @[34rem]/tablero:grid-cols-3 @[34rem]/tablero:grid-rows-[repeat(2,minmax(10rem,auto))] @[34rem]/tablero:content-start @[34rem]/tablero:overflow-x-hidden @[34rem]/tablero:overflow-y-auto @[34rem]/tablero:px-0 @[34rem]/tablero:[scrollbar-width:thin] @[64rem]/tablero:grid-cols-6 @[64rem]/tablero:grid-rows-1 @[64rem]/tablero:overflow-visible`}
+          } @[34rem]/tablero:mx-0 @[34rem]/tablero:grid @[34rem]/tablero:snap-none @[34rem]/tablero:grid-cols-3 @[34rem]/tablero:grid-rows-[repeat(2,minmax(10rem,auto))] @[34rem]/tablero:content-start @[34rem]/tablero:overflow-x-hidden @[34rem]/tablero:overflow-y-auto @[34rem]/tablero:px-0 @[34rem]/tablero:[scrollbar-width:thin] ${EN_UNA_FILA[columnas.length] ?? EN_UNA_FILA[6]}`}
         >
         {columnas.map((col) => {
           const visibles = col.tarjetas.filter(pasaFiltro);
@@ -795,13 +940,16 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
           const paso = PASO_SIGUIENTE[col.clave];
           const sinElegir = !(eligiendo && col.seleccionable);
           const seTilda = puede.tildar && (col.clave === "en_lista" || col.clave === "comprados");
+          // En el celular se arranca en la primera columna con pedidos: donde el navegador lo entiende,
+          // ya se dibuja ahí (sin esperar al programa); en los demás lo acomoda `irAColumna` al cargar.
+          const paraEmpezar = col.clave === columnaParaEmpezar(columnasGuardadas) ? "[scroll-initial-target:nearest]" : "";
           return (
             <section
               key={col.clave}
               id={`lista-${col.clave}`}
               data-columna={col.clave}
               aria-labelledby={`col-${col.clave}`}
-              className={`${COLOR_COLUMNA[col.clave]} @container flex max-h-full min-h-0 w-full max-w-[26rem] shrink-0 snap-center snap-always flex-col rounded-2xl bg-[var(--col)] text-[var(--col-texto)] shadow-lg outline-offset-2 transition-transform @[34rem]/tablero:w-auto @[34rem]/tablero:max-w-none @[34rem]/tablero:min-w-0 ${
+              className={`${COLOR_COLUMNA[col.clave]} ${paraEmpezar} @container flex max-h-full min-h-0 w-full max-w-[26rem] shrink-0 snap-center snap-always flex-col rounded-2xl bg-[var(--col)] text-[var(--col-texto)] shadow-lg outline-offset-2 transition-transform @[34rem]/tablero:w-auto @[34rem]/tablero:max-w-none @[34rem]/tablero:min-w-0 ${
                 encima ? (aceptaSoltar ? "scale-[1.02] outline-4 outline-white" : "outline-4 outline-[var(--vence-fondo)]") : aceptaSoltar ? "outline-2 outline-white/80 outline-dashed" : ""
               }`}
             >
@@ -809,6 +957,12 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                 <div className="flex flex-wrap items-start justify-between gap-x-1.5 gap-y-1">
                   <h2 id={`col-${col.clave}`} className="flex-auto text-lg leading-tight font-extrabold @[18rem]:text-xl">
                     {col.titulo} <span className="ml-0.5 rounded-full bg-black/15 px-2 py-0.5 text-sm font-bold">{visibles.length}</span>
+                    {responsables[col.clave] && (
+                      <span className="ml-1.5 inline-flex align-middle" title={`Se encarga ${responsables[col.clave]!.nombre}`}>
+                        <Avatar persona={responsables[col.clave]!} tamano="chico" />
+                        <span className="sr-only">Se encarga {responsables[col.clave]!.nombre}</span>
+                      </span>
+                    )}
                   </h2>
                   {eligiendo && col.seleccionable && visibles.length > 0 ? (
                     <button type="button" onClick={() => elegirColumna(col)} className="shrink-0 rounded-lg bg-black/10 px-2 py-1 text-sm font-semibold hover:bg-black/20">
@@ -852,6 +1006,8 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                       alTildar={seTilda && sinElegir ? tildar : undefined}
                       alSeparar={col.clave === "preparando" && puede.preparar && sinElegir ? separar : undefined}
                       siguiente={paso && puedeAvanzar[col.clave] && sinElegir && !cerrado ? { texto: paso.texto, alTocar: () => soltar(t.id, col.clave, paso.hacia), ocupado: false } : null}
+                      plegada={sinElegir && plegadas.has(t.id)}
+                      alPlegar={sinElegir ? () => alternarPlegada(t.id) : undefined}
                     />
                   </li>
                 ))}
@@ -900,13 +1056,17 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         )}
       </div>
 
-      {arrastrando && enElAire && (
-        <div ref={fantasma} aria-hidden className={`${COLOR_COLUMNA[arrastrando.desde]} @container pointer-events-none fixed top-0 left-0 z-50 will-change-transform`} style={{ width: arrastrando.ancho }}>
-          <div className="tarjeta-en-el-aire">
-            <Tarjeta t={enElAire} href="#" />
-          </div>
-        </div>
-      )}
+      {/* La tarjeta en el aire cuelga del documento (no de este recuadro): su lugar se calcula contra la pantalla. */}
+      {arrastrando &&
+        enElAire &&
+        createPortal(
+          <div ref={fantasma} aria-hidden data-no-redibujar className={`${COLOR_COLUMNA[arrastrando.desde]} @container pointer-events-none fixed top-0 left-0 z-50 will-change-transform`} style={{ width: arrastrando.ancho }}>
+            <div className="tarjeta-en-el-aire">
+              <Tarjeta t={enElAire} href="#" />
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* En el celular, Nuevo pedido flota abajo a la derecha, a mano del pulgar (con el menú guardado no hay otro a la vista). */}
       {puede.crear && !eligiendo && !arrastrando && !conOpciones && (

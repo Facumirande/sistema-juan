@@ -26,7 +26,7 @@ export function formatearPorcentaje(valor: ValorDecimal, decimales = 1): string 
   return `${formatearNumero(valor, { decimales })} %`;
 }
 
-export type UnidadMedida = "KG" | "UNIDAD" | "ATADO" | "MAPLE" | "BANDEJA" | "DOCENA" | "PAQUETE" | "LITRO";
+export type UnidadMedida = "KG" | "UNIDAD" | "ATADO" | "MAPLE" | "BANDEJA" | "DOCENA" | "PAQUETE" | "LITRO" | "CAJON" | "CAJA" | "BOLSA" | "JAULA" | "BOLSON" | "RISTRA";
 
 export const ABREVIATURA_UNIDAD: Readonly<Record<UnidadMedida, string>> = {
   KG: "kg",
@@ -37,6 +37,12 @@ export const ABREVIATURA_UNIDAD: Readonly<Record<UnidadMedida, string>> = {
   DOCENA: "docena",
   PAQUETE: "paquete",
   LITRO: "l",
+  CAJON: "cajón",
+  CAJA: "caja",
+  BOLSA: "bolsa",
+  JAULA: "jaula",
+  BOLSON: "bolsón",
+  RISTRA: "ristra",
 };
 
 /** Cantidad en unidad base con hasta 3 decimales, sin ceros de más: "36,4 kg", "20 u". */

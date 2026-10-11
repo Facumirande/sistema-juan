@@ -59,33 +59,39 @@ async function resumenPorPersona(tx: Transaccion, c: ContextoUsuario, tipos: Tip
       ultima: previo.ultima && f.ultima ? (previo.ultima > f.ultima ? previo.ultima : f.ultima) : (previo.ultima ?? f.ultima),
     });
   };
-  if (tipos.length > 0) {
-    const diaA = diaLocal(actividad.ocurridaEn, c.zonaHoraria);
-    const acciones = await tx
-      .select({
-        id: actividad.usuarioId,
-        hoy: sql<number>`count(*) filter (where ${diaA} = ${hoy})`,
-        semana: sql<number>`count(*) filter (where ${diaA} >= ${semana})`,
-        ultima: sql<Date | null>`max(${actividad.ocurridaEn})`.mapWith((v: string | Date | null) => (v === null ? null : new Date(v))),
-      })
-      .from(actividad)
-      .where(inArray(actividad.entidadTipo, tipos))
-      .groupBy(actividad.usuarioId);
-    for (const a of acciones) sumar(a.id, { hoy: Number(a.hoy), semana: Number(a.semana), ultima: a.ultima });
-    const diaN = diaLocal(nota.creadoEn, c.zonaHoraria);
-    const notas = await tx
-      .select({
-        id: nota.creadoPor,
-        hoy: sql<number>`count(*) filter (where ${diaN} = ${hoy})`,
-        semana: sql<number>`count(*) filter (where ${diaN} >= ${semana})`,
-        ultima: sql<Date | null>`max(${nota.creadoEn})`.mapWith((v: string | Date | null) => (v === null ? null : new Date(v))),
-      })
-      .from(nota)
-      .where(inArray(nota.entidadTipo, tipos))
-      .groupBy(nota.creadoPor);
-    for (const n of notas) if (n.id) sumar(n.id, { hoy: Number(n.hoy), semana: Number(n.semana), ultima: n.ultima });
-  }
-  const personas = await personasDelNegocio(tx);
+  const diaA = diaLocal(actividad.ocurridaEn, c.zonaHoraria);
+  const diaN = diaLocal(nota.creadoEn, c.zonaHoraria);
+  const hay = tipos.length > 0;
+  // Lo que hizo cada persona, las notas que dejó y quiénes son salen juntos, en una sola ida a la base.
+  const [acciones, notas, personas] = await Promise.all([
+    hay
+      ? tx
+          .select({
+            id: actividad.usuarioId,
+            hoy: sql<number>`count(*) filter (where ${diaA} = ${hoy})`,
+            semana: sql<number>`count(*) filter (where ${diaA} >= ${semana})`,
+            ultima: sql<Date | null>`max(${actividad.ocurridaEn})`.mapWith((v: string | Date | null) => (v === null ? null : new Date(v))),
+          })
+          .from(actividad)
+          .where(inArray(actividad.entidadTipo, tipos))
+          .groupBy(actividad.usuarioId)
+      : Promise.resolve([]),
+    hay
+      ? tx
+          .select({
+            id: nota.creadoPor,
+            hoy: sql<number>`count(*) filter (where ${diaN} = ${hoy})`,
+            semana: sql<number>`count(*) filter (where ${diaN} >= ${semana})`,
+            ultima: sql<Date | null>`max(${nota.creadoEn})`.mapWith((v: string | Date | null) => (v === null ? null : new Date(v))),
+          })
+          .from(nota)
+          .where(inArray(nota.entidadTipo, tipos))
+          .groupBy(nota.creadoPor)
+      : Promise.resolve([]),
+    personasDelNegocio(tx),
+  ]);
+  for (const a of acciones) sumar(a.id, { hoy: Number(a.hoy), semana: Number(a.semana), ultima: a.ultima });
+  for (const n of notas) if (n.id) sumar(n.id, { hoy: Number(n.hoy), semana: Number(n.semana), ultima: n.ultima });
   return personas
     .filter((p) => p.activa || cuentas.has(p.id))
     .map(({ activa, ...persona }) => ({ persona, activa, hoy: 0, semana: 0, ultima: null, ...cuentas.get(persona.id) }));
@@ -99,39 +105,41 @@ export async function listarActividad(
   return ejecutarComoUsuario(db, authUserId, null, async (tx, c) => {
     const tipos = tiposVisibles(c).filter((t) => !filtros.entidad || t === filtros.entidad.tipo);
     const limite = filtros.limite ?? 60;
-    const personas = await resumenPorPersona(tx, c, tiposVisibles(c));
-    if (tipos.length === 0) return { entradas: [], hayMas: false, personas };
+    if (tipos.length === 0) return { entradas: [], hayMas: false, personas: await resumenPorPersona(tx, c, tiposVisibles(c)) };
+    // El resumen por persona, lo que se hizo y las notas salen juntos, en una sola ida a la base.
+    const [personas, acciones, notas] = await Promise.all([
+      resumenPorPersona(tx, c, tiposVisibles(c)),
+      filtros.soloNotas
+        ? Promise.resolve([] as (typeof actividad.$inferSelect)[])
+        : tx
+            .select()
+            .from(actividad)
+            .where(
+              and(
+                inArray(actividad.entidadTipo, tipos),
+                filtros.usuarioId ? eq(actividad.usuarioId, filtros.usuarioId) : undefined,
+                filtros.entidad ? eq(actividad.entidadId, filtros.entidad.id) : undefined,
+                filtros.antesDe ? lt(actividad.ocurridaEn, filtros.antesDe) : undefined,
+              ),
+            )
+            .orderBy(desc(actividad.ocurridaEn))
+            .limit(limite + 1),
+      tx
+        .select()
+        .from(nota)
+        .where(
+          and(
+            inArray(nota.entidadTipo, tipos),
+            filtros.usuarioId ? eq(nota.creadoPor, filtros.usuarioId) : undefined,
+            filtros.entidad ? eq(nota.entidadId, filtros.entidad.id) : undefined,
+            filtros.antesDe ? lt(nota.creadoEn, filtros.antesDe) : undefined,
+          ),
+        )
+        .orderBy(desc(nota.creadoEn))
+        .limit(limite + 1),
+    ]);
     const porId = new Map(personas.map((p) => [p.persona.id, p.persona]));
     const persona = (id: string | null): PersonaVisible => porId.get(id ?? "") ?? { id: id ?? "", nombre: "Alguien", color: "#46505e" };
-
-    const acciones = filtros.soloNotas
-      ? []
-      : await tx
-          .select()
-          .from(actividad)
-          .where(
-            and(
-              inArray(actividad.entidadTipo, tipos),
-              filtros.usuarioId ? eq(actividad.usuarioId, filtros.usuarioId) : undefined,
-              filtros.entidad ? eq(actividad.entidadId, filtros.entidad.id) : undefined,
-              filtros.antesDe ? lt(actividad.ocurridaEn, filtros.antesDe) : undefined,
-            ),
-          )
-          .orderBy(desc(actividad.ocurridaEn))
-          .limit(limite + 1);
-    const notas = await tx
-      .select()
-      .from(nota)
-      .where(
-        and(
-          inArray(nota.entidadTipo, tipos),
-          filtros.usuarioId ? eq(nota.creadoPor, filtros.usuarioId) : undefined,
-          filtros.entidad ? eq(nota.entidadId, filtros.entidad.id) : undefined,
-          filtros.antesDe ? lt(nota.creadoEn, filtros.antesDe) : undefined,
-        ),
-      )
-      .orderBy(desc(nota.creadoEn))
-      .limit(limite + 1);
 
     const referencias: Referencia[] = [];
     const mezcla: { entrada: Omit<EntradaActividad, "entidad">; ref: Referencia | null }[] = [

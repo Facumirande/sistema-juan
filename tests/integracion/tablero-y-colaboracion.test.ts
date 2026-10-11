@@ -219,11 +219,20 @@ describe("el viaje de entrega", () => {
   });
 
   it("buscar una dirección en el mapa y seguir un enlace corto de Google Maps (sin salir a internet)", async () => {
+    // Primero se busca en Tucumán (la zona del negocio); si ahí no aparece, en todo el país.
+    const pedidas: string[] = [];
     const mapa = async (url: string) => {
       expect(url).toContain("nominatim.openstreetmap.org");
-      return new Response(JSON.stringify([{ display_name: "Av. Corrientes 1234, CABA", lat: "-34.6037", lon: "-58.3816" }, { display_name: "sin lugar" }]));
+      pedidas.push(url);
+      const enTucuman = new URL(url).searchParams.get("bounded") === "1";
+      if (url.includes("Mitre")) return new Response(JSON.stringify(enTucuman ? [{ display_name: "Av. Mitre 300, San Miguel de Tucumán", lat: "-26.8236", lon: "-65.2141" }] : []));
+      return new Response(JSON.stringify(enTucuman ? [] : [{ display_name: "Av. Corrientes 1234, CABA", lat: "-34.6037", lon: "-58.3816" }, { display_name: "sin lugar" }]));
     };
+    expect(await buscarDireccion("Mitre 300", mapa)).toEqual([{ etiqueta: "Av. Mitre 300, San Miguel de Tucumán", coordenada: { lat: -26.8236, lng: -65.2141 } }]);
+    expect(pedidas).toHaveLength(1);
+    expect(new URL(pedidas[0]!).searchParams.get("viewbox")).toBe("-66.25,-26.05,-64.45,-28.05");
     expect(await buscarDireccion("Corrientes 1234, CABA", mapa)).toEqual([{ etiqueta: "Av. Corrientes 1234, CABA", coordenada: { lat: -34.6037, lng: -58.3816 } }]);
+    expect(pedidas).toHaveLength(3);
     expect(await codigoDeError(buscarDireccion("ab", mapa))).toBe("VALIDACION");
     expect(await codigoDeError(buscarDireccion("Corrientes 1234", async () => new Response("", { status: 503 })))).toBe("VALIDACION");
     expect(await codigoDeError(buscarDireccion("Corrientes 1234", async () => Promise.reject(new Error("sin red"))))).toBe("VALIDACION");

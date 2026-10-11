@@ -56,6 +56,9 @@
   --pastel-rosa-texto: #50253f;
   /* La flecha de navegación (viaje, GPS, cómo llegar). */
   --navegacion: #1a73e8;
+  /* Barras de desplazamiento finas y discretas (10/10/2026). */
+  --barra: rgb(0 0 0 / 0.22);
+  --barra-encima: rgb(0 0 0 / 0.38);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,6 +71,8 @@
     --marca: #66bb6a;
     --marca-texto: #0d1a0e;
     --error: #f2b8b5;
+    --barra: rgb(255 255 255 / 0.16);
+    --barra-encima: rgb(255 255 255 / 0.3);
     --serie-1: #3987e5;
     --serie-2: #d95926;
     --serie-negativa: #e66767;
@@ -141,19 +146,135 @@
   --text-sm--line-height: 1.45;
 }
 
-/* 01 §16: texto base grande (pedido del usuario, 07/10/2026: toda la letra bastante más grande). */
+/* 01 §16: texto base grande en la computadora (pedido del usuario, 07/10/2026: toda la letra
+   bastante más grande). En el celular, letra normal de aplicación (10/10/2026: "una fuente más
+   normal, más ordenado y chico"): 14 px de base, y como todos los tamaños salen de ahí, lo
+   importante (productos, importes, el botón verde) sigue siendo lo más grande de cada pantalla. */
 html {
-  font-size: 17px;
+  font-size: 14px;
 }
 @media (min-width: 640px) {
   html {
     font-size: 18px;
   }
 }
+/* En el celular, lo que se escribe va en 16 px salvo que el casillero pida otro tamaño: se lee
+   bien y el iPhone no acerca la pantalla al tocarlo. Va en la capa base para que una clase de
+   tamaño (`text-2xl`) le gane. */
+@layer base {
+  @media (max-width: 639.98px) {
+    input:not([type="checkbox"], [type="radio"], [type="range"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+}
 
 body {
   background: var(--fondo);
   color: var(--texto);
+}
+
+/* Barras de desplazamiento finas, del color del tema (pedido del usuario, 10/10/2026: que no se vean
+   toscas, sobre todo en modo oscuro). En el menú lateral casi no se ven hasta pasar por encima. Va
+   en la capa base para que lo que pide no tener barra (`sin-barra`, `[scrollbar-width:none]`) le
+   gane: fuera de las capas, esta regla pisaba a esas clases y las barras aparecían igual. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--barra) transparent;
+  }
+}
+.menu-lateral {
+  scrollbar-color: transparent transparent;
+}
+.menu-lateral:hover,
+.menu-lateral:focus-within {
+  scrollbar-color: var(--barra) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--barra) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--barra-encima) padding-box;
+}
+
+/* En el celular el sistema se ve y se usa como una app (pedido del usuario, 10/10/2026): la página
+   no se mueve ni rebota (lo que se desplaza es el contenido, adentro del marco, con la barra de
+   arriba quieta), no se agranda con dos dedos ni con doble toque y no deja ver franjas blancas o
+   negras por los bordes. Solo en pantalla y en el ancho del celular: la computadora y lo que se
+   imprime quedan igual. El marco es `src/ui/marco.tsx`. */
+html {
+  background: var(--fondo);
+}
+@media screen and (max-width: 767.98px) {
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
+  /* Las pantallas sin marco (el ingreso) se desplazan adentro del cuerpo, que tampoco rebota. */
+  body {
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: none;
+  }
+  .marco {
+    min-height: 0;
+    overflow: hidden;
+    padding-right: env(safe-area-inset-right);
+    padding-left: env(safe-area-inset-left);
+  }
+  .marco-contenido {
+    min-height: 0;
+  }
+  .marco-principal {
+    /* El margen que el marco deja alrededor del contenido (`p-3`, y `sm:p-4` desde 640 px). */
+    --marco-margen: 0.75rem;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    /* Lugar para la barra de gestos del celular: lo último de cada pantalla no queda debajo. */
+    padding-bottom: calc(var(--marco-margen) + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 640px) {
+    .marco-principal {
+      --marco-margen: 1rem;
+    }
+  }
+  /* Una pantalla con fondo propio de borde a borde (el tablero) llega hasta abajo con ese fondo. */
+  .marco-principal:has(> .a-pantalla-completa) {
+    padding-bottom: var(--marco-margen);
+  }
+  .menu-lateral {
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+/* En los aparatos que se usan con el dedo: sin agrandar con dos dedos ni con doble toque (los mapas
+   siguen acercándose: lo manejan ellos), y sin el menú del navegador al mantener apretado un botón
+   o un enlace (el que muestra la dirección). */
+@media (pointer: coarse) {
+  html {
+    touch-action: pan-x pan-y;
+  }
+  a,
+  button,
+  summary {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 /* Documentos imprimibles (09 §6): A4, fondo blanco, sin menú ni botones. */
@@ -168,6 +289,8 @@ body {
     --texto: #000000;
     --texto-suave: #333333;
     --borde: #999999;
+    --marca: #2f7d32;
+    --marca-texto: #ffffff;
   }
   html {
     font-size: 11px;
@@ -353,6 +476,21 @@ body {
 }
 .hoja-fondo {
   animation: aparecer-fondo 200ms ease-out;
+}
+/* La tarjeta abierta aparece con un leve acercamiento. */
+@keyframes abrir-tarjeta {
+  from {
+    transform: scale(0.97) translateY(8px);
+    opacity: 0;
+  }
+}
+.tarjeta-abriendose {
+  animation: abrir-tarjeta 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta-abriendose {
+    animation: none;
+  }
 }
 /* El fondo de una hoja o del menú no se hunde al tocarlo (es para cerrar, no un botón a la vista). */
 button.hoja-fondo:active {

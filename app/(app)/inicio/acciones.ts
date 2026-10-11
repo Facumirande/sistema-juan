@@ -1,14 +1,18 @@
 "use server";
 
-import { accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/dominio/pedidos/tablero";
+import { redirect } from "next/navigation";
+
+import { COLUMNAS_A_LA_VISTA, RETIRO_A_LA_VISTA, accionAlMover, type ClaveColumna, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import { esErrorDeNegocio, textoParaPersona } from "@/dominio/errores";
 import { desmarcarPedidoComprado, generarListaCompra, marcarNoConseguido, marcarPedidoComprado, sacarPedidoDeLista, tildarLinea } from "@/modulos/compras/lista-compra";
+import { destildarConCompra } from "@/modulos/compras/compra-desde-lista";
 import { entregarPedido } from "@/modulos/entregas/entregas";
 import { iniciarPreparacion, separarLinea } from "@/modulos/entregas/preparacion";
 import { mandarEnCamino } from "@/modulos/entregas/repartos";
-import { volverAtras } from "@/modulos/entregas/volver-atras";
+import { eliminarPedido, recuperarPedido, volverAtras } from "@/modulos/entregas/volver-atras";
+import { guardarCajaInicial } from "@/modulos/jornadas/caja";
 import { cerrarJornada, reabrirJornada } from "@/modulos/jornadas/cierre";
-import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido } from "@/modulos/pedidos/pedidos";
+import { asignarResponsable, cambiarPlazo, cambiarPrioridad, confirmarPedido, ponerPrecioALinea } from "@/modulos/pedidos/pedidos";
 import { estadosDePedidos } from "@/modulos/pedidos/tablero";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, esEnlace, type EstadoAccion } from "@/ui/estado-accion";
@@ -105,7 +109,7 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
   return ejecutarAccion(async ({ db, authUserId }): Promise<EstadoAccion> => {
     const id = campo(datos, "pedido");
     const accion = accionAlMover(campo(datos, "desde") as ClaveColumna, campo(datos, "hacia") as ClaveColumna);
-    if (!accion) return { ok: false, mensaje: "Esa tarjeta no se puede mover ahí. Cada pedido avanza de a un paso: Pedidos → Lista de compras → Comprado → Preparando → En camino → Entregados." };
+    if (!accion) return { ok: false, mensaje: `Esa tarjeta no se puede mover ahí. Cada pedido avanza de a un paso: ${COLUMNAS_A_LA_VISTA.map((c) => c.titulo).join(" → ")}.` };
     const [p] = await estadosDePedidos(db, authUserId, [id]);
     if (!p) return { ok: false, mensaje: "No se encontró el pedido: puede que lo hayan cancelado. Recargá la página." };
     const aLaLista = async () => {
@@ -123,7 +127,7 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
       case "MARCAR_COMPRADO": {
         await aLaLista();
         const n = await marcarPedidoComprado(db, authUserId, id);
-        return { ok: true, mensaje: n ? `Listo: ${p.cliente} quedó en Comprado (${cuantos(n, "producto tildado", "productos tildados")}).` : `${p.cliente} ya tenía todo comprado.` };
+        return { ok: true, mensaje: n ? `Listo: ${p.cliente} quedó en Retiro (${cuantos(n, "producto tildado", "productos tildados")}).` : `${p.cliente} ya tenía todo comprado.` };
       }
       case "DESMARCAR_COMPRADO":
         await desmarcarPedidoComprado(db, authUserId, id);
@@ -144,6 +148,10 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
       case "PREPARAR": {
         // Se prepara solo este pedido: los demás siguen donde están.
         if (p.estado === "BORRADOR") await confirmarPedido(db, authUserId, id);
+        // Sin la columna Retiro, pasar un pedido de la lista de compras a Preparando es decir "ya está
+        // comprado": lo que faltaba tildar queda tildado (lo que hacía el paso a Retiro), así la
+        // preparación propone lo pedido y no lo da por faltante.
+        if (!RETIRO_A_LA_VISTA && p.estado === "EN_COMPRA") await marcarPedidoComprado(db, authUserId, id);
         const r = await iniciarPreparacion(db, authUserId, p.fecha, { pedidoIds: [id] });
         if (r.lineasNuevas === 0) {
           return {
@@ -162,6 +170,14 @@ export async function moverTarjetaAccion(_estado: EstadoAccion, datos: FormData)
 export async function separarProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await separarLinea(db, authUserId, { itemId: campo(datos, "itemId"), separado: campo(datos, "separado") === "si" });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** La caja inicial del día, desde el resumen balance del tablero (vacío = sin cargar). */
+export async function guardarCajaInicialAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await guardarCajaInicial(db, authUserId, { fecha: campo(datos, "fecha"), monto: campo(datos, "monto") });
     return { ok: true, mensaje: null };
   });
 }
@@ -195,15 +211,44 @@ export async function tildarProductoAccion(_estado: EstadoAccion, datos: FormDat
     if (valor === "NO") await marcarNoConseguido(db, authUserId, { itemId, motivo: "No se consiguió en el mercado" });
     else if (valor === "SI") await tildarLinea(db, authUserId, { itemId, tildado: true });
     else if (campo(datos, "desde") === "NO_CONSEGUIDO") await marcarNoConseguido(db, authUserId, { itemId, motivo: null });
+    // Confirmado: se destilda aunque tenga la compra anotada (se anula esa compra).
+    else if (campo(datos, "confirmarVariacion") === "on") await destildarConCompra(db, authUserId, { itemId });
     else await tildarLinea(db, authUserId, { itemId, tildado: false });
     return { ok: true, mensaje: null };
   });
 }
 
-/** "✓ Pasar a Comprado" desde la tarjeta abierta: tilda todo lo que le faltaba. */
+/** "✓ Pasar a Retiro" desde la tarjeta abierta: tilda todo lo que le faltaba. */
 export async function pasarACompradoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const n = await marcarPedidoComprado(db, authUserId, campo(datos, "pedido"));
-    return { ok: true, mensaje: n ? `Listo: quedó en Comprado (${cuantos(n, "producto tildado", "productos tildados")}).` : "Ya estaba todo comprado." };
+    return { ok: true, mensaje: n ? `Listo: quedó en Retiro (${cuantos(n, "producto tildado", "productos tildados")}).` : "Ya estaba todo comprado." };
+  });
+}
+
+/** Ponerle precio sobre la marcha a un producto sin precio, desde la tarjeta abierta. */
+export async function ponerPrecioAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await ponerPrecioALinea(db, authUserId, { itemId: campo(datos, "itemId"), precio: campo(datos, "precio") });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** "🗑 Eliminar el pedido" desde la tarjeta abierta: aunque ya esté en proceso. Cierra la tarjeta. */
+export async function eliminarPedidoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  let fecha = "";
+  const r = await ejecutarAccion(async ({ db, authUserId }) => {
+    fecha = (await eliminarPedido(db, authUserId, { pedidoId: campo(datos, "pedido") })).fecha;
+    return { ok: true, mensaje: null };
+  });
+  if (r.ok) redirect(`/inicio?fecha=${fecha}`);
+  return r;
+}
+
+/** "↩ Recuperar el pedido": desde la tarjeta de un pedido eliminado o desde Actividad. */
+export async function recuperarPedidoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await recuperarPedido(db, authUserId, { pedidoId: campo(datos, "pedido") });
+    return { ok: true, mensaje: null };
   });
 }

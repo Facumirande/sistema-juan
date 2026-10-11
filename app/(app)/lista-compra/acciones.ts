@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
-import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
-import { cambiarLineaLista, generarListaCompra, marcarNoConseguido, ordenarLista, tildarLinea } from "@/modulos/compras/lista-compra";
+import { comprarDeLaLista, destildarConCompra } from "@/modulos/compras/compra-desde-lista";
+import { cambiarLineaLista, elegirPuestoDeLinea, generarListaCompra, marcarNoConseguido, ordenarLista, tildarLinea } from "@/modulos/compras/lista-compra";
+import { pagadoDesdeLaLista } from "@/modulos/compras/pagos";
 import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
 import { campo, type EstadoAccion } from "@/ui/estado-accion";
@@ -51,7 +52,8 @@ export async function comprarDeLaListaAccion(_estado: EstadoAccion, datos: FormD
       itemId: campo(datos, "itemId"),
       ofertaId: clase === "oferta" ? id : null,
       proveedorId: clase === "proveedor" ? id : null,
-      presentacionId: clase === "proveedor" ? presentacionId : null,
+      presentacionId: clase === "proveedor" || clase === "sinpuesto" ? presentacionId : null,
+      sinPuesto: clase === "sinpuesto",
       cantidad: campo(datos, "cantidad"),
       precio: campo(datos, "precio"),
       pagado: campo(datos, "pago") === "PAGADO",
@@ -68,6 +70,11 @@ export async function comprarDeLaListaAccion(_estado: EstadoAccion, datos: FormD
 export async function tildarLineaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     const tildado = campo(datos, "tildado") === "true";
+    // Confirmado: se destilda aunque tenga la compra anotada (se anula esa compra).
+    if (!tildado && campo(datos, "confirmarVariacion") === "on") {
+      await destildarConCompra(db, authUserId, { itemId: campo(datos, "itemId") });
+      return { ok: true, mensaje: null };
+    }
     const r = await tildarLinea(db, authUserId, { itemId: campo(datos, "itemId"), tildado });
     return { ok: true, mensaje: tildado ? `Tildado: ${r.producto}.` : `${r.producto} vuelve a estar por comprar.` };
   });
@@ -103,6 +110,22 @@ export async function resolverYSeguirAccion(_estado: EstadoAccion, datos: FormDa
 export async function ordenarListaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
     await ordenarLista(db, authUserId, { fecha: campo(datos, "fecha"), itemIds: datos.getAll("item").filter((v): v is string => typeof v === "string") });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** El interruptor "Pagado / A cuenta" al final de un renglón con compras anotadas. */
+export async function pagadoDesdeLaListaAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await pagadoDesdeLaLista(db, authUserId, { itemId: campo(datos, "itemId"), pagado: campo(datos, "pagado") === "true" });
+    return { ok: true, mensaje: null };
+  });
+}
+
+/** El puesto donde se va a comprar un renglón (vacío = sin puesto, en efectivo). */
+export async function elegirPuestoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await elegirPuestoDeLinea(db, authUserId, { itemId: campo(datos, "itemId"), proveedorId: campo(datos, "proveedorId") || null });
     return { ok: true, mensaje: null };
   });
 }

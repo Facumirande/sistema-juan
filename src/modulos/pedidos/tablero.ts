@@ -8,7 +8,7 @@ import type { EstadoLineaLista } from "@/dominio/compras/lista";
 import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { avisoDeFaltante } from "@/dominio/entregas/entregas";
 import { hoyEnEmpresa, type FechaISO } from "@/dominio/fechas/fechas";
-import { COLUMNAS, columnaDeTarjeta, estadoDelPlazo, ordenarTarjetas, textoPlazo, type ClaveColumna, type EstadoDelPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
+import { COLUMNAS_A_LA_VISTA, columnaDeTarjeta, estadoDelPlazo, ordenarTarjetas, textoPlazo, type ClaveColumna, type EstadoDelPlazo, type PrioridadPedido } from "@/dominio/pedidos/tablero";
 import type { EstadoPedido } from "@/dominio/precios/venta";
 import { contarNotasDePedidosDelDia } from "@/modulos/colaboracion/notas";
 import { personasDelNegocio, soloVisible, type PersonaVisible } from "@/modulos/colaboracion/personas";
@@ -71,6 +71,8 @@ export interface ProductoDeTarjeta {
   tildado: boolean;
   /** Su renglón en la preparación, mientras se puede tildar como separado desde la tarjeta (nulo si no). */
   entregaItemId: string | null;
+  /** Todavía no tiene precio de venta (se le pone desde la tarjeta abierta). */
+  sinPrecio: boolean;
 }
 
 export interface ColumnaDelTablero {
@@ -88,6 +90,8 @@ export interface TableroDePedidos {
   cancelados: TarjetaPedido[];
   personas: PersonaVisible[];
   yo: string;
+  /** Quién se encarga de cada columna, de manera fija (RN-190). */
+  responsables: Partial<Record<ClaveColumna, PersonaVisible>>;
 }
 
 export interface LineaConAvance {
@@ -103,6 +107,7 @@ export interface LineaConAvance {
   compra: EstadoLineaLista | null;
   tildado: boolean;
   entregaItemId: string | null;
+  sinPrecio: boolean;
 }
 
 const hora = (t: string | null) => t?.slice(0, 5) ?? null;
@@ -134,6 +139,7 @@ function consultasDeAvance(tx: Transaccion, a: Alcance) {
         cantidad: pedidoItem.cantidad,
         cantidadBase: pedidoItem.cantidadBase,
         presentacion: presentacion.nombre,
+        precio: pedidoItem.precioEstimado,
       })
       .from(pedidoItem)
       .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
@@ -191,6 +197,7 @@ function lineasConAvance(pedidos: readonly { id: string; estado: EstadoPedido }[
         hecha: que === "comprado" ? comprado.has(i.productoId) : que === "preparado" ? separado.get(i.id)?.preparada != null : p.estado === "EN_REPARTO" || p.estado === "ENTREGADO",
         aviso: aviso(i, que),
         entregaItemId: ["BORRADOR", "EN_PREPARACION", "PREPARADA"].includes(separado.get(i.id)?.estadoEntrega ?? "") ? separado.get(i.id)!.id : null,
+        sinPrecio: i.precio === null,
       })),
     });
   }
@@ -245,10 +252,16 @@ export async function tableroEnTransaccion(tx: Transaccion, c: ContextoUsuario, 
   const vacio: TableroDePedidos = {
     fecha,
     estadoJornada: null,
-    columnas: COLUMNAS.map((col) => ({ clave: col.clave, titulo: col.titulo, ayuda: col.ayuda, seleccionable: col.seleccionable, tarjetas: [] })),
+    columnas: COLUMNAS_A_LA_VISTA.map((col) => ({ clave: col.clave, titulo: col.titulo, ayuda: col.ayuda, seleccionable: col.seleccionable, tarjetas: [] })),
     cancelados: [],
     personas: personas.filter((p) => p.activa).map(soloVisible),
     yo: c.usuarioId,
+    responsables: Object.fromEntries(
+      Object.entries(c.responsables).flatMap(([etapa, id]) => {
+        const quien = persona.get(id);
+        return quien ? [[etapa, quien]] : [];
+      }),
+    ),
   };
   if (!j) return vacio;
   const avances = lineasConAvance(filas, avance);
@@ -274,7 +287,7 @@ export async function tableroEnTransaccion(tx: Transaccion, c: ContextoUsuario, 
       plazo: textoPlazo(f.entregaDesde, f.entregaHasta),
       estadoPlazo: estadoDelPlazo({ fecha, hasta: hora(f.entregaHasta), estado: f.estado, ...ahora }),
       lineas: a.lineas.length,
-      productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo, hecha: l.hecha, aviso: l.aviso, listaItemId: l.listaItemId, compra: l.compra, tildado: l.tildado, entregaItemId: l.entregaItemId })),
+      productos: a.lineas.map((l) => ({ nombre: l.producto, cantidad: l.cantidad, grupo: l.grupo, hecha: l.hecha, aviso: l.aviso, listaItemId: l.listaItemId, compra: l.compra, tildado: l.tildado, entregaItemId: l.entregaItemId, sinPrecio: l.sinPrecio })),
       avance: a.que ? { que: a.que, hechos: a.lineas.filter((l) => l.hecha).length, total: a.lineas.length } : null,
       totalEstimado: verVenta ? f.total : null,
       notas: notas.get(f.id) ?? { total: 0, sinLeer: 0 },

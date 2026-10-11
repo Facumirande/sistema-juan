@@ -68,6 +68,8 @@ export const empresa = pgTable(
     diasAvisoPrecioFijo: integer("dias_aviso_precio_fijo").notNull().default(15),
     diasAvisoVencimiento: integer("dias_aviso_vencimiento").notNull().default(3),
     horaCortePedidos: time("hora_corte_pedidos"),
+    /** Quién se encarga de cada parte del proceso (10/10/2026): { etapa: usuario_id }. */
+    responsablesEtapa: jsonb("responsables_etapa").$type<Record<string, string>>().notNull().default({}),
     cantidadAtipicaMultiplicador: porcentaje("cantidad_atipica_multiplicador").notNull().default("3.000"),
     cantidadAtipicaSemanas: integer("cantidad_atipica_semanas").notNull().default(8),
     toleranciaPesoPct: porcentaje("tolerancia_peso_pct").notNull().default("3.000"),

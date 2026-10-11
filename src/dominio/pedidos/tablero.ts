@@ -15,26 +15,44 @@ export interface Columna {
   seleccionable: boolean;
 }
 
+/**
+ * La columna "Retiro" está guardada por ahora (pedido del usuario, 10/10/2026: "momentáneamente no
+ * muestres la card de retiro, después decidiré si reincorporarla"). Guardada, un pedido con todo lo
+ * suyo comprado se queda en "Lista de compras" y de ahí pasa directo a "Preparando" (al pasarlo, lo
+ * que faltaba tildar queda como comprado, igual que al pasarlo a Retiro). Para volver a mostrarla
+ * alcanza con poner `true`: todo lo demás ya la contempla.
+ */
+export const RETIRO_A_LA_VISTA: boolean = false;
+
 export const COLUMNAS: readonly Columna[] = [
   // No hay confirmación: un pedido cargado ya está listo para mandarse a la lista de compras.
   { clave: "pedidos", titulo: "Pedidos", ayuda: "Mandalos a la lista de compras.", estados: ["BORRADOR", "CONFIRMADO"], seleccionable: true },
   { clave: "en_lista", titulo: "Lista de compras", ayuda: "Tildá lo que ya se compró.", estados: ["EN_COMPRA"], seleccionable: true },
   // Pedidos en la lista con todo lo suyo ya comprado (la columna se decide con columnaDeTarjeta).
-  { clave: "comprados", titulo: "Comprado", ayuda: "Listos para preparar.", estados: [], seleccionable: false },
+  { clave: "comprados", titulo: "Retiro", ayuda: "Comprado: listo para retirar y preparar.", estados: [], seleccionable: false },
   // Desde "Preparando" se arrastran (o se eligen) a "En camino" cuando salen a entregar.
   { clave: "preparando", titulo: "Preparando", ayuda: "Tildá lo que ya separaste.", estados: ["EN_PREPARACION", "PREPARADO"], seleccionable: true },
   { clave: "en_camino", titulo: "En camino", ayuda: "Al entregarlo, marcalo.", estados: ["EN_REPARTO"], seleccionable: false },
   { clave: "entregados", titulo: "Entregados", ayuda: "Con todo entregado, cerrá el día.", estados: ["ENTREGADO"], seleccionable: false },
 ];
 
+/** Las columnas que muestra el tablero: todas, menos "Retiro" mientras está guardada. */
+export const COLUMNAS_A_LA_VISTA: readonly Columna[] = COLUMNAS.filter((c) => RETIRO_A_LA_VISTA || c.clave !== "comprados");
+
+/** Dónde va un pedido que está en la lista de compras: en "Retiro" si ya tiene todo comprado (y la columna está a la vista). */
+export function columnaEnCompra(todoComprado: boolean): ClaveColumna {
+  return todoComprado && RETIRO_A_LA_VISTA ? "comprados" : "en_lista";
+}
+
 /**
  * La columna de una tarjeta: la de su etapa, salvo un pedido en la lista de compras con todo lo
- * suyo comprado, que pasa a "Comprado" (listo para preparar), y uno que ya tiene armada su
- * preparación aunque todavía no se separó nada, que va a "Preparando".
+ * suyo comprado, que pasa a "Retiro" (comprado, listo para preparar) si esa columna está a la
+ * vista, y uno que ya tiene armada su preparación aunque todavía no se separó nada, que va a
+ * "Preparando".
  */
 export function columnaDeTarjeta(estado: EstadoPedido, todoComprado: boolean, enPreparacion = false): ClaveColumna | null {
   if (enPreparacion && (estado === "CONFIRMADO" || estado === "EN_COMPRA")) return "preparando";
-  return estado === "EN_COMPRA" && todoComprado ? "comprados" : columnaDePedido(estado);
+  return estado === "EN_COMPRA" ? columnaEnCompra(todoComprado) : columnaDePedido(estado);
 }
 
 /**
@@ -116,24 +134,25 @@ export const COLUMNAS_ARRASTRABLES: readonly ClaveColumna[] = [...VAN_Y_VUELVEN,
 
 /**
  * El paso atrás de una tarjeta de cada columna, por si se pasó por accidente: adónde vuelve y cómo
- * se llama el botón. De "Lista de compras" y "Comprado" se vuelve a Pedidos (sale de la lista).
+ * se llama el botón. De "Lista de compras" y "Retiro" se vuelve a Pedidos (sale de la lista).
  */
 export const PASO_ANTERIOR: Readonly<Record<ClaveColumna, { hacia: ClaveColumna; texto: string } | null>> = {
   pedidos: null,
   en_lista: { hacia: "pedidos", texto: "↩ Volver a Pedidos" },
   comprados: { hacia: "pedidos", texto: "↩ Volver a Pedidos" },
-  preparando: { hacia: "comprados", texto: "↩ Todavía no se prepara: volver atrás" },
+  preparando: { hacia: RETIRO_A_LA_VISTA ? "comprados" : "en_lista", texto: "↩ Todavía no se prepara: volver atrás" },
   en_camino: { hacia: "preparando", texto: "↩ No salió: volver a Preparando" },
   entregados: { hacia: "en_camino", texto: "↩ No se entregó: volver a En camino" },
 };
 
 /**
  * El paso que sigue para una tarjeta de cada columna: adónde va y cómo se llama el botón verde que
- * la hace avanzar. "Entregados" es el final: no tiene paso siguiente.
+ * la hace avanzar. "Entregados" es el final: no tiene paso siguiente. Con "Retiro" guardada, de
+ * "Lista de compras" se pasa directo a "Preparando".
  */
 export const PASO_SIGUIENTE: Readonly<Record<ClaveColumna, { hacia: ClaveColumna; texto: string } | null>> = {
   pedidos: { hacia: "en_lista", texto: "🛒 Mandar a la lista de compras" },
-  en_lista: { hacia: "comprados", texto: "✓ Ya está todo comprado" },
+  en_lista: RETIRO_A_LA_VISTA ? { hacia: "comprados", texto: "✓ Ya está todo comprado" } : { hacia: "preparando", texto: "✓ Comprado: a preparar" },
   comprados: { hacia: "preparando", texto: "📦 Empezar a prepararlo" },
   preparando: { hacia: "en_camino", texto: "🚚 Sale ahora" },
   en_camino: { hacia: "entregados", texto: "✅ Ya se entregó" },
@@ -142,7 +161,7 @@ export const PASO_SIGUIENTE: Readonly<Record<ClaveColumna, { hacia: ClaveColumna
 
 /**
  * Qué pasa al arrastrar una tarjeta de una columna a otra (null = no se puede). Entre Pedidos,
- * Lista de compras y Comprado se va y se vuelve; soltarla en Preparando empieza a preparar
+ * Lista de compras y Retiro se va y se vuelve; soltarla en Preparando empieza a preparar
  * ese pedido; de "Preparando" a "En camino" sale a entregar (se termina de preparar, se hace el
  * remito y sale el reparto), y de "En camino" a "Entregados" queda entregado completo. Hacia atrás
  * se vuelve de a un paso: de "Preparando" a donde estaba antes, de "En camino" a "Preparando" y de

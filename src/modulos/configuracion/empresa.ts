@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
-import { empresa } from "@/db/esquema";
+import { empresa, usuario } from "@/db/esquema";
 import type { BaseDatos } from "@/db/tipos";
 import { dec } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
+import { ETAPAS_CON_RESPONSABLE, leerResponsables, type EtapaConResponsable, type Responsables } from "@/dominio/pedidos/responsables";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
@@ -32,6 +33,9 @@ export interface ConfiguracionEmpresa {
   telefono: string | null;
   email: string | null;
   identificacionFiscal: string | null;
+  /** Para el remito (10/10/2026): el nombre legal y la condición frente al IVA. */
+  razonSocial: string | null;
+  condicionFiscal: string | null;
   /** Nulo si el redondeo guardado no es ninguna de las opciones (se muestra como "otro"). */
   redondeo: ClaveRedondeo | null;
   margenMinimoPct: string;
@@ -57,6 +61,8 @@ export async function configuracionDeEmpresa(db: BaseDatos, authUserId: string):
       telefono: e.telefono,
       email: e.email,
       identificacionFiscal: e.identificacionFiscal,
+      razonSocial: e.razonSocial,
+      condicionFiscal: e.condicionFiscal,
       redondeo,
       margenMinimoPct: numero(e.margenMinimoPct),
       variacionBruscaPct: numero(e.variacionBruscaPct),
@@ -81,6 +87,8 @@ const esquemaConfiguracion = z
     telefono: textoOpcional(40),
     email: textoOpcional(120).refine((v) => v === null || z.email().safeParse(v).success, { message: "El correo no es válido." }),
     identificacionFiscal: textoOpcional(20),
+    razonSocial: textoOpcional(160),
+    condicionFiscal: textoOpcional(60),
     redondeo: z.enum(Object.keys(REDONDEOS) as [ClaveRedondeo, ...ClaveRedondeo[]], "Elegí cómo se redondean los precios."),
     margenMinimoPct: porcentaje("La ganancia mínima es un porcentaje entre 0 y 100 (ej. 15)."),
     variacionBruscaPct: porcentaje("El cambio de precio para pedir confirmación es un porcentaje entre 0 y 100 (ej. 30)."),
@@ -110,6 +118,8 @@ export async function guardarConfiguracion(db: BaseDatos, authUserId: string, da
       telefono: d.telefono,
       email: d.email,
       identificacionFiscal: d.identificacionFiscal,
+      razonSocial: d.razonSocial,
+      condicionFiscal: d.condicionFiscal,
       redondeoModo: r.modo,
       redondeoMultiplo: r.multiplo,
       margenMinimoPct: d.margenMinimoPct,
@@ -136,5 +146,44 @@ export async function guardarConfiguracion(db: BaseDatos, authUserId: string, da
     const cambianPrecios =
       antes.redondeoModo !== r.modo || !dec(antes.redondeoMultiplo).eq(r.multiplo) || !dec(antes.margenMinimoPct).eq(d.margenMinimoPct);
     return { pedidosRecalculados: cambianPrecios ? await recalcularPedidosPendientes(tx) : 0 };
+  });
+}
+
+// ——— Quién se encarga de cada paso (10/10/2026) ———
+
+export interface ResponsablesDelNegocio {
+  responsables: Responsables;
+  personas: { id: string; nombre: string }[];
+}
+
+/** Quién está a cargo de cada parte del proceso y las personas que se pueden elegir. */
+export async function responsablesDelNegocio(db: BaseDatos, authUserId: string): Promise<ResponsablesDelNegocio> {
+  return ejecutarComoUsuario(db, authUserId, "configuracion.ver", async (tx, c) => {
+    const personas = await tx.select({ id: usuario.id, nombre: usuario.nombre }).from(usuario).where(eq(usuario.activo, true)).orderBy(asc(usuario.nombre));
+    return { responsables: c.responsables, personas };
+  });
+}
+
+/**
+ * Fija quién se encarga de cada parte del proceso (RN-190). Una etapa sin nadie queda libre. Solo
+ * se puede elegir a personas que tienen acceso.
+ */
+export async function guardarResponsables(db: BaseDatos, authUserId: string, datos: Partial<Record<EtapaConResponsable, string | null>>): Promise<void> {
+  await ejecutarComoUsuario(db, authUserId, "configuracion.editar", async (tx, c) => {
+    // Solo cambian las etapas que vienen: una que no está a la vista (Retiro, mientras está guardada) queda como estaba.
+    const elegidos = Object.fromEntries(
+      ETAPAS_CON_RESPONSABLE.filter((e) => e.clave in datos)
+        .map((e) => [e.clave, datos[e.clave] || null])
+        .filter(([, id]) => id),
+    ) as Record<string, string>;
+    const sinTocar = Object.fromEntries(ETAPAS_CON_RESPONSABLE.filter((e) => !(e.clave in datos) && c.responsables[e.clave]).map((e) => [e.clave, c.responsables[e.clave]!]));
+    const ids = [...new Set(Object.values(elegidos))];
+    if (ids.length) {
+      const activos = await tx.select({ id: usuario.id }).from(usuario).where(and(inArray(usuario.id, ids), eq(usuario.activo, true)));
+      if (activos.length !== ids.length) throw new ErrorDeNegocio("VALIDACION", "Una de las personas elegidas ya no tiene acceso: elegí a otra.");
+    }
+    const limpio = leerResponsables({ ...sinTocar, ...elegidos });
+    await tx.update(empresa).set({ responsablesEtapa: limpio, actualizadoPor: c.usuarioId }).where(eq(empresa.id, c.empresaId));
+    await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "USUARIO", resumen: "cambió quién se encarga de cada paso del proceso" });
   });
 }

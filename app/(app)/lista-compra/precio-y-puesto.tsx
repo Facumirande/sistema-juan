@@ -54,7 +54,8 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
     const o = ofertaDe(datos.sugerido.proveedorId ?? "", datos.sugerido.envaseId ?? "");
     return o ? sinPesos(o.precio) : "";
   });
-  const [pago, setPago] = useState<"CUENTA" | "PAGADO">(proveedores.find((p) => p.id === (datos.sugerido.proveedorId ?? ""))?.aCuenta ? "CUENTA" : "PAGADO");
+  // Con puesto, a cuenta; sin puesto, pagado en efectivo (se puede cambiar; 10/10/2026).
+  const [pago, setPago] = useState<"CUENTA" | "PAGADO">(datos.sugerido.proveedorId ? "CUENTA" : "PAGADO");
   const [exceder, setExceder] = useState(false);
   const [motivoExceso, setMotivoExceso] = useState("");
   // Recién al tocar "Guardar" se marcan en rojo los casilleros obligatorios que quedaron vacíos.
@@ -83,7 +84,7 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
   const porUnidad = p && factor && Number(factor) > 0 && Number(factor) !== 1 ? p.div(factor) : null;
   const loVenden = new Set(datos.ofertas.map((o) => o.proveedorId));
   const enOrden = [...proveedores].sort((a, b) => Number(loVenden.has(b.id)) - Number(loVenden.has(a.id)));
-  const falta = { proveedor: !proveedor, cantidad: !c || c.lte(0), precio: !p || p.lte(0) };
+  const falta = { cantidad: !c || c.lte(0), precio: !p || p.lte(0) };
   const confirmar = estado.requiereConfirmacion === true;
 
   const elegir = (nuevoProveedor: string, nuevoEnvase: string) => {
@@ -96,17 +97,17 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
     // Si ese puesto lo vende en otro envase, se pasa a ese.
     const suya = ofertaDe(id, envaseId) ?? datos.ofertas.find((o) => o.proveedorId === id) ?? null;
     elegir(id, suya?.presentacionId ?? envaseId);
-    setPago(proveedores.find((x) => x.id === id)?.aCuenta ? "CUENTA" : "PAGADO");
+    setPago(id ? "CUENTA" : "PAGADO");
   };
   const sumar = (paso: number) => setCantidad(formatearNumero(String(Math.max(0, (c ? Number(c.toString()) : 0) + paso)), { decimales: 3, recortarCeros: true }));
   const guardar = () => {
     setRevisado(true);
-    if (falta.proveedor || falta.cantidad || falta.precio) return;
+    if (falta.cantidad || falta.precio) return;
     const fd = new FormData();
     fd.append("itemId", itemId);
     fd.append("claveIdempotencia", clave);
-    fd.append("puesto", oferta ? `oferta:${oferta.ofertaId}` : `proveedor:${proveedorId}:${envaseId}`);
-    fd.append("pago", pago);
+    fd.append("puesto", oferta ? `oferta:${oferta.ofertaId}` : proveedorId ? `proveedor:${proveedorId}:${envaseId}` : `sinpuesto::${envaseId}`);
+    fd.append("pago", proveedorId ? pago : "PAGADO");
     fd.append("cantidad", cantidad);
     fd.append("precio", precio);
     if (confirmar) fd.append("confirmarVariacion", "on");
@@ -123,10 +124,10 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)]">
         <label className="flex flex-col gap-1">
           <span className={etiqueta}>
-            Puesto donde lo compraste <span className="text-error">*</span>
+            Puesto donde lo compraste
           </span>
-          <select value={proveedorId} onChange={(e) => elegirProveedor(e.target.value)} aria-invalid={revisado && falta.proveedor} className={`h-12 px-3 text-lg font-semibold ${control(revisado && falta.proveedor)}`}>
-            <option value="">Elegí el puesto…</option>
+          <select value={proveedorId} onChange={(e) => elegirProveedor(e.target.value)} className={`h-12 px-3 text-lg font-semibold ${control(false)}`}>
+            <option value="">Sin puesto (efectivo)</option>
             {enOrden.map((x) => {
               const suya = datos.ofertas.find((o) => o.proveedorId === x.id);
               return (
@@ -137,7 +138,6 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
               );
             })}
           </select>
-          {revisado && falta.proveedor && <span className="text-sm font-medium text-error">Falta elegir el puesto.</span>}
         </label>
 
         <div className="flex flex-col gap-1">
@@ -212,12 +212,21 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
               ["CUENTA", "📒 A cuenta"],
             ] as const
           ).map(([valor, texto]) => (
-            <button key={valor} type="button" onClick={() => setPago(valor)} aria-pressed={pago === valor} className={`min-h-11 px-4 font-bold ${pago === valor ? "bg-marca text-marca-texto" : "bg-superficie"}`}>
+            <button
+              key={valor}
+              type="button"
+              onClick={() => setPago(valor)}
+              aria-pressed={(proveedorId ? pago : "PAGADO") === valor}
+              // Sin puesto no hay a quién deberle: queda pagado.
+              disabled={!proveedorId && valor === "CUENTA"}
+              title={!proveedorId && valor === "CUENTA" ? "Elegí el puesto para dejarlo a cuenta" : undefined}
+              className={`min-h-11 px-4 font-bold disabled:cursor-not-allowed disabled:opacity-50 ${(proveedorId ? pago : "PAGADO") === valor ? "bg-marca text-marca-texto" : "bg-superficie"}`}
+            >
               {texto}
             </button>
           ))}
         </div>
-        <p className="min-w-0 flex-1 text-sm text-texto-suave">{pago === "CUENTA" ? `Queda a pagar: se suma a lo que le debemos a ${proveedor?.nombre ?? "ese puesto"}.` : "Queda pagada: no suma deuda."}</p>
+        <p className="min-w-0 flex-1 text-sm text-texto-suave">{!proveedor ? "Sin puesto: queda pagada en efectivo." : pago === "CUENTA" ? `Queda a pagar: se suma a lo que le debemos a ${proveedor.nombre}.` : "Queda pagada: no suma deuda."}</p>
         <p className="text-lg">
           Total <b className="text-2xl tabular-nums">{total ? formatearMoneda(total.toString()) : "$ —"}</b>
         </p>

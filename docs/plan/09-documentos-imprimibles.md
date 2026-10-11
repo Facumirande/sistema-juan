@@ -159,7 +159,7 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ [LOGO]  DISTRIBUIDORA EJEMPLO                 LISTA DE ENTREGA            │
+│ [LOGO]  DISTRIBUIDORA EJEMPLO                 REMITO                      │
 │         CUIT 30-00000000-0 · Resp. Inscripto  N° ENT-000412 · versión 1   │
 │         Mercado Central, Nave 2 · 11 5555-0000 Entrega: jueves 24/09/2026 │
 ├───────────────────────────────────────────────────────────────────────────┤
@@ -172,7 +172,7 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 
 | Elemento | Contenido |
 |---|---|
-| Encabezado izquierdo | Logo, `empresa.nombre`, identificación y condición fiscal, dirección y teléfono (si están cargados). |
+| Encabezado izquierdo | Logo, `empresa.nombre`, identificación y condición fiscal, dirección y teléfono (si están cargados). En los remitos (DOC-02 y DOC-03), la razón social va en verde y debajo del membrete hay una raya verde (los colores de fondo no salen al imprimir: todo lo verde son letras y rayas). |
 | Encabezado derecho | Nombre del documento en mayúsculas, número visible y versión, fecha principal (jornada, período o fecha de emisión). En los documentos del día (lista de compras, remito, lista contable, hoja de preparación) la **fecha de entrega va en letra grande y en negrita**, con el día de la semana ("Jueves 24/09"), para leerla de un vistazo. |
 | Pie | Fecha y hora de emisión (zona de la empresa), usuario, página X de Y, leyendas del documento. |
 | Marca de agua | `REEMPLAZADO — ver versión N` al reimprimir una versión vieja; `ANULADO` en documentos anulados; `VISTA PREVIA` cuando se imprime algo que todavía no se emitió (p. ej. una entrega en preparación). |
@@ -206,44 +206,36 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 |---|---|
 | Cuándo | Después de generar o regenerar la lista (04 §5.c, paso 9); se reimprime a demanda. |
 | Fuente | `lista_compra`, `lista_compra_item`, `proveedor` (nombre y `ubicacion_mercado`), `producto`, `presentacion`; la deuda de cada puesto solo con `proveedores.ver_credito`. |
-| Agrupación | Por proveedor sugerido (plan de compra), en el orden de `ubicacion_mercado`; dentro, por orden de categoría y nombre. Al final, "Sin proveedor" (alerta `SIN_PROVEEDOR`). Variantes: **por producto** y **solo líneas de un comprador** (`comprador_asignado_id`). |
+| Agrupación | Por puesto (el elegido en el renglón o el sugerido), en el orden de `ubicacion_mercado`; dentro, por orden de categoría y nombre. Aparte, "Sin puesto". |
 | Filtro por defecto | La lista completa del día: lo que falta y lo ya comprado o no conseguido (marcado ☑ "YA COMPRADO" o ✕), con para qué cliente es cada producto. Opción "Solo lo que falta comprar" (`?falta=1`). Desde el botón 🖨️ Imprimir de la lista se abre directamente el diálogo de impresión. |
 
-**Contenido**
+**Contenido** (simplificado el 10/10/2026: lo que sirve para comprar, nada más)
 
-1. Encabezado: "LISTA DE COMPRAS", `LC-` número y versión, jornada, fecha y hora de generación y quién la generó, comprador (si se filtró). Si la lista está desactualizada al imprimir: franja "DESACTUALIZADA: los pedidos cambiaron después de esta versión" (RN-052).
-2. Por cada proveedor: nombre, ubicación en el mercado, teléfono; con `proveedores.ver_credito`: semáforo actual, disponible hoy → después de este plan.
-3. Líneas: casilla ☐ · producto (y observaciones de los pedidos: "2 clientes piden bien maduro") · a comprar (cantidad de presentaciones y presentación) · equivalente en unidad base · necesidad · ya comprado · sobrante previsto · alertas en texto · con `precios.ver_costos`: precio sugerido y costo estimado · columnas vacías **Precio pagado** y **Comprado** para anotar.
-4. Subtotal por proveedor y total general (solo con `precios.ver_costos`).
+1. Encabezado: "LISTA DE COMPRAS", el día en grande, cuántos pedidos y productos tiene y cuántos faltan comprar, y cuándo se armó y se imprimió. Si la lista está desactualizada al imprimir: franja "DESACTUALIZADA: los pedidos cambiaron después de armarla" (RN-052).
+2. Por cada puesto (el elegido en el renglón o el que conviene, RN-187; lo que va sin puesto, aparte como "Sin puesto"): nombre y ubicación en el mercado, cuántos productos y, con `precios.ver_costos`, cuánto sale.
+3. Renglones: casilla ☐ (☑ si ya se compró, ✕ si no se consiguió; lo resuelto, tachado y más claro) · **producto** en negrita, con para quién es cada parte ("Hospital 180 kg · Restaurante 36 kg") y los avisos · **cuánto comprar** en envases ("15 × Cajón 18 kg") con el equivalente debajo, o en su unidad · con `precios.ver_costos`: el último precio · dos columnas vacías, **Puesto** y **Precio**, para anotar a mano.
+4. Total estimado (solo con `precios.ver_costos`).
 5. Pie: "Lo comprado se registra en el sistema desde el celular. Si no hay señal, anotá acá y cargalo al volver." (RT-01).
 
-**Ejemplo** (versión 1, con precios; datos de 04 §5.c.3):
+**Ejemplo** (con precios; datos de 04 §5.c.3):
 
 ```text
-LISTA DE COMPRAS                         LC-000024 · versión 1 · Jornada jueves 24/09/2026
-Generada 23/09/2026 20:00 por Juan
+LISTA DE COMPRAS                                                   Jueves 24/09
+3 pedidos · 5 productos · faltan comprar 5
 
-A · HNOS. GARCÍA — Puesto 14 · 11 5555-0101     VERDE 3,0 % → 51,6 % · disp. $485.000 → $242.000
- ☐ Producto         Comprar            Base    Necesidad  Ya compr.  Sobra  Precio sug.  Costo est.  Pagado  Compr.
- ☐ Tomate redondo   15 cajón 18 kg     270 kg  270 kg     0 kg       0 kg   $16.200      $243.000    ______  ______
-                                                                                    Subtotal $243.000
+HNOS. GARCÍA  Puesto 14                                1 producto · $243.000
+ ☐ Tomate redondo                15 × Cajón 18 kg   $16.200   Puesto ______  Precio ______
+   Hospital 180 kg · Restaurante 36 kg · Verdulería 54 kg   270 kg
 
-B · LA QUINTA — Puesto 32 · 11 5555-0102        VERDE 37,5 % → AMARILLO 72,7 % · disp. $250.000 → $109.200
- ☐ Lechuga criolla  9 jaula 12 u       108 u   98 u       0 u        10 u   $9.600       $86.400     ______  ______
- ☐ Cebolla          4 bolsa 20 kg      80 kg   73 kg      0 kg       7 kg   $13.600      $54.400     ______  ______
-                                                                                    Subtotal $140.800
+LA QUINTA  Puesto 32                                   2 productos · $140.800
+ ☐ Lechuga criolla               9 × Jaula 12 u      $9.600   Puesto ______  Precio ______
+ ☐ Cebolla                       4 × Bolsa 20 kg    $13.600   Puesto ______  Precio ______
 
-C · PAPAS DEL SUR — Nave 3                      Sin límite
- ☐ Papa             11 bolsa 25 kg     275 kg  265 kg     0 kg       10 kg  $12.500      $137.500    ______  ______
+SIN PUESTO                                             1 producto · $137.500
+ ☐ Papa                          11 × Bolsa 25 kg   $12.500   Puesto ______  Precio ______
 
-E · MAYORISTA NORTE — Nave 1                    VERDE 13,3 % → 55,0 % · disp. $260.000 → $135.000
- ☐ Banana           5 caja 20 kg       100 kg  100 kg     0 kg       0 kg   $25.000      $125.000    ______  ______
-   ⚠ Crédito insuficiente con D · Frutas Tropicales (disp. $90.000): pagando contado a D ahorrás $5.000.
-
-                                                                              TOTAL ESTIMADO $646.300
+                                                            TOTAL ESTIMADO $646.300
 ```
-
-(Semáforo actual de E: $40.000 / $300.000 = 13,3 %.)
 
 ### DOC-02 Lista de entrega (sin precios)
 
@@ -253,39 +245,44 @@ E · MAYORISTA NORTE — Nave 1                    VERDE 13,3 % → 55,0 % · di
 | Fuente | **Solo** consultas sin precios (`contenidoListaEntrega`, `lineasOperativas`; 03 §17). |
 | Copias | Se recomienda imprimir dos: **ORIGINAL — CLIENTE** y **DUPLICADO — EMPRESA** (vuelve firmado). La vista de impresión ofrece "2 copias" y agrega el rótulo a cada una. |
 
-**Contenido**
+**Contenido** (modelo de remito del 08/10/2026, pedido del usuario con una imagen de referencia)
 
-1. Encabezado: "LISTA DE ENTREGA", número de entrega (`ENT-`) y versión, fecha de entrega (jornada). Si la versión es mayor a 1: "Versión N — reemplaza a la versión N−1".
-2. Datos de entrega: cliente y punto de entrega (snapshot), dirección, franja de recepción, contacto y teléfono, referencia del cliente (orden de compra), pedidos incluidos (`PED-`), reparto y número de parada, bultos, instrucciones de entrega y observaciones del pedido.
-3. Líneas: número · producto (con "en reemplazo de …" si es sustitución) · cantidad preparada en unidad base y presentación pedida entre paréntesis · observación de la línea · columna vacía **Recibido** para que el cliente anote si recibe otra cantidad.
-4. Totales: cantidad de líneas y bultos. **Ningún importe.**
-5. Recepción: recuadros para nombre, cargo, firma, hora y observaciones de quien recibe.
-6. Pie: "Documento sin valores. La valorización figura en la lista contable de la misma entrega y versión."
+1. Membrete: a la izquierda, el logo y la razón social del negocio **en verde**, con domicilio, CUIT, condición de IVA y teléfono; a la derecha, el rótulo de la copia (si se imprimen dos), **"REMITO"**, el número de entrega (`ENT-`) y la versión si es mayor a 1, y la **fecha de entrega en grande**. Debajo, una **raya verde** de lado a lado.
+2. Dos recuadros: **Cliente** (nombre, CUIT y condición de IVA) y **Entrega** (dirección, punto de entrega, "Pedido PED-000246 del 21/09/2026" con el día en que se cargó, la orden de compra del cliente, y en una línea la franja de recepción, el contacto, el reparto con su parada y los bultos). Debajo, las instrucciones de entrega y las observaciones del pedido, si las hay.
+3. Tabla con el encabezado en verde: **Producto** (en negrita, con "en reemplazo de …" si es sustitución) · **Cantidad** preparada en unidad base · **Presentación** pedida ("2 × Cajón 18 kg") · columna vacía **Recibido** para que el cliente anote si recibe otra cantidad · **Observaciones** de la línea.
+4. Totales: cantidad de productos y bultos. **Ningún importe.**
+5. Recepción: renglones para nombre, cargo, firma, hora y observaciones de quien recibe.
+6. Pie (letra chica): "Versión N: reemplaza a la versión N−1" si corresponde, quién y cuándo lo emitió y "Documento sin valores. Los importes figuran en el remito valorizado de la misma entrega y versión."
 
-Si la entrega ya está confirmada al imprimir (versión posterior a la entrega), la columna de cantidad muestra la **cantidad entregada** y se agrega "Recibido por: Pepe (dueño), 24/09/2026 08:25".
+Si la entrega ya está confirmada al imprimir (versión posterior a la entrega), la columna de cantidad muestra la **cantidad entregada** y se agrega "Recibido por: Pepe (dueño), 24/09/2026 08:25". Los documentos emitidos antes del 08/10/2026 no guardaron la condición de IVA, el CUIT del cliente ni el día del pedido: se ven igual, sin esos datos.
 
 **Ejemplo** (restaurante, versión 1):
 
 ```text
-LISTA DE ENTREGA                                  N° ENT-000412 · versión 1
-                                                  Entrega: jueves 24/09/2026
-Cliente: Restaurante La Esquina                   Recepción: 09:00 a 11:00
-Punto de entrega: Local (puerta de servicio)      Reparto REP-000088 · parada 3
-Dirección: Av. Corrientes 3400, CABA              Bultos: 8
-Contacto: Sergio (cocina) · 11 5555-0301          Pedido: PED-000246
-Instrucciones: ingresar por la puerta de servicio, sobre calle lateral.
-
- #  Producto            Cantidad          Recibido    Observaciones
- 1  Tomate redondo      36 kg             ________
- 2  Papa                50 kg             ________
- 3  Lechuga criolla     20 u              ________
- 4  Cebolla             15 kg             ________
-                                           Líneas: 4 · Bultos: 8
+[LOGO] DISTRIBUIDORA EJEMPLO (en verde)                       ORIGINAL — CLIENTE
+       San Martín 450, San Miguel de Tucumán · CUIT 30-00000000-0           REMITO
+       · Responsable inscripto                                 N.º ENT-000412
+                                                               FECHA DE ENTREGA
+                                                               Jueves 24/09/2026
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ (verde)
+┌ CLIENTE ─────────────────────────┐ ┌ ENTREGA ───────────────────────────────┐
+│ Restaurante La Esquina           │ │ 25 de Mayo 650                         │
+│ CUIT 30-00000000-1 · Resp. inscr.│ │ Local (puerta de servicio)             │
+│                                  │ │ Pedido PED-000246 del 21/09/2026       │
+│                                  │ │ Recepción: 09:00 a 11:00 · 8 bultos    │
+└──────────────────────────────────┘ └────────────────────────────────────────┘
+ PRODUCTO          CANTIDAD   PRESENTACIÓN       RECIBIDO   OBSERVACIONES
+ Tomate redondo       36 kg   2 × Cajón 18 kg    ________
+ Papa                 50 kg   2 × Bolsa 25 kg    ________
+ Lechuga criolla       20 u   —                  ________
+ Cebolla              15 kg   —                  ________
+                                                      4 productos · 8 bultos
 
 Recibí conforme — Nombre: ______________  Cargo: __________  Firma: __________  Hora: ______
 Observaciones: ______________________________________________________________________
 
-Documento sin valores. La valorización figura en la lista contable ENT-000412 v1.
+Emitido el 24/09/2026 07:40 por Marta.
+Documento sin valores. Los importes figuran en el remito valorizado ENT-000412 v1.
 ```
 
 ### DOC-03 Lista contable (remito valorizado)
@@ -296,36 +293,41 @@ Documento sin valores. La valorización figura en la lista contable ENT-000412 v
 | Fuente | `entrega` (snapshots de cliente y dirección, importes) y `entrega_item` (cantidades y precios congelados). |
 | Destino | Contaduría del cliente (impreso con la entrega o enviado a `cliente.email_contable` desde P-80) y archivo de la empresa. |
 
-**Contenido**
+**Contenido** (el mismo modelo de remito que DOC-02)
 
-1. Encabezado: "LISTA CONTABLE (REMITO VALORIZADO)", `ENT-` y versión, fecha de entrega; si la versión es mayor a 1: "Versión N — reemplaza a la versión N−1" y el motivo resumido ("diferencias en la entrega").
-2. Cliente: nombre, razón social, identificación fiscal, punto de entrega y dirección (snapshots), referencia del cliente (orden de compra), pedidos incluidos.
-3. Líneas: número · producto (con "en reemplazo de …") · cantidad · unidad · precio unitario · **total por producto**. Cantidad = `cantidad_entregada` si la entrega está confirmada; si no, `cantidad_preparada` (RN-129). Si la línea se pidió por presentación, se muestra también el equivalente ("36 kg = 2 cajones"). Con `empresa.precios_incluyen_iva = false` y alícuotas distintas de 0, se agrega la columna de alícuota.
-4. Totales: subtotal neto, IVA discriminado por alícuota (si corresponde, 05 §5.7) y **total general** (`entrega.importe_total`).
+1. Membrete igual al de DOC-02, con el rótulo **"REMITO VALORIZADO"**, `ENT-` (y la versión si es mayor a 1) y la fecha de entrega en grande; la raya verde.
+2. Recuadros **Cliente** (nombre, razón social si es distinta, CUIT y condición de IVA) y **Entrega** (dirección, punto de entrega, pedidos con el día en que se cargaron y orden de compra), de los datos guardados en la entrega.
+3. Tabla con el encabezado en verde: **Producto** (con "en reemplazo de …") · **Cantidad** · **Presentación** · **Precio unit.** · **Subtotal**. Cantidad = `cantidad_entregada` si la entrega está confirmada; si no, `cantidad_preparada` (RN-129). Con `empresa.precios_incluyen_iva = false` y alícuotas distintas de 0, se agrega la columna de IVA.
+4. Total: a la derecha, sobre una **raya verde**, **TOTAL** y el importe en grande (`entrega.importe_total`); si hay IVA, antes el subtotal neto y el IVA (05 §5.7).
 5. Recepción (si ya está confirmada): recibió, cargo, fecha y hora.
-6. Pie: "Documento no válido como factura." (RN-140) y "Los precios de este documento quedaron fijados el 24/09/2026 07:40 y no cambian aunque cambien las listas de precios." (RN-089).
+6. Pie (letra chica): versión que reemplaza, quién y cuándo lo emitió, "Documento no válido como factura." (RN-140) y "Los precios quedaron fijados el 24/09/2026 07:40 y no cambian aunque cambien las listas de precios." (RN-089).
 
 No incluye costos, recargos, márgenes ni el origen de la regla: son datos internos.
 
 **Ejemplo** (restaurante, versión 1; precios de 04 §5.f.2):
 
 ```text
-LISTA CONTABLE (REMITO VALORIZADO)                N° ENT-000412 · versión 1
-                                                  Entrega: jueves 24/09/2026
-Cliente: Restaurante La Esquina — La Esquina Gastronomía S.A. — CUIT 30-00000000-1
-Punto de entrega: Local (puerta de servicio) · Av. Corrientes 3400, CABA · Pedido PED-000246
+[LOGO] DISTRIBUIDORA EJEMPLO (en verde)                        REMITO VALORIZADO
+       San Martín 450, San Miguel de Tucumán · CUIT 30-00000000-0   N.º ENT-000412
+       · Responsable inscripto                                 FECHA DE ENTREGA
+                                                               Jueves 24/09/2026
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ (verde)
+┌ CLIENTE ─────────────────────────┐ ┌ ENTREGA ───────────────────────────────┐
+│ Restaurante La Esquina           │ │ 25 de Mayo 650                         │
+│ La Esquina Gastronomía S.A.      │ │ Local (puerta de servicio)             │
+│ CUIT 30-00000000-1 · Resp. inscr.│ │ Pedido PED-000246 del 21/09/2026       │
+└──────────────────────────────────┘ └────────────────────────────────────────┘
+ PRODUCTO          CANTIDAD   PRESENTACIÓN      PRECIO UNIT.      SUBTOTAL
+ Tomate redondo       36 kg   2 × Cajón 18 kg      $1.250,00    $45.000,00
+ Papa                 50 kg   2 × Bolsa 25 kg        $680,00    $34.000,00
+ Lechuga criolla       20 u   —                    $1.080,00    $21.600,00
+ Cebolla              15 kg   —                      $920,00    $13.800,00
+                                               ━━━━━━━━━━━━━━━━━━━━━━━━━━ (verde)
+                                                      TOTAL   $114.400,00
 
- #  Producto            Cantidad   Unidad   Precio unitario        Total
- 1  Tomate redondo        36       kg             $1.250,00    $45.000,00
- 2  Papa                  50       kg               $680,00    $34.000,00
- 3  Lechuga criolla       20       u              $1.080,00    $21.600,00
- 4  Cebolla               15       kg               $920,00    $13.800,00
-                                               Subtotal neto  $114.400,00
-                                               IVA                  $0,00
-                                               TOTAL          $114.400,00
-
+Emitido el 24/09/2026 07:40 por Marta.
 Documento no válido como factura.
-Precios fijados el 24/09/2026 07:40; no cambian aunque cambien las listas de precios.
+Los precios quedaron fijados el 24/09/2026 07:40 y no cambian aunque cambien las listas de precios.
 ```
 
 ### DOC-04 Hoja de ruta de reparto

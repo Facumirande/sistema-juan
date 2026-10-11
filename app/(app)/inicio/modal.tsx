@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 
 /**
- * Ventana encima del tablero (la tarjeta abierta). Se cierra con ×, tocando afuera o con Escape. En
- * el celular ocupa toda la pantalla, como una pantalla más: arriba queda siempre a la vista la
- * barra para volver al tablero.
+ * Ventana encima del tablero (la tarjeta abierta). La tarjeta queda quieta en su lugar, con un
+ * margen alrededor (también en el celular), y lo que se desliza es su contenido, por dentro
+ * (pedido del usuario, 08/10/2026). Se cierra con el botón flotante ✕, tocando afuera o con Escape.
  */
 export function Modal({ cerrar, titulo, children }: { cerrar: string; titulo: string; children: ReactNode }) {
   const router = useRouter();
@@ -26,24 +26,19 @@ export function Modal({ cerrar, titulo, children }: { cerrar: string; titulo: st
     };
   }, [cerrar, router]);
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 sm:px-4 sm:py-10" role="dialog" aria-modal="true" aria-label={titulo}>
-      <Link href={cerrar} scroll={false} tabIndex={-1} aria-hidden className="fixed inset-0 cursor-default" />
-      <div ref={panel} tabIndex={-1} className="relative mx-auto min-h-full w-full max-w-5xl bg-modal text-tarjeta-texto shadow-2xl outline-none sm:min-h-0 sm:rounded-xl">
-        <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-black/10 bg-modal px-2 py-1.5 sm:hidden dark:border-white/10">
-          <Link href={cerrar} scroll={false} className="flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-3 text-lg font-bold hover:bg-black/10 dark:hover:bg-white/10">
-            ← Tablero
-          </Link>
-          <span className="min-w-0 flex-1 truncate text-right text-sm text-tarjeta-suave">{titulo}</span>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-2.5 sm:p-6" role="dialog" aria-modal="true" aria-label={titulo}>
+      <Link href={cerrar} scroll={false} tabIndex={-1} aria-hidden className="absolute inset-0 cursor-default" />
+      <div ref={panel} tabIndex={-1} className="tarjeta-abriendose relative flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-modal text-tarjeta-texto shadow-2xl ring-1 ring-black/10 outline-none dark:ring-white/10">
         <Link
           href={cerrar}
           scroll={false}
-          aria-label="Cerrar"
-          className="absolute top-2 right-2 z-10 hidden size-10 items-center justify-center rounded-full text-2xl text-tarjeta-suave hover:bg-black/10 sm:flex dark:hover:bg-white/10"
+          aria-label="Cerrar la tarjeta"
+          title="Cerrar"
+          className="absolute top-2 right-2 z-30 flex size-11 items-center justify-center rounded-full bg-black/10 text-2xl leading-none font-bold text-tarjeta-texto shadow-sm backdrop-blur hover:bg-black/20 dark:bg-white/15 dark:hover:bg-white/25"
         >
-          ×
+          ✕
         </Link>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">{children}</div>
       </div>
     </div>
   );
