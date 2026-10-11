@@ -73,6 +73,8 @@ describe("el color de la barra del teléfono", () => {
       const opacidad = Number(velo[4]);
       const mezcla = cielo.map((c, i) => c * (1 - opacidad) + Number(velo[i + 1]) * opacidad);
       expect(colorDeBarraDeEstado(tema, true)).toBe(aHex(mezcla));
+      // Y es el color de base de la página con el tablero a la vista (lo que pintan los iPhone nuevos en esa zona).
+      expect(variable(tema, "tablero-arriba")).toBe(aHex(mezcla));
     }
   });
 });

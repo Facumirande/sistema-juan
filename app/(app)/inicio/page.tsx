@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { obtenerBaseDatos } from "@/db/cliente";
+import { colorDeBarraDeEstado } from "@/dominio/aspecto/aspecto";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { esErrorDeNegocio } from "@/dominio/errores";
@@ -35,6 +36,16 @@ import type { ParaComprar } from "./checklist-vivo";
 import { TarjetaAbierta } from "./tarjeta-abierta";
 
 export const metadata: Metadata = { title: "Tablero de pedidos · Sistema Repartos" };
+
+// En esta pantalla, la barra del teléfono (la de la hora y la batería) va del color del cielo de la imagen de
+// fondo desde el primer momento, para que no quede una franja de otro color arriba; después `AspectoVivo` la
+// ajusta al modo elegido en ese aparato.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: colorDeBarraDeEstado("claro", true) },
+    { media: "(prefers-color-scheme: dark)", color: colorDeBarraDeEstado("oscuro", true) },
+  ],
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

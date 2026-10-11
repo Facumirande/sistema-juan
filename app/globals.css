@@ -29,8 +29,12 @@
   --grilla: #e1e0d9;
   --base-grafico: #c3c2b7;
   /* Tablero de tarjetas (estilo Trello): fondo de color, columnas grises y tarjetas blancas. */
-  /* Fondo del tablero y del paso a paso: una imagen de campo con un velo para que el texto blanco se lea. */
-  --tablero-fondo: linear-gradient(rgb(10 28 18 / 0.3), rgb(10 28 18 / 0.5)), url("/fondos/campo.svg") center / cover no-repeat, #2f6b3a;
+  /* Fondo del tablero y del paso a paso: una imagen de campo con un velo para que el texto blanco se lea.
+     `--tablero-arriba` es el color que esa imagen tiene en su borde de arriba (el cielo, con el velo): es el
+     color de base de la página cuando se ve el tablero, que es el que el teléfono usa para la zona de la hora
+     y la batería. Si cambia la imagen o el velo, cambia este color (lo verifica `tests/dominio/aspecto.test.ts`). */
+  --tablero-arriba: #436d91;
+  --tablero-fondo: linear-gradient(rgb(10 28 18 / 0.3), rgb(10 28 18 / 0.5)), url("/fondos/campo.svg") center / cover no-repeat, var(--tablero-arriba);
   --lista-fondo: #f1f2f4;
   --lista-texto: #172b4d;
   --tarjeta-fondo: #ffffff;
@@ -91,7 +95,8 @@
     --serie-negativa: #e66767;
     --grilla: #2c2c2a;
     --base-grafico: #383835;
-    --tablero-fondo: linear-gradient(rgb(4 10 7 / 0.62), rgb(4 10 7 / 0.78)), url("/fondos/campo.svg") center / cover no-repeat, #0d2716;
+    --tablero-arriba: #253d50;
+    --tablero-fondo: linear-gradient(rgb(4 10 7 / 0.62), rgb(4 10 7 / 0.78)), url("/fondos/campo.svg") center / cover no-repeat, var(--tablero-arriba);
     --lista-fondo: #101204;
     --lista-texto: #b6c2cf;
     --tarjeta-fondo: #22272b;
@@ -280,6 +285,13 @@ body:not(:has(.marco)) {
 @media screen {
   .marco-contenido:has(> .marco-principal > .a-pantalla-completa) {
     background: var(--tablero-fondo);
+  }
+  /* Sin franja negra arriba en el teléfono (pedido del usuario, 11/10/2026): los iPhone nuevos pintan la zona
+     de la hora y la batería con el color de base de la página, no con la imagen. Con el tablero a la vista,
+     ese color de base es el del borde de arriba de la imagen, así la imagen parece seguir hasta arriba. */
+  html:has(.marco-principal > .a-pantalla-completa),
+  body:has(.marco-principal > .a-pantalla-completa) {
+    background: var(--tablero-arriba);
   }
   .marco-contenido:has(> .marco-principal > .a-pantalla-completa) > .marco-barra {
     --nav-texto: #ffffff;

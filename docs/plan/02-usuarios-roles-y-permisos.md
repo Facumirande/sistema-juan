@@ -339,7 +339,7 @@ Un nombre de usuario se guarda en Supabase Auth como un correo interno que no se
 | Tema | Definición |
 |---|---|
 | Duración | La sesión queda abierta en cada dispositivo (Supabase renueva el acceso solo): en el mercado de madrugada no hay que volver a escribir la contraseña. Se entra desde cualquier dispositivo, las veces que haga falta. |
-| Salir | "Salir" en la barra de arriba cierra la sesión de ese dispositivo. |
+| Cerrar sesión | En la barra de arriba, al tocar el ícono de la persona: "Cerrar sesión" cierra la sesión de ese dispositivo. |
 | Qué se audita de usuarios | Habilitar o rechazar un pedido de acceso, clave provisoria nueva, quitar el acceso. |
 
 ---
