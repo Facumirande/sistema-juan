@@ -108,7 +108,7 @@ describe("productos y presentaciones (RN-001 a RN-009)", () => {
       presentacionCompraFactor: "18",
     });
     const ficha = await obtenerProducto(base.db, admin, ids.tomate);
-    expect(ficha).toMatchObject({ codigo: "TOM-R", unidadBase: "KG", alicuotaIva: "0.000", unidadBaseEditable: false });
+    expect(ficha).toMatchObject({ codigo: "TOM-R", unidadBase: "KG", alicuotaIva: "0.000", unidadSinUso: false });
     expect(ficha.presentaciones.map((p) => [p.nombre, p.factorABase, p.esUnidadBase])).toEqual([
       ["kg", "1.000", true],
       ["Cajón 18 kg", "18.000", false],
@@ -160,15 +160,24 @@ describe("productos y presentaciones (RN-001 a RN-009)", () => {
     expect(await mensajeDeError(agregarPresentacion(base.db, admin, { ...p, nombre: "cajón 18 KG", factorABase: "18" }))).toMatch(/ya tiene/);
   });
 
-  it("la unidad base se puede corregir mientras no haya otras presentaciones ni ofertas (RN-001)", async () => {
+  it("cómo se cuenta un producto se puede corregir siempre; lo ya cargado conserva sus números (RN-001)", async () => {
     const id = await crearProducto(base.db, admin, { codigo: "ACEL", nombre: "Acelga", categoriaId: ids.verduras!, unidadBase: "KG", admiteFraccion: true });
     const ficha = await obtenerProducto(base.db, admin, id);
-    expect(ficha.unidadBaseEditable).toBe(true);
+    expect(ficha.unidadSinUso).toBe(true);
     await editarProducto(base.db, admin, { ...ficha, id, unidadBase: "ATADO", admiteFraccion: false });
     expect((await obtenerProducto(base.db, admin, id)).presentaciones.map((p) => p.nombre)).toEqual(["atado"]);
 
+    // Con envases cargados también se puede: cambia el nombre de la unidad y nada más.
     const tomate = await obtenerProducto(base.db, admin, ids.tomate!);
-    expect(await mensajeDeError(editarProducto(base.db, admin, { ...tomate, id: ids.tomate!, unidadBase: "UNIDAD" }))).toMatch(/RN-001/);
+    expect(tomate.unidadSinUso).toBe(false);
+    const antes = tomate.presentaciones.map((p) => [p.nombre, p.factorABase, p.esUnidadBase]);
+    await editarProducto(base.db, admin, { ...tomate, id: ids.tomate!, unidadBase: "UNIDAD" });
+    const porUnidad = await obtenerProducto(base.db, admin, ids.tomate!);
+    expect(porUnidad.unidadBase).toBe("UNIDAD");
+    expect(porUnidad.presentaciones.map((p) => [p.nombre, p.factorABase, p.esUnidadBase])).toEqual(antes.map(([nombre, factor, esBase]) => [esBase ? "unidad" : nombre, factor, esBase]));
+    // Y se vuelve a como estaba.
+    await editarProducto(base.db, admin, { ...porUnidad, id: ids.tomate!, unidadBase: "KG" });
+    expect((await obtenerProducto(base.db, admin, ids.tomate!)).presentaciones.map((p) => [p.nombre, p.factorABase, p.esUnidadBase])).toEqual(antes);
   });
 
   it("el dibujo se elige de la lista, se ve en todos lados y se puede volver al automático (RN-196)", async () => {

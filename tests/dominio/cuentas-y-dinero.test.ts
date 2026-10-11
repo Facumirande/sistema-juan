@@ -70,6 +70,38 @@ describe("la cuenta de un cliente (a cobrar)", () => {
     expect(texto(c).entregas[0]).toBe("a: 30000.5 cobrado, falta 0 (COBRADA)");
   });
 
+  it("lo ya comprado y todavía sin entregar se anticipa: suma a lo que falta cobrar, aparte de lo entregado (RN-198)", () => {
+    const porEntregar = [
+      { id: "p2", fecha: "2026-10-09", importe: "40000" },
+      { id: "p1", fecha: "2026-10-08", importe: "15000" },
+    ];
+    const c = repartirCobros("10000", entregas, [{ monto: "25000", entregaId: null }], porEntregar);
+    // Lo cobrado sigue cancelando lo de antes y lo entregado, de lo más viejo a lo más nuevo.
+    expect(texto(c).entregas).toEqual(["a: 15000 cobrado, falta 15000.5 (PARCIAL)", "b: 0 cobrado, falta 50000 (PENDIENTE)", "c: 0 cobrado, falta 20000 (PENDIENTE)"]);
+    expect(c.porEntregar.map((p) => `${p.id}: falta ${p.pendiente.toString()}`)).toEqual(["p1: falta 15000", "p2: falta 40000"]);
+    expect([c.aCobrarEntregado.toString(), c.aCobrarPorEntregar.toString(), c.aCobrar.toString()]).toEqual(["85000.5", "55000", "140000.5"]);
+    // "Todo lo que debió" y "desde cuándo debe" siguen hablando de lo entregado.
+    expect([c.total.toString(), debeDesde(c)]).toEqual(["110000.5", "2026-10-05"]);
+  });
+
+  it("lo que pagó de más cubre primero lo entregado y después lo que está por entregarse; lo que sobre queda a favor", () => {
+    const porEntregar = [
+      { id: "p1", fecha: "2026-10-08", importe: "15000" },
+      { id: "p2", fecha: "2026-10-09", importe: "40000" },
+    ];
+    // Paga todo lo entregado (100.000,50) y 20.000 más: cubre p1 entero y 5.000 de p2.
+    const adelanto = repartirCobros("0", entregas, [{ monto: "120000.50", entregaId: null }], porEntregar);
+    expect(adelanto.entregas.every((e) => e.estado === "COBRADA")).toBe(true);
+    expect(adelanto.porEntregar.map((p) => `${p.id}: ${p.cobrado.toString()} cubierto, falta ${p.pendiente.toString()}`)).toEqual(["p1: 15000 cubierto, falta 0", "p2: 5000 cubierto, falta 35000"]);
+    expect([adelanto.aCobrarEntregado.toString(), adelanto.aCobrarPorEntregar.toString(), adelanto.aCobrar.toString(), adelanto.aFavor.toString()]).toEqual(["0", "35000", "35000", "0"]);
+    // Si paga más que todo, lo que sobra queda a favor.
+    const deMas = repartirCobros("0", [], [{ monto: "60000", entregaId: null }], porEntregar);
+    expect([deMas.aCobrar.toString(), deMas.aFavor.toString()]).toEqual(["0", "5000"]);
+    // Sin nada por entregar, todo es como antes.
+    const sin = repartirCobros("0", entregas, []);
+    expect([sin.porEntregar.length, sin.aCobrarPorEntregar.toString(), sin.aCobrarEntregado.eq(sin.aCobrar)]).toEqual([0, "0", true]);
+  });
+
   it("una entrega de $0 figura cobrada y sin entregas no debe nada", () => {
     expect(repartirCobros("0", [{ id: "x", fecha: "2026-10-07", importe: "0" }], []).entregas[0]!.estado).toBe("COBRADA");
     const vacia = repartirCobros("0", [], []);

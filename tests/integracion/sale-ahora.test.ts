@@ -15,7 +15,7 @@ import { esErrorDeNegocio } from "@/dominio/errores";
 
 import { prepararJornada2409, type Jornada2409 } from "./escenario-24-09";
 
-// "🚚 Sale ahora" (RN-153, pedido del usuario 06/10/2026): de Preparando a En camino en un paso.
+// "🚚 Salir ahora" (RN-153, pedido del usuario 06/10/2026): de Preparando a En camino en un paso.
 
 let j: Jornada2409;
 const entregas: Record<string, string> = {};

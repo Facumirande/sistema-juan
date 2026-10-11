@@ -86,6 +86,7 @@ export async function libroDelMes(db: BaseDatos, authUserId: string, mes: string
             ...dato("DINERO REAL · salió: gastos generales", b.dinero.gastos),
             ...dato("DINERO REAL del mes (entró − salió)", b.dinero.real),
             ...dato("DINERO PENDIENTE · a cobrar a los clientes (hoy)", b.dinero.aCobrar),
+            ...dato("DINERO PENDIENTE · de eso, ya comprado y por entregar", b.dinero.porEntregar),
             ...dato("DINERO PENDIENTE · a pagar a los proveedores (hoy)", b.dinero.aPagar),
             ...dato("DINERO PENDIENTE (a cobrar − a pagar)", b.dinero.pendiente),
             ...dato("BALANCE TOTAL (real + pendiente)", b.dinero.total),
@@ -139,7 +140,8 @@ export async function libroDelMes(db: BaseDatos, authUserId: string, mes: string
   });
   const deCuentas: Hoja[] = b.ver.dinero
     ? [
-        lista("A cobrar", ["Cliente", "Falta cobrar (hoy)", "Debe desde"], b.aCobrarPorCliente.map((x) => [x.cliente, numero(x.saldo), x.desde ? formatearFecha(x.desde) : null]), AZUL),
+        // "Falta cobrar" cuenta también lo ya comprado para el cliente que todavía no se entregó (RN-198): va aparte.
+        lista("A cobrar", ["Cliente", "Falta cobrar (hoy)", "De eso, comprado y por entregar", "Debe desde"], b.aCobrarPorCliente.map((x) => [x.cliente, numero(x.saldo), numero(x.porEntregar), x.desde ? formatearFecha(x.desde) : null]), AZUL),
         lista("A pagar", ["Proveedor", "Falta pagar (hoy)"], b.aPagarPorProveedor.map((x) => [x.proveedor, numero(x.saldo)]), NARANJA),
         lista(
           "Gastos e ingresos",

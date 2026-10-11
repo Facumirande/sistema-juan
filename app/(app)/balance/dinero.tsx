@@ -76,7 +76,15 @@ export function BalanceDelDinero({ d, unDia }: { d: NonNullable<Balance["dinero"
         </div>
         <div className={tarjeta}>
           <h3 className="text-lg font-semibold">⏳ Dinero pendiente · a hoy</h3>
-          <Renglon titulo="A cobrar" valor={d.aCobrar} maximo={maxPendiente} color="serie-1" pendiente enlace="/cuentas-clientes" detalle="Entregado a los clientes y todavía sin cobrar." />
+          <Renglon
+            titulo="A cobrar"
+            valor={d.aCobrar}
+            maximo={maxPendiente}
+            color="serie-1"
+            pendiente
+            enlace="/cuentas-clientes"
+            detalle={Number(d.porEntregar) > 0 ? `Entregado sin cobrar, más ${plata(d.porEntregar)} de lo ya comprado que está por entregarse.` : "Entregado a los clientes y todavía sin cobrar."}
+          />
           <Renglon titulo="A pagar" valor={d.aPagar} maximo={maxPendiente} color="serie-2" pendiente enlace="/cuentas-proveedores" detalle="Retirado de los proveedores y todavía sin pagar (crédito)." />
           <Resultado titulo={negativo(d.pendiente) ? "Se debe más de lo que falta cobrar" : "Pendiente a favor"} valor={d.pendiente} ayuda="Lo que falta cobrar menos lo que falta pagar." />
         </div>
@@ -224,7 +232,7 @@ export function PendientesPorNombre({ aCobrar, aPagar, total }: { aCobrar: Balan
         {aCobrar.length === 0 ? (
           <p className="text-texto-suave">No hay nada para cobrar.</p>
         ) : (
-          <BarrasHorizontales rayadas filas={aCobrar.slice(0, 10).map((c) => ({ etiqueta: c.cliente, valor: Number(c.saldo), texto: plata(c.saldo), detalle: c.desde ? `debe desde el ${fechaConDia(c.desde)}` : "debe de antes" }))} />
+          <BarrasHorizontales rayadas filas={aCobrar.slice(0, 10).map((c) => ({ etiqueta: c.cliente, valor: Number(c.saldo), texto: plata(c.saldo), detalle: [c.desde ? `debe desde el ${fechaConDia(c.desde)}` : Number(c.porEntregar) < Number(c.saldo) ? "debe de antes" : null, Number(c.porEntregar) > 0 ? `${plata(c.porEntregar)} comprado, por entregar` : null].filter(Boolean).join(" · ") }))} />
         )}
         <Link href="/cuentas-clientes" className="self-start font-semibold underline underline-offset-4">
           Ver y anotar cobros →

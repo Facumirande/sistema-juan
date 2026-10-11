@@ -199,7 +199,7 @@ export async function emitirDocumentosDelDia(db: BaseDatos, authUserId: string, 
 type ContextoDeSalida = { tx: Transaccion; c: ContextoUsuario };
 
 /**
- * Lo que comparten "Salir" y "🚚 Sale ahora": exige documentos emitidos de la versión vigente de
+ * Lo que comparten "Salir" y "🚚 Salir ahora": exige documentos emitidos de la versión vigente de
  * todas las paradas, que tienen que estar preparadas; si nadie quedó a cargo del reparto, lo hace
  * quien lo manda a salir. Entregas y pedidos pasan a EN_REPARTO; la jornada, a REPARTIENDO si era
  * el primero.
@@ -273,7 +273,7 @@ export interface ResultadoSalida {
 const ESTADOS_SIN_SALIR = ["BORRADOR", "EN_PREPARACION", "PREPARADA"];
 
 /**
- * "🚚 Sale ahora" (pedido del usuario, 06/10/2026): lleva a "En camino" los pedidos elegidos en un
+ * "🚚 Salir ahora" (pedido del usuario, 06/10/2026): lleva a "En camino" los pedidos elegidos en un
  * solo paso, como arrastrar la tarjeta en el tablero. Lo que falte separar se marca con lo propuesto
  * (lo pedido o lo que alcanzó), pero solo después de que la persona lo confirma; la entrega queda
  * preparada, se hacen los remitos que falten y sale el reparto: el armado en el que ya estaba (con

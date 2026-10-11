@@ -91,8 +91,8 @@ export interface FichaProducto {
   dibujo: string | null;
   activo: boolean;
   presentaciones: PresentacionDeProducto[];
-  /** Se puede cambiar la unidad base: todavía no tiene otras presentaciones ni ofertas (RN-001). */
-  unidadBaseEditable: boolean;
+  /** Todavía no tiene otros envases ni precios de compra: cambiarle la unidad no toca nada ya cargado (RN-001). */
+  unidadSinUso: boolean;
   /** La ganancia propia del producto (%), la de su categoría y la general: se aplica la primera que haya. */
   ganancia: { propia: string | null; categoria: string | null; general: string };
 }
@@ -274,7 +274,7 @@ export async function obtenerProducto(db: BaseDatos, authUserId: string, id: str
         activo: pr.activo,
         enUso: enUso.has(pr.id),
       })),
-      unidadBaseEditable: presentaciones.length === 1 && enUso.size === 0,
+      unidadSinUso: presentaciones.length === 1 && enUso.size === 0,
     };
   });
 }
@@ -421,14 +421,10 @@ export async function editarProducto(db: BaseDatos, authUserId: string, datos: z
     const categoriaId = d.categoriaId === actual.categoriaId ? actual.categoriaId : await resolverCategoria(tx, c, { id: d.categoriaId, nombre: d.categoriaNombre });
 
     const presentaciones = await tx.select().from(presentacion).where(eq(presentacion.productoId, d.id));
+    // RN-001: cómo se cuenta el producto se puede corregir siempre (pedido del usuario, 11/10/2026). Es un
+    // cambio de nombre de la unidad: los envases, los precios y las cantidades ya cargados conservan sus
+    // números y pasan a leerse en la unidad nueva (quien lo cambia los revisa en la ficha).
     if (d.unidadBase !== actual.unidadBase) {
-      const enUso = await presentacionesEnUso(tx, d.id);
-      if (presentaciones.length > 1 || enUso.size > 0) {
-        throw new ErrorDeNegocio(
-          "VALIDACION",
-          "La unidad base ya no se puede cambiar: el producto tiene presentaciones u ofertas cargadas en esa unidad (RN-001). Creá un producto nuevo.",
-        );
-      }
       await tx
         .update(presentacion)
         .set({ nombre: NOMBRE_UNIDAD[d.unidadBase], actualizadoPor: c.usuarioId })

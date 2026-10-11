@@ -208,11 +208,6 @@ export function TableroDeProductos({ grupos, preelegidas, puedeEditar }: { grupo
 
   return (
     <div className="flex flex-col gap-6" aria-busy={pendiente}>
-      {puedeEditar && (
-        <p className="text-sm text-texto-suave">
-          Para cambiar un producto de categoría, arrastrá su tarjeta (en el celular, mantené el dedo apretado un momento) o tocá <b>↔</b> en la tarjeta. Con el <b>✏️</b> se edita: el nombre, el dibujo, el envase y lo demás.
-        </p>
-      )}
       {mensaje.mensaje && (
         <div role={mensaje.ok ? "status" : "alert"} className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 ${mensaje.ok ? "border-marca bg-superficie" : "border-error text-error"}`}>
           <span>{mensaje.mensaje}</span>

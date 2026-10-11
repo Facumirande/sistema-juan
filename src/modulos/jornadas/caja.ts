@@ -30,6 +30,7 @@ const gastosDe = (tx: Transaccion, fecha: FechaISO) =>
  * El resumen balance de un día. Todo sale junto (y junto con lo demás que se pida en el mismo
  * `Promise.all`): una sola ida a la base. Lo cobrado de cada entrega es el del reparto de "A cobrar"
  * (un cobro cancela lo más viejo, RN-166): son los mismos números que da el balance de ese día.
+ * "A cobrar" cuenta también lo que ya se compró para ese día y todavía no se entregó (RN-198).
  */
 export async function resumenBalanceDelDia(tx: Transaccion, fecha: FechaISO): Promise<ResumenBalance> {
   const [[compras], [gastos], [j], cuentas] = await Promise.all([
@@ -42,8 +43,8 @@ export async function resumenBalanceDelDia(tx: Transaccion, fecha: FechaISO): Pr
     tx.select({ caja: jornada.cajaInicial }).from(jornada).where(eq(jornada.fecha, fecha)),
     cuentasDeClientes(tx),
   ]);
-  // Lo entregado ese día: cuánto ya pagaron los clientes y cuánto falta.
-  const delDia = cuentas.flatMap((c) => c.cuenta.entregas.filter((e) => e.fecha === fecha));
+  // Lo entregado ese día y lo ya comprado para ese día que falta entregar: cuánto pagaron los clientes y cuánto falta.
+  const delDia = cuentas.flatMap((c) => [...c.cuenta.entregas, ...c.cuenta.porEntregar].filter((e) => e.fecha === fecha));
   return resumenBalance({
     compras: compras?.total ?? "0",
     pagadoDeCompras: compras?.pagado ?? "0",

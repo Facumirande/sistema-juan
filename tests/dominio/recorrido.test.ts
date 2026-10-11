@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { enlaceVerEnMapa, enlaceWaze, enlacesGoogleMaps, textoDeDestino } from "@/dominio/entregas/navegacion";
 import { FACTOR_CALLES, distanciaKm, estimarTramo, planearRecorrido, type Coordenada, type ParadaRecorrido } from "@/dominio/entregas/recorrido";
-import { coordenadaValida, enLaZona, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, mostrarCoordenadas, ZONA_DEL_NEGOCIO } from "@/dominio/entregas/ubicacion";
+import { consultasDeRespaldo, coordenadaValida, enLaZona, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, mostrarCoordenadas, ZONA_DEL_NEGOCIO } from "@/dominio/entregas/ubicacion";
 
 const OBELISCO: Coordenada = { lat: -34.6037, lng: -58.3816 };
 const PLAZA_DE_MAYO: Coordenada = { lat: -34.6083, lng: -58.3712 };
@@ -238,5 +238,37 @@ describe("leer una ubicación pegada", () => {
     ]);
     expect(lugaresDePhoton(null)).toEqual([]);
     expect(lugaresDePhoton({ features: "no" })).toEqual([]);
+  });
+
+  it("cuando un lugar no figura en el mapa, se busca la zona donde queda (11/10/2026)", () => {
+    // Con coma: lo que viene después es la zona; lo de antes es lo que no se encontró.
+    expect(consultasDeRespaldo("country pinar II, tafi viejo")).toEqual([{ consulta: "tafi viejo", falta: "country pinar II" }]);
+    expect(consultasDeRespaldo("  Club Social ,  Barrio Norte , Yerba Buena ")).toEqual([
+      { consulta: "Barrio Norte, Yerba Buena", falta: "Club Social" },
+      { consulta: "Yerba Buena", falta: "Club Social, Barrio Norte" },
+    ]);
+    // Sin coma: las últimas dos palabras y, después, la última (si dice algo).
+    expect(consultasDeRespaldo("country   pinar II tafi viejo")).toEqual([
+      { consulta: "tafi viejo", falta: "country pinar II" },
+      { consulta: "viejo", falta: "country pinar II tafi" },
+    ]);
+    expect(consultasDeRespaldo("finca lules")).toEqual([{ consulta: "lules", falta: "finca" }]);
+    // Nada para probar: una sola palabra, o una zona demasiado corta.
+    expect(consultasDeRespaldo("Mercofrut")).toEqual([]);
+    expect(consultasDeRespaldo("quinta de al")).toEqual([{ consulta: "de al", falta: "quinta" }]);
+    expect(consultasDeRespaldo("local, ab")).toEqual([]);
+  });
+
+  it("como zona solo valen las ciudades, los pueblos y los barrios, no un local o una calle con ese nombre", () => {
+    const punto = (lng: number, lat: number) => ({ type: "Point", coordinates: [lng, lat] });
+    const respuesta = {
+      features: [
+        { geometry: punto(-65.26, -26.73), properties: { name: "Tafi Viejo", street: "Alsina", city: "Tafí Viejo", state: "Tucumán", osm_key: "railway" } },
+        { geometry: punto(-65.2592, -26.7343), properties: { name: "Tafí Viejo", county: "Departamento Tafí Viejo", state: "Tucumán", osm_key: "place" } },
+        { geometry: punto(-65.3, -26.7), properties: { name: "Departamento Tafí Viejo", state: "Tucumán", osm_key: "boundary" } },
+      ],
+    };
+    expect(lugaresDePhoton(respuesta)).toHaveLength(3);
+    expect(lugaresDePhoton(respuesta, { soloZonas: true }).map((l) => l.etiqueta)).toEqual(["Tafí Viejo", "Departamento Tafí Viejo"]);
   });
 });

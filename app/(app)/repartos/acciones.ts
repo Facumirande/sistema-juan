@@ -62,7 +62,7 @@ export async function emitirPendientesAccion(_estado: EstadoAccion, datos: FormD
 const todos = (datos: FormData, nombre: string) => datos.getAll(nombre).filter((v): v is string => typeof v === "string" && v !== "");
 
 /**
- * "🚚 Sale ahora": los pedidos (o entregas) elegidos pasan a En camino en un paso: se termina de
+ * "🚚 Salir ahora": los pedidos (o entregas) elegidos pasan a En camino en un paso: se termina de
  * preparar lo que falte (con confirmación), se hacen los remitos y sale el reparto.
  */
 export async function salenAhoraAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {

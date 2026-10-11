@@ -154,7 +154,7 @@ export const PASO_SIGUIENTE: Readonly<Record<ClaveColumna, { hacia: ClaveColumna
   pedidos: { hacia: "en_lista", texto: "🛒 Mandar a la lista de compras" },
   en_lista: RETIRO_A_LA_VISTA ? { hacia: "comprados", texto: "✓ Ya está todo comprado" } : { hacia: "preparando", texto: "✓ Comprado: a preparar" },
   comprados: { hacia: "preparando", texto: "📦 Empezar a prepararlo" },
-  preparando: { hacia: "en_camino", texto: "🚚 Sale ahora" },
+  preparando: { hacia: "en_camino", texto: "🚚 Salir ahora" },
   en_camino: { hacia: "entregados", texto: "✅ Ya se entregó" },
   entregados: null,
 };
@@ -185,12 +185,12 @@ export type DondeSeHace = "preparacion" | "viaje";
 /** Por qué una tarjeta no se puede soltar ahí y dónde se hace ese paso (para decirlo con su botón). */
 export function porQueNoSeMueve(desde: ClaveColumna, hacia: ClaveColumna): { mensaje: string; ir: DondeSeHace } {
   if (!VAN_Y_VUELVEN.includes(desde)) {
-    if (hacia === "entregados" && desde === "preparando") return { mensaje: "Todavía no salió a entregar. Primero pasalo a “En camino” (el botón “🚚 Sale ahora” de la tarjeta) y, cuando lo recibe el cliente, marcalo entregado.", ir: "viaje" };
+    if (hacia === "entregados" && desde === "preparando") return { mensaje: "Todavía no salió a entregar. Primero pasalo a “En camino” (el botón “🚚 Salir ahora” de la tarjeta) y, cuando lo recibe el cliente, marcalo entregado.", ir: "viaje" };
     if (desde === "entregados") return { mensaje: "Un pedido entregado vuelve de a un paso: soltalo en “En camino” (si no se entregó) y, desde ahí, en “Preparando” (si tampoco salió).", ir: "viaje" };
     return { mensaje: "Un pedido que ya salió vuelve de a un paso: soltalo primero en “Preparando” (queda preparado, sin salir) y, si hace falta, después más atrás.", ir: "preparacion" };
   }
   if (hacia === "entregados") return { mensaje: "Para marcarlo Entregado primero hay que prepararlo y que salga: pasalo a “Preparando”, después a “En camino” y recién ahí a “Entregados”.", ir: "preparacion" };
-  return { mensaje: "Para que salga En camino primero hay que prepararlo: pasalo a “Preparando”, separá lo suyo y después tocá “🚚 Sale ahora”.", ir: "preparacion" };
+  return { mensaje: "Para que salga En camino primero hay que prepararlo: pasalo a “Preparando”, separá lo suyo y después tocá “🚚 Salir ahora”.", ir: "preparacion" };
 }
 
 /** Qué se puede hacer con las tarjetas elegidas (según su estado y la columna en la que están). */

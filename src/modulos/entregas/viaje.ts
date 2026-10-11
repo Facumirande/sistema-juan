@@ -4,7 +4,7 @@ import { z } from "zod";
 import { cliente, destinoFavorito, empresa, entrega, jornada, paradaExtra, puntoEntrega, reparto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import type { Coordenada } from "@/dominio/entregas/recorrido";
-import { coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, ZONA_DEL_NEGOCIO, type LugarSugerido } from "@/dominio/entregas/ubicacion";
+import { consultasDeRespaldo, coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, ZONA_DEL_NEGOCIO, type LugarSugerido } from "@/dominio/entregas/ubicacion";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
@@ -295,13 +295,17 @@ async function buscarEnNominatim(buscador: Buscador, parametros: Record<string, 
  * OpenStreetMap pensado para eso (Nominatim no admite autocompletar): primero adentro de la provincia
  * y, si ahí no aparece nada, en todo el país, siempre cerca de San Miguel de Tucumán. Se consulta
  * desde el servidor, un instante después de que se deja de escribir.
+ *
+ * Si el lugar no figura en el mapa (un country, un local sin cargar), en vez de no devolver nada se
+ * ofrece la zona donde queda (11/10/2026): lo que viene después de la coma o las últimas palabras,
+ * marcado como aproximado, para abrir el mapa ahí y poner el punto exacto a mano.
  */
 export async function sugerirLugares(texto: string, buscador: Buscador = fetch): Promise<LugarSugerido[]> {
   const q = texto.trim();
   if (q.length < 3) return [];
   const { caja, centro } = ZONA_DEL_NEGOCIO;
-  const pedir = async (conCaja: boolean) => {
-    const parametros = new URLSearchParams({ q, limit: "6", lat: String(centro.lat), lon: String(centro.lng) });
+  const pedir = async (consulta: string, conCaja: boolean): Promise<unknown> => {
+    const parametros = new URLSearchParams({ q: consulta, limit: "6", lat: String(centro.lat), lon: String(centro.lng) });
     if (conCaja) parametros.set("bbox", `${caja.oeste},${caja.sur},${caja.este},${caja.norte}`);
     let respuesta: Response;
     try {
@@ -310,10 +314,18 @@ export async function sugerirLugares(texto: string, buscador: Buscador = fetch):
       throw new ErrorDeNegocio("VALIDACION", "No se pudo consultar el mapa (¿hay internet?).");
     }
     if (!respuesta.ok) throw new ErrorDeNegocio("VALIDACION", "El mapa no respondió: probá de nuevo en un rato.");
-    return lugaresDePhoton(await respuesta.json());
+    return respuesta.json();
   };
-  const enLaZona = await pedir(true);
-  return enLaZona.length > 0 ? enLaZona : pedir(false);
+  const enLaZona = lugaresDePhoton(await pedir(q, true));
+  if (enLaZona.length > 0) return enLaZona;
+  const enElPais = lugaresDePhoton(await pedir(q, false));
+  if (enElPais.length > 0) return enElPais;
+  // No figura: la zona donde queda, para marcarlo a mano.
+  for (const respaldo of consultasDeRespaldo(q)) {
+    const zonas = lugaresDePhoton(await pedir(respaldo.consulta, true), { soloZonas: true });
+    if (zonas.length > 0) return zonas.slice(0, 3).map((z) => ({ ...z, aproximado: { falta: respaldo.falta } }));
+  }
+  return [];
 }
 
 /**

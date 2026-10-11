@@ -606,7 +606,7 @@ export async function entregarPedido(db: BaseDatos, authUserId: string, pedidoId
   const enCamino = entregas.filter((e) => e.estado === "EN_REPARTO");
   if (enCamino.length === 0) {
     if (entregas.some((e) => e.estado === "ENTREGADA")) throw new ErrorDeNegocio("VALIDACION", "Este pedido ya figura como entregado. Recargá la página para verlo en su columna.");
-    throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no salió a entregar: primero pasalo a “En camino” (el botón “🚚 Sale ahora” de su tarjeta) y después marcalo entregado.");
+    throw new ErrorDeNegocio("VALIDACION", "Este pedido todavía no salió a entregar: primero pasalo a “En camino” (el botón “🚚 Salir ahora” de su tarjeta) y después marcalo entregado.");
   }
   for (const e of enCamino) await confirmarEntrega(db, authUserId, { entregaId: e.id, modo: "COMPLETA", recibidoPor: RECIBIO_SIN_NOMBRE });
   return { cliente: enCamino[0]!.cliente };

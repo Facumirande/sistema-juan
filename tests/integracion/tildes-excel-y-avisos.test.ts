@@ -13,6 +13,7 @@ import { crearProducto, editarProducto, listarProductos, obtenerProducto } from 
 import { avisosPara, marcarAvisosVistos } from "@/modulos/colaboracion/avisos";
 import { escribirNota, marcarNotasLeidas } from "@/modulos/colaboracion/notas";
 import { registrarCompra } from "@/modulos/compras/compras";
+import { cuentaDeCliente } from "@/modulos/cuentas-clientes/cuentas";
 import { desmarcarPedidoComprado, generarListaCompra, hojaDeListaDeCompras, marcarNoConseguido, marcarPedidoComprado, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
 import { iniciarPreparacion, obtenerEntregaParaPreparar, obtenerPreparacion } from "@/modulos/entregas/preparacion";
 import { datosParaCargarPedido } from "@/modulos/pedidos/carga";
@@ -147,7 +148,15 @@ describe("tildar la compra en las tarjetas del tablero", () => {
     let hospital = await tarjeta("Hospital San Martín");
     expect([hospital.columna, hospital.avance]).toEqual(["en_lista", { que: "comprado", hechos: 0, total: 2 }]);
 
+    // "A cobrar" cuenta lo de un pedido a medida que se compra (RN-198): todavía no se compró nada de este.
+    const porEntregar = async () => (await cuentaDeCliente(j.base.db, j.admin, j.ids.hospital!)).porEntregar.find((p) => p.pedidoId === pedidos.hospital)?.importe ?? null;
+    const delTomate = (await obtenerPedido(j.base.db, j.admin, pedidos.hospital!)).lineas.find((l) => l.producto === "Tomate redondo")!.precio?.subtotal ?? null;
+    expect(delTomate).not.toBeNull();
+    expect(await porEntregar()).toBeNull();
+
     await tildarLinea(j.base.db, j.comprador, { itemId: hospital.producto("Tomate redondo").listaItemId!, tildado: true });
+    // Comprado el tomate, ya cuenta lo del tomate (la papa todavía no).
+    expect(await porEntregar()).toBe(delTomate);
     hospital = await tarjeta("Hospital San Martín");
     expect(hospital.producto("Tomate redondo")).toMatchObject({ hecha: true, compra: "COMPRADO", tildado: true });
     expect([hospital.columna, hospital.avance?.hechos]).toEqual(["en_lista", 1]);
@@ -160,11 +169,14 @@ describe("tildar la compra en las tarjetas del tablero", () => {
     // Con todo resuelto pasa a Retiro (o se queda en la lista, con esa columna guardada).
     expect(hospital.columna).toBe(columnaEnCompra(true));
     expect(hospital.producto("Papa")).toMatchObject({ hecha: true, compra: "NO_CONSEGUIDO", tildado: false, aviso: "No se consiguió en el mercado" });
+    // Lo que no se consiguió no se va a entregar: no suma a lo que falta cobrar.
+    expect(await porEntregar()).toBe(delTomate);
 
     // Destildar lo vuelve a dejar por comprar.
     await tildarLinea(j.base.db, j.comprador, { itemId: hospital.producto("Tomate redondo").listaItemId!, tildado: false });
     hospital = await tarjeta("Hospital San Martín");
     expect([hospital.columna, hospital.producto("Tomate redondo").compra]).toEqual(["en_lista", "PENDIENTE"]);
+    expect(await porEntregar()).toBeNull();
   });
 
   it("la tarjeta se pasa a Comprado sin tildar todo, y se puede devolver", async () => {

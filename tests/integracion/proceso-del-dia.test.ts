@@ -123,4 +123,28 @@ describe("sugerencias de lugares mientras se escribe (sin salir a internet)", ()
     expect(await codigoDeError(sugerirLugares("Mitre 450", async () => new Response("", { status: 503 })))).toBe("VALIDACION");
     expect(await codigoDeError(sugerirLugares("Mitre 450", async () => Promise.reject(new Error("sin red"))))).toBe("VALIDACION");
   });
+
+  it("si el lugar no figura en el mapa, ofrece la zona donde queda para marcarlo a mano", async () => {
+    const pedidas: string[] = [];
+    // Un mapa donde no está el country, pero sí la ciudad (y una estación con el mismo nombre, que no sirve de zona).
+    const photon = async (url: string) => {
+      const q = new URL(url).searchParams.get("q")!;
+      pedidas.push(q);
+      const features =
+        q === "tafi viejo"
+          ? [
+              { geometry: { coordinates: [-65.26, -26.73] }, properties: { name: "Tafi Viejo", street: "Alsina", city: "Tafí Viejo", state: "Tucumán", osm_key: "railway" } },
+              { geometry: { coordinates: [-65.2592, -26.7343] }, properties: { name: "Tafí Viejo", county: "Departamento Tafí Viejo", state: "Tucumán", osm_key: "place" } },
+            ]
+          : [];
+      return new Response(JSON.stringify({ features }));
+    };
+    expect(await sugerirLugares("country pinar II, tafi viejo", photon)).toEqual([
+      { etiqueta: "Tafí Viejo", detalle: "Departamento Tafí Viejo, Tucumán", coordenada: { lat: -26.7343, lng: -65.2592 }, aproximado: { falta: "country pinar II" } },
+    ]);
+    // Primero lo escrito tal cual (en Tucumán y en el país) y recién después la zona.
+    expect(pedidas).toEqual(["country pinar II, tafi viejo", "country pinar II, tafi viejo", "tafi viejo"]);
+    // Si tampoco aparece la zona, no hay nada para ofrecer.
+    expect(await sugerirLugares("quinta los nogales, paraje perdido", photon)).toEqual([]);
+  });
 });

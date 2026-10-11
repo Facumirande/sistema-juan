@@ -322,7 +322,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
             detalle={t.gananciaPct !== null ? `${formatearNumero(t.gananciaPct, { decimales: 0 })} de cada 100 pesos vendidos` : "Lo vendido menos lo que costó"}
           />
         )}
-        {b.dinero && <Dato titulo="A cobrar" icono="🤝" color="azul" valor={plata(b.dinero.aCobrar)} enlace="/cuentas-clientes" detalle="Entregado y sin cobrar, hoy · ver →" />}
+        {b.dinero && <Dato titulo="A cobrar" icono="🤝" color="azul" valor={plata(b.dinero.aCobrar)} enlace="/cuentas-clientes" detalle="Entregado y por entregar, sin cobrar · ver →" />}
         {t.deuda !== null && <Dato titulo="A pagar" icono="📤" color="rosa" valor={plata(t.deuda)} enlace="/cuentas-proveedores" detalle="Retirado y sin pagar, hoy · ver →" />}
       </div>
 

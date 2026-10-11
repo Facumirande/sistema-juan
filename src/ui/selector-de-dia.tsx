@@ -192,10 +192,10 @@ export function SelectorDeDia({
               onClick={() => elegir(x.fecha)}
               aria-current={elegido ? "date" : undefined}
               aria-label={`${fechaConDia(x.fecha)}, ${cuantosPedidos(x)}`}
-              className={`relative flex min-h-12 min-w-[3.6rem] shrink-0 flex-col items-center justify-center rounded-xl px-2 py-1 text-center leading-none ${clases} ${x.fecha === hoy && !elegido ? "ring-2 ring-white/70" : ""} ${elegido && yendo ? "animate-pulse" : ""}`}
+              className={`relative flex min-h-11 min-w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-xl px-1.5 py-1 text-center leading-none ${clases} ${x.fecha === hoy && !elegido ? "ring-2 ring-white/70" : ""} ${elegido && yendo ? "animate-pulse" : ""}`}
             >
               <span className="text-xs font-bold uppercase">{nombreDelDia(x.fecha, hoy)}</span>
-              <span className="mt-0.5 text-lg font-extrabold tabular-nums">
+              <span className="mt-0.5 text-base font-extrabold tabular-nums">
                 {x.fecha.slice(8, 10)}/{x.fecha.slice(5, 7)}
               </span>
               {x.estado === "CERRADA" ? (
@@ -219,7 +219,7 @@ export function SelectorDeDia({
         aria-haspopup="dialog"
         aria-label="Elegir otro día en el calendario"
         title="Elegir otro día en el calendario"
-        className={`mt-1 flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl px-3 font-semibold ${boton}`}
+        className={`mt-1 flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-3 font-semibold ${boton}`}
       >
         <span aria-hidden className="text-xl leading-none">
           📅

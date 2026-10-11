@@ -10,7 +10,8 @@ import { guardarCajaInicialAccion } from "./acciones";
 // El resumen balance (pedido del usuario, 10 y 11/10/2026): el cartel de arriba del tablero, con el
 // día que se mira en tres apartados. Uno con lo Pagado y, debajo, el Crédito (lo retirado que falta
 // pagar); otro con la Ganancia (lo ya cobrado menos lo pagado) y, debajo, lo que falta cobrar; y a
-// la derecha la Caja inicial, la plata con la que se cuenta, que se carga tocándola. Son apartados
+// la derecha la Caja inicial, la plata con la que se cuenta, que se carga tocándola. "A cobrar" cuenta
+// desde que se compra lo del pedido, antes de entregarlo (RN-198). Son apartados
 // distintos: no se suman a la vista. Si los gastos del día superan la caja, el cartel lo avisa en
 // rojo (y la campanita también). Se pone al día solo con cada cambio. La cuenta está en
 // `src/dominio/reportes/resumen-balance.ts` (RN-180, RN-194).
@@ -35,7 +36,7 @@ const APARTADOS = [
   ],
   [
     { clave: "ganancia", titulo: "Ganancia", ayuda: "Lo que ya se cobró de lo entregado este día, menos lo pagado.", color: "text-[#86efc3]" },
-    { clave: "aCobrar", titulo: "A cobrar", ayuda: "Lo entregado este día que los clientes todavía no pagaron.", color: "text-[#a9d4ff]" },
+    { clave: "aCobrar", titulo: "A cobrar", ayuda: "Lo que falta cobrar de este día: lo entregado y lo ya comprado que está por entregarse.", color: "text-[#a9d4ff]" },
   ],
 ] as const;
 

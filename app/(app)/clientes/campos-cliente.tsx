@@ -2,6 +2,8 @@ import type { FichaCliente, PuntoDeEntrega } from "@/modulos/clientes/clientes";
 import { DIAS_SEMANA, PERIODICIDADES, TIPOS_CLIENTE, opciones } from "@/ui/etiquetas";
 import { AreaTexto, Campo, Casilla, Selector } from "@/ui/formularios";
 
+import { DireccionDeEntrega } from "./direccion-de-entrega";
+
 const PRIORIDADES = [
   { valor: "1", etiqueta: "1 · máxima (ej. hospital)" },
   { valor: "2", etiqueta: "2" },
@@ -58,7 +60,8 @@ export function CamposPunto({ punto, prefijo = "" }: { punto?: PuntoDeEntrega; p
     <>
       <div className="grid gap-4 sm:grid-cols-2">
         <Campo etiqueta="Nombre del punto" name={`${prefijo}nombre`} defaultValue={punto?.nombre} placeholder="Ej. Local, Cocina central" />
-        <Campo etiqueta="Dirección" name={`${prefijo}direccion`} defaultValue={punto?.direccion} />
+        {/* Con el buscador de lugares: elegir de la lista deja también marcada la ubicación. */}
+        <DireccionDeEntrega prefijo={prefijo} direccion={punto?.direccion} />
         <Campo etiqueta="Localidad" name={`${prefijo}localidad`} defaultValue={punto?.localidad ?? ""} />
         <Campo etiqueta="Quién recibe" name={`${prefijo}contactoNombre`} defaultValue={punto?.contactoNombre ?? ""} />
         <Campo etiqueta="Teléfono de quien recibe" name={`${prefijo}contactoTelefono`} type="tel" defaultValue={punto?.contactoTelefono ?? ""} />

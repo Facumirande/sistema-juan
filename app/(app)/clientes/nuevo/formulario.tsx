@@ -95,6 +95,8 @@ export function FormularioCliente() {
                   setUbicacion(null);
                 }}
                 alElegir={(l) => {
+                  // Si no figura en el mapa, queda lo escrito; el punto se marca después, en su ficha.
+                  if (l.aproximado) return;
                   setDireccion(l.etiqueta);
                   setUbicacion(l.coordenada);
                 }}

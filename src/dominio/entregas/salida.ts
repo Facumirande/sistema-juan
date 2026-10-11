@@ -1,4 +1,4 @@
-// "🚚 Sale ahora" (pedido del usuario, 06/10/2026): pasar pedidos de "Preparando" a "En camino" en
+// "🚚 Salir ahora" (pedido del usuario, 06/10/2026): pasar pedidos de "Preparando" a "En camino" en
 // un solo paso. Decide qué repartos salen con las entregas elegidas: las que ya están en un reparto
 // armado salen con ese reparto (y todas sus paradas); las sueltas se suman a ese reparto si hay uno
 // solo, o salen juntas en un reparto nuevo.

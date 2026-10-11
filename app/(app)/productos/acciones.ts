@@ -154,9 +154,12 @@ export async function crearProductoGuiadoAccion(_estado: EstadoAccion, datos: Fo
  */
 export async function editarProductoGuiadoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   const id = campo(datos, "id");
+  let revisar = false;
   const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
     const actual = await obtenerProducto(db, authUserId, id);
-    const unidadBase = (actual.unidadBaseEditable ? campo(datos, "unidadBase") || actual.unidadBase : actual.unidadBase) as UnidadBase;
+    const unidadBase = (campo(datos, "unidadBase") || actual.unidadBase) as UnidadBase;
+    // Si cambia cómo se vende un producto que ya tiene envases o precios, después se abre su ficha para revisarlos.
+    revisar = unidadBase !== actual.unidadBase && !actual.unidadSinUso;
     const corta = UNIDADES_CORTAS[unidadBase] ?? "";
 
     // El envase en que se compra: uno que ya tiene, uno nuevo (se le agrega) o suelto.
@@ -197,7 +200,7 @@ export async function editarProductoGuiadoAccion(_estado: EstadoAccion, datos: F
     }
     return { ok: true, mensaje: "Cambios guardados." };
   });
-  if (resultado.ok) redirect(campo(datos, "volver") === "ficha" ? `/productos/${id}` : "/productos");
+  if (resultado.ok) redirect(revisar || campo(datos, "volver") === "ficha" ? `/productos/${id}` : "/productos");
   return resultado;
 }
 

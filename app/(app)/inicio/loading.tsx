@@ -29,7 +29,7 @@ export default function CargandoElTablero() {
       </Suspense>
       <div className="flex shrink-0 gap-1.5">
         {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className={`${barra} h-12 w-[3.6rem] shrink-0`} />
+          <div key={i} className={`${barra} h-11 w-[3.25rem] shrink-0`} />
         ))}
       </div>
       <div className={`${barra} h-12 shrink-0 @[34rem]/tablero:hidden`} />

@@ -32,6 +32,8 @@ export default async function PaginaCuentaDeCliente({ params }: PageProps<"/cuen
   const puedeCobrar = sesion.permisos.includes("cobranzas.registrar");
   const puedeAnular = sesion.permisos.includes("cobranzas.anular");
   const debe = dec(c.aCobrar).gt(0);
+  /** Lo que se le puede cobrar hoy: lo ya entregado (lo comprado por entregar se cobra al llevárselo). */
+  const debeLoEntregado = dec(c.aCobrarEntregado).gt(0);
   const dato = "flex flex-col rounded-2xl border border-borde bg-superficie p-4";
 
   return (
@@ -56,22 +58,27 @@ export default async function PaginaCuentaDeCliente({ params }: PageProps<"/cuen
           <span className="font-semibold">{debe ? "🤝 Falta cobrarle" : "✓ No debe nada"}</span>
           <b className="text-4xl tabular-nums">{formatearMoneda(c.aCobrar)}</b>
           {dec(c.aFavor).gt(0) && <span className="text-sm font-semibold">Tiene {formatearMoneda(c.aFavor)} a favor.</span>}
+          {dec(c.aCobrarPorEntregar).gt(0) && (
+            <span className="text-sm font-semibold">
+              {formatearMoneda(c.aCobrarEntregado)} ya entregado · {formatearMoneda(c.aCobrarPorEntregar)} comprado, por entregar
+            </span>
+          )}
         </p>
       </div>
 
       {puedeCobrar && (
         <Tarjeta titulo="💵 Anotar un cobro">
-          {debe && (
+          {debeLoEntregado && (
             <div className="flex flex-wrap gap-2">
               <BotonAccion accion={registrarCobroAccion} datos={{ clienteId: c.clienteId, medioPago: "EFECTIVO" }} className={clasesBoton("principal")}>
-                💵 Pagó todo en efectivo ({formatearMoneda(c.aCobrar)})
+                💵 Pagó todo en efectivo ({formatearMoneda(c.aCobrarEntregado)})
               </BotonAccion>
               <BotonAccion accion={registrarCobroAccion} datos={{ clienteId: c.clienteId, medioPago: "TRANSFERENCIA" }} className={clasesBoton("principal")}>
                 🏦 Pagó todo por transferencia
               </BotonAccion>
             </div>
           )}
-          <details open={!debe}>
+          <details open={!debeLoEntregado}>
             <summary className="min-h-11 cursor-pointer py-2 font-semibold">Pagó otro importe (una parte, o un adelanto)</summary>
             <FormularioAccion accion={registrarCobroAccion} boton="Anotar el cobro">
               <input type="hidden" name="clienteId" value={c.clienteId} />
@@ -83,6 +90,30 @@ export default async function PaginaCuentaDeCliente({ params }: PageProps<"/cuen
               </div>
             </FormularioAccion>
           </details>
+        </Tarjeta>
+      )}
+
+      {c.porEntregar.length > 0 && (
+        <Tarjeta titulo="🛒 Comprado, por entregar">
+          <p className="text-sm text-texto-suave">Lo que ya se compró para sus pedidos y todavía no se le entregó, por lo que se calcula que va a salir. Se cobra al entregarlo.</p>
+          <ul className="flex flex-col divide-y divide-borde">
+            {c.porEntregar.map((p) => (
+              <li key={p.pedidoId} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+                <div className="min-w-0 flex-1 basis-48">
+                  <p className="text-xl font-bold first-letter:uppercase">{fechaConDia(p.fecha)}</p>
+                  <p className="text-sm text-texto-suave">
+                    <Link href={`/pedidos/${p.pedidoId}`} className="underline underline-offset-4">
+                      {p.numero}
+                    </Link>
+                  </p>
+                </div>
+                <p className="flex flex-col text-right">
+                  <b className="text-xl tabular-nums">{formatearMoneda(p.importe)}</b>
+                  {p.pendiente !== p.importe && <span className="text-sm text-texto-suave">ya pagó {formatearMoneda(dec(p.importe).minus(p.pendiente).toString())}</span>}
+                </p>
+              </li>
+            ))}
+          </ul>
         </Tarjeta>
       )}
 

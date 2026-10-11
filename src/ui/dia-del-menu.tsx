@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { sumarDias } from "@/dominio/fechas/fechas";
 
 import { elegirDia } from "./dia-en-curso";
+import { Flechita } from "./iconos";
 import { nombreDelDia } from "./etiquetas";
 
 // El día de las etapas del menú, con ‹ › para cambiarlo (pedido del usuario, 10/10/2026: el paso a
@@ -33,11 +34,12 @@ export function DiaDelMenu({ fecha, hoy }: { fecha: string; hoy: string }) {
     const destino = rutaConDia(pantalla, window.location.search, nueva);
     if (destino) router.push(destino);
   };
-  const flecha = "flex size-8 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-texto-suave hover:bg-fondo hover:text-texto";
+  // Las flechitas son un dibujo centrado en su botón redondo, a la misma altura que el día.
+  const flecha = "flex size-9 shrink-0 items-center justify-center rounded-full text-lg text-texto-suave hover:bg-fondo hover:text-texto";
   return (
     <div className="flex items-center gap-1 px-1 pb-1">
       <button type="button" onClick={() => ir(sumarDias(fecha, -1))} aria-label="Día anterior" className={flecha}>
-        ‹
+        <Flechita hacia="izquierda" />
       </button>
       <p className="min-w-0 flex-1 text-center leading-tight">
         <span className="block text-sm font-bold first-letter:uppercase">
@@ -46,7 +48,7 @@ export function DiaDelMenu({ fecha, hoy }: { fecha: string; hoy: string }) {
         <span className="block text-xs text-texto-suave">Etapas del día</span>
       </p>
       <button type="button" onClick={() => ir(sumarDias(fecha, 1))} aria-label="Día siguiente" className={flecha}>
-        ›
+        <Flechita hacia="derecha" />
       </button>
     </div>
   );

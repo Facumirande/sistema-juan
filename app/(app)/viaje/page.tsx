@@ -164,7 +164,7 @@ export default async function PaginaViaje({ searchParams }: PageProps<"/viaje">)
             )}
             {sueltas.length > 0 && (
               <div className="flex flex-col gap-2">
-                <p className="font-semibold">Entregas sin reparto: se les puede armar uno con este orden (o mandarlas desde el tablero con “Sale ahora”).</p>
+                <p className="font-semibold">Entregas sin reparto: se les puede armar uno con este orden (o mandarlas desde el tablero con “Salir ahora”).</p>
                 <Recorrido destinos={sueltas} salida={salida} guardar={puedeGestionar ? { tipo: "armar", fecha } : null} />
               </div>
             )}

@@ -72,34 +72,13 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
-      <Encabezado titulo="Productos" descripcion="Todo lo que se compra y se vende. Tocá un producto para ver qué puestos lo venden y a qué precio.">
-        {puedeEditar && (
-          <>
-            <Link href="/productos/nuevo" className={clasesBoton("principal")}>
-              ＋ Nuevo producto
-            </Link>
-            <Link href="/productos/cargar" className={clasesBoton("secundario")}>
-              📥 Cargar desde una planilla
-            </Link>
-          </>
-        )}
-        <a href="/productos/planilla?lista=1" download className={clasesBoton("secundario")} title="Bajar la lista de productos a una planilla de Excel">
-          📊 Bajar a Excel
-        </a>
-        <Link href="/productos/categorias" className={clasesBoton("secundario")}>
-          Categorías
+      {/* Solo lo necesario (pedido del usuario, 11/10/2026): el título, "Nuevo producto", el buscador y la lista, uno debajo del otro. */}
+      <Encabezado titulo="Productos" />
+      {puedeEditar && (
+        <Link href="/productos/nuevo" className={`${clasesBoton("principal")} self-start`}>
+          ＋ Nuevo producto
         </Link>
-        {sesion.permisos.includes("precios.ver_costos") && (
-          <Link href="/precios/compra" className={clasesBoton("secundario")}>
-            Precios de compra
-          </Link>
-        )}
-        {sesion.permisos.includes("precios.ver_margenes") && (
-          <Link href="/precios/venta" className={clasesBoton("secundario")}>
-            Precios de venta
-          </Link>
-        )}
-      </Encabezado>
+      )}
 
 
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -119,13 +98,7 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
         texto || categoriaId ? (
           <p className="text-texto-suave">No hay productos con esos filtros.</p>
         ) : (
-          <Aviso>
-            Todavía no hay productos. Cargalos de a uno con “＋ Nuevo producto” o todos juntos con la{" "}
-            <Link href="/productos/cargar" className="font-medium underline">
-              planilla de productos
-            </Link>{" "}
-            (alcanza con los nombres uno debajo del otro).
-          </Aviso>
+          <Aviso>Todavía no hay productos. Cargalos con “＋ Nuevo producto”.</Aviso>
         )
       ) : vista === "tarjetas" ? (
         <TableroDeProductos grupos={[...grupos.values()]} preelegidas={CATEGORIAS_PREELEGIDAS.map(({ nombre, icono, ayuda }) => ({ nombre, icono, ayuda }))} puedeEditar={puedeEditar} />

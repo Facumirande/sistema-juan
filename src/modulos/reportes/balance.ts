@@ -48,13 +48,28 @@ export interface Balance {
    * estas fechas (cobrado e ingresos, pagado y gastos); lo PENDIENTE es, a hoy, lo que falta cobrar
    * menos lo que falta pagar; el TOTAL es la suma. Nulo para quien no puede ver todas esas cuentas.
    */
-  dinero: { cobrado: string; ingresos: string; pagado: string; gastos: string; aCobrar: string; aPagar: string; entro: string; salio: string; real: string; pendiente: string; total: string } | null;
+  dinero: {
+    cobrado: string;
+    ingresos: string;
+    pagado: string;
+    gastos: string;
+    /** Todo lo que falta cobrar: lo entregado más lo comprado que está por entregarse (RN-198). */
+    aCobrar: string;
+    /** De eso, lo que todavía no se entregó (se anticipa). */
+    porEntregar: string;
+    aPagar: string;
+    entro: string;
+    salio: string;
+    real: string;
+    pendiente: string;
+    total: string;
+  } | null;
   /** Las compras de estas fechas: lo retirado de los proveedores, lo que ya se pagó de eso y lo que quedó a pagar (crédito). */
   compras: { total: string; pagado: string; aPagar: string; pctPagado: number; pctAPagar: number; porProveedor: { proveedorId: string; proveedor: string; total: string; pagado: string; aPagar: string }[] } | null;
   /** Las ventas de estas fechas: lo entregado, lo que ya se cobró de eso y lo que falta cobrar. */
   ventas: { total: string; cobrado: string; aCobrar: string; pctCobrado: number; pctACobrar: number; porCliente: { clienteId: string; cliente: string; total: string; cobrado: string; aCobrar: string }[] } | null;
-  /** A hoy: lo que falta cobrarle a cada cliente (del que más debe al que menos). */
-  aCobrarPorCliente: { clienteId: string; cliente: string; saldo: string; desde: FechaISO | null }[];
+  /** A hoy: lo que falta cobrarle a cada cliente (del que más debe al que menos); `porEntregar` es la parte todavía sin entregar. */
+  aCobrarPorCliente: { clienteId: string; cliente: string; saldo: string; porEntregar: string; desde: FechaISO | null }[];
   /** A hoy: lo que falta pagarle a cada proveedor. */
   aPagarPorProveedor: { proveedorId: string; proveedor: string; saldo: string }[];
   /** Los gastos y los ingresos generales de estas fechas, por rubro. */
@@ -232,7 +247,7 @@ export async function balance(db: BaseDatos, authUserId: string, periodo: Period
     const partesDeVentas = partesDe(sumar(delPeriodo.map((x) => x.total)), sumar(delPeriodo.map((x) => x.cobrado)));
     const aCobrarPorCliente = cuentas
       .filter((x) => x.cuenta.aCobrar.gt(0))
-      .map((x) => ({ clienteId: x.cliente.id, cliente: x.cliente.nombre, saldo: x.cuenta.aCobrar.toFixed(2), desde: debeDesde(x.cuenta) }))
+      .map((x) => ({ clienteId: x.cliente.id, cliente: x.cliente.nombre, saldo: x.cuenta.aCobrar.toFixed(2), porEntregar: x.cuenta.aCobrarPorEntregar.toFixed(2), desde: debeDesde(x.cuenta) }))
       .sort((a, b) => dec(b.saldo).cmp(a.saldo));
     const aPagarPorProveedor = saldosDeProveedores
       .filter((p) => dec(p.saldo).gt(0))
@@ -276,6 +291,7 @@ export async function balance(db: BaseDatos, authUserId: string, periodo: Period
             pagado: enTexto(datosDelDinero.pagado),
             gastos: enTexto(datosDelDinero.gastos),
             aCobrar: enTexto(datosDelDinero.aCobrar),
+            porEntregar: enTexto(sumar(aCobrarPorCliente.map((x) => x.porEntregar))),
             aPagar: enTexto(datosDelDinero.aPagar),
             entro: enTexto(d.entro),
             salio: enTexto(d.salio),

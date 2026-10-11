@@ -22,12 +22,15 @@ export function MapaParaMarcar({
   actual,
   direccion,
   centro,
+  acercarA = null,
   guardando,
   alGuardar,
   alCancelar,
 }: {
   actual: Coordenada | null;
   direccion: string;
+  /** La zona donde queda un lugar que no figura en el mapa: el mapa arranca ahí, sin poner el punto. */
+  acercarA?: Coordenada | null;
   /** Un lugar conocido para empezar cerca (ej. de dónde salen los repartos). */
   centro: Coordenada | null;
   guardando: boolean;
@@ -40,7 +43,7 @@ export function MapaParaMarcar({
   const marca = useRef<Marker | null>(null);
   const [elegido, setElegido] = useState<Coordenada | null>(actual);
   const [texto, setTexto] = useState(direccion);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(acercarA ? "Ese lugar no figura en el mapa: te llevé a la zona. Tocá el punto exacto para marcarlo." : null);
   // Para poner el punto desde el buscador (lo arma el mapa al abrirse).
   const ponerDesdeAfuera = useRef<((c: Coordenada) => void) | null>(null);
 
@@ -52,8 +55,8 @@ export function MapaParaMarcar({
       if (cancelado || !contenedor.current || mapa.current) return;
       // Sin un punto marcado, arranca en el lugar de referencia si está en Tucumán (la zona del negocio) o en San Miguel de Tucumán.
       const cerca = centro && enLaZona(centro) ? centro : null;
-      const inicio = actual ?? cerca ?? ZONA_DEL_NEGOCIO.centro;
-      const m = L.map(contenedor.current, { zoomControl: true, attributionControl: true }).setView([inicio.lat, inicio.lng], actual ? 17 : cerca ? 14 : 13);
+      const inicio = acercarA ?? actual ?? cerca ?? ZONA_DEL_NEGOCIO.centro;
+      const m = L.map(contenedor.current, { zoomControl: true, attributionControl: true }).setView([inicio.lat, inicio.lng], acercarA ? 15 : actual ? 17 : cerca ? 14 : 13);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
@@ -71,14 +74,14 @@ export function MapaParaMarcar({
           });
         }
       };
-      if (actual) poner(actual);
+      if (actual && !acercarA) poner(actual);
       ponerDesdeAfuera.current = poner;
       m.on("click", (e) => poner({ lat: e.latlng.lat, lng: e.latlng.lng }));
       mapa.current = m;
       // Sin punto marcado, el mapa arranca en la dirección escrita (si se encuentra).
-      if (!actual && direccion.trim()) {
+      if (!actual && !acercarA && direccion.trim()) {
         const primero = (await sugerirLugaresAccion(direccion))[0];
-        if (!cancelado && primero) m.setView([primero.coordenada.lat, primero.coordenada.lng], 16);
+        if (!cancelado && primero) m.setView([primero.coordenada.lat, primero.coordenada.lng], primero.aproximado ? 15 : 16);
       }
     })();
     return () => {
@@ -99,6 +102,12 @@ export function MapaParaMarcar({
         valor={texto}
         alCambiar={setTexto}
         alElegir={(l) => {
+          // Una zona aproximada solo acerca el mapa: el punto lo pone la persona, donde es.
+          if (l.aproximado) {
+            mapa.current?.setView([l.coordenada.lat, l.coordenada.lng], 15);
+            setAviso(`«${l.aproximado.falta}» no figura en el mapa: te llevé a ${l.etiqueta}. Tocá el punto exacto para marcarlo.`);
+            return;
+          }
           mapa.current?.setView([l.coordenada.lat, l.coordenada.lng], 17);
           ponerDesdeAfuera.current?.(l.coordenada);
           setAviso("Listo: si hace falta, arrastrá el punto al lugar exacto y guardalo.");

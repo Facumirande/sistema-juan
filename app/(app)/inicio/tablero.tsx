@@ -818,7 +818,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         </div>
         {/* En la computadora, el balance completo de ese día va junto a los días (arriba queda solo el resumen balance). En el celular está en las opciones (⋯). */}
         {otras.balance && (
-          <Link href={otras.balance} title="Lo que se vendió, se compró y quedó ese día" className="mt-1 hidden min-h-12 shrink-0 items-center gap-2 rounded-xl bg-white/20 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-white/30 @[34rem]/tablero:flex">
+          <Link href={otras.balance} title="Lo que se vendió, se compró y quedó ese día" className="mt-1 hidden min-h-11 shrink-0 items-center gap-2 rounded-xl bg-white/20 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-white/30 @[34rem]/tablero:flex">
             <span aria-hidden className="text-xl leading-none">
               💰
             </span>
@@ -1103,7 +1103,7 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
               onClick={() => ejecutar(salenAhoraAccion, { pedido: elegidasTarjetas.filter((t) => t.columna === "preparando").map((t) => t.id) }, { despues: terminar })}
               className="min-h-12 rounded-xl bg-marca px-4 font-semibold text-marca-texto disabled:opacity-60"
             >
-              🚚 Salen ahora ({resumen.paraSalir})
+              🚚 Salir ahora ({resumen.paraSalir})
             </button>
           )}
           {puede.armar && resumen.paraSacar > 0 && (

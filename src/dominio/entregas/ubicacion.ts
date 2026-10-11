@@ -85,6 +85,43 @@ export interface LugarSugerido {
   etiqueta: string;
   detalle: string | null;
   coordenada: Coordenada;
+  /**
+   * No es lo que se buscó sino la zona donde queda (11/10/2026): el lugar no figura en el mapa (`falta`),
+   * así que se ofrece su localidad para abrir el mapa ahí y marcar el punto exacto a mano.
+   */
+  aproximado?: { falta: string };
+}
+
+/**
+ * Qué probar cuando un lugar no figura en el mapa (pedido del usuario, 11/10/2026: "country pinar II, tafi
+ * viejo" no aparecía porque ese country no está cargado en OpenStreetMap): se busca la zona —lo que viene
+ * después de la coma o, sin comas, las últimas palabras— y se dice qué parte quedó sin encontrar. A lo
+ * sumo dos intentos, para no cargar al servicio de mapas.
+ */
+export function consultasDeRespaldo(texto: string): { consulta: string; falta: string }[] {
+  const limpio = texto.replace(/\s+/g, " ").trim();
+  const partes = limpio
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const candidatas: { consulta: string; falta: string }[] = [];
+  if (partes.length > 1) {
+    candidatas.push({ consulta: partes.slice(1).join(", "), falta: partes[0]! });
+    if (partes.length > 2) candidatas.push({ consulta: partes.at(-1)!, falta: partes.slice(0, -1).join(", ") });
+  } else {
+    const palabras = limpio.split(" ");
+    if (palabras.length >= 3) candidatas.push({ consulta: palabras.slice(-2).join(" "), falta: palabras.slice(0, -2).join(" ") });
+    if (palabras.length >= 2 && palabras.at(-1)!.length >= 4) candidatas.push({ consulta: palabras.at(-1)!, falta: palabras.slice(0, -1).join(" ") });
+  }
+  const vistas = new Set<string>();
+  return candidatas
+    .filter((c) => {
+      const clave = c.consulta.toLowerCase();
+      if (c.consulta.length < 3 || vistas.has(clave)) return false;
+      vistas.add(clave);
+      return true;
+    })
+    .slice(0, 2);
 }
 
 interface PropiedadesPhoton {
@@ -97,14 +134,19 @@ interface PropiedadesPhoton {
   county?: string;
   state?: string;
   countrycode?: string;
+  /** Qué es en el mapa: "place" (ciudad, pueblo, barrio), "boundary", "highway", "amenity"… */
+  osm_key?: string;
 }
+
+/** Lo que en el mapa es una zona donde ubicarse (una ciudad, un pueblo, un barrio) y no un local o una calle. */
+const ES_UNA_ZONA = new Set(["place", "boundary"]);
 
 /**
  * Los lugares que devuelve Photon (el buscador de OpenStreetMap hecho para ir completando mientras se
  * escribe, 10/10/2026): "Av. Mitre 450" con "San Miguel de Tucumán, Tucumán" debajo. Solo de
  * Argentina, sin repetidos y con su ubicación válida.
  */
-export function lugaresDePhoton(respuesta: unknown): LugarSugerido[] {
+export function lugaresDePhoton(respuesta: unknown, opciones: { soloZonas?: boolean } = {}): LugarSugerido[] {
   const features = (respuesta as { features?: unknown } | null)?.features;
   if (!Array.isArray(features)) return [];
   const vistos = new Set<string>();
@@ -114,6 +156,7 @@ export function lugaresDePhoton(respuesta: unknown): LugarSugerido[] {
     const [lng, lat] = Array.isArray(f.geometry?.coordinates) ? (f.geometry.coordinates as unknown[]).map(Number) : [];
     if (lat === undefined || lng === undefined || !coordenadaValida(lat, lng)) continue;
     if (p.countrycode && p.countrycode.toUpperCase() !== "AR") continue;
+    if (opciones.soloZonas && !ES_UNA_ZONA.has(p.osm_key ?? "")) continue;
     const calle = p.street ? [p.street, p.housenumber].filter(Boolean).join(" ") : null;
     const etiqueta = (p.name && p.name !== p.street ? p.name : calle) ?? p.name ?? null;
     if (!etiqueta) continue;

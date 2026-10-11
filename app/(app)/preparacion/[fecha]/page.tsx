@@ -91,7 +91,7 @@ function TarjetaCliente({ e, fecha, puede }: { e: EntregaEnPreparacion; fecha: s
         )}
         {lista && puede.salir && (
           <BotonAccion accion={salenAhoraAccion} datos={{ entrega: e.id }} mostrarExito className={`${clasesBoton("principal")} w-full`}>
-            🚚 Sale ahora
+            🚚 Salir ahora
           </BotonAccion>
         )}
         {e.remito && puede.remito && (
@@ -236,7 +236,7 @@ export default async function PaginaPreparacion({ params, searchParams }: PagePr
               {listas.length > 0 && (
                 <Grupo
                   titulo="2. Listos para salir"
-                  ayuda="Ya tienen su remito. Cuando salen, tocá “🚚 Sale ahora”."
+                  ayuda="Ya tienen su remito. Cuando salen, tocá “🚚 Salir ahora”."
                   accion={
                     puede.salir && listas.length > 1 ? (
                       <BotonAccion accion={salenAhoraAccion} datos={{ entrega: listas.map((e) => e.id) }} mostrarExito className={clasesBoton("principal")}>

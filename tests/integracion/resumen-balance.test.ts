@@ -22,6 +22,8 @@ import { prepararJornada2409, type Jornada2409 } from "./escenario-24-09";
 // El resumen balance del tablero (pedido del usuario, 10 y 11/10/2026; RN-180 y RN-194): lo pagado y
 // lo que quedó a crédito de las compras del día, la ganancia (lo ya cobrado menos lo pagado), lo que
 // falta cobrar, y la caja inicial que se carga por día, con su aviso cuando los gastos la superan.
+// "A cobrar" cuenta desde que se compra lo de cada pedido (RN-198): con los tres pedidos del día ya
+// comprados son $486.840 + $227.410 + $114.400 = $828.650, antes de entregar nada.
 // Las compras del escenario: $162.000 a cuenta, $228.550 con $100.000 pagados, $137.500 de contado
 // y $125.000 a cuenta (total $653.050).
 
@@ -37,8 +39,8 @@ const resumen = async (fecha = j.manana, auth = j.admin) => texto((await diaDeTr
 const superadas = async () => (await avisosPara(j.base.db, j.admin, 5)).cajaSuperada;
 
 describe("el resumen balance del tablero (RN-180)", () => {
-  it("lo pagado y lo que quedó a crédito de las compras del día; sin cobrar nada, la ganancia es lo que salió", async () => {
-    expect(await resumen()).toEqual({ pagado: "237500", credito: "415550", ganancia: "-237500", aCobrar: "0", caja: null, exceso: null });
+  it("lo pagado y lo que quedó a crédito de las compras del día; sin cobrar nada, la ganancia es lo que salió y a cobrar es lo ya comprado para los clientes", async () => {
+    expect(await resumen()).toEqual({ pagado: "237500", credito: "415550", ganancia: "-237500", aCobrar: "828650", caja: null, exceso: null });
   });
 
   it("un gasto anotado con la fecha de un día suma a lo pagado de ese día (aunque no tenga pedidos)", async () => {
@@ -62,22 +64,26 @@ describe("el resumen balance del tablero (RN-180)", () => {
     expect(await resumen()).toMatchObject({ pagado: "362500", credito: "290550", ganancia: "-362500" });
   });
 
-  it("lo entregado queda a cobrar; al cobrarlo pasa a la ganancia (lo cobrado menos lo pagado)", async () => {
+  it("a cobrar cuenta desde la compra; al entregar pasa a lo entregado de verdad y al cobrarlo, a la ganancia (lo cobrado menos lo pagado)", async () => {
     await iniciarPreparacion(j.base.db, j.admin, j.manana);
     await mandarEnCamino(j.base.db, j.admin, { pedidoIds: [j.ids.pedRestaurante!], confirmar: true });
-    // En camino todavía no se debe nada: la deuda nace al entregar.
-    expect(await resumen()).toMatchObject({ aCobrar: "0", ganancia: "-362500" });
+    // Preparándose o en camino sigue contando lo que se calcula que va a salir: todavía no se cobró nada.
+    expect(await resumen()).toMatchObject({ aCobrar: "828650", ganancia: "-362500" });
+    // Lo del hospital y la verdulería, que siguen sin entregarse.
+    const porEntregar = dec(486840).plus(227410);
     await entregarPedido(j.base.db, j.admin, j.ids.pedRestaurante!);
-    const debe = dec((await listarCuentasClientes(j.base.db, j.admin)).cuentas.find((c) => c.clienteId === j.ids.restaurante)!.aCobrar);
-    expect(debe.gt(100000)).toBe(true);
-    expect(await resumen()).toMatchObject({ aCobrar: debe.toFixed(0), ganancia: "-362500" });
+    const delRestaurante = (await listarCuentasClientes(j.base.db, j.admin)).cuentas.find((c) => c.clienteId === j.ids.restaurante)!;
+    // Entregado, lo del restaurante ya no es un cálculo: es lo que se le entregó.
+    const debe = dec(delRestaurante.aCobrar);
+    expect([debe.gt(100000), delRestaurante.entregado, delRestaurante.porEntregar]).toEqual([true, debe.toFixed(2), "0.00"]);
+    expect(await resumen()).toMatchObject({ aCobrar: debe.plus(porEntregar).toFixed(0), ganancia: "-362500" });
 
     // Paga una parte: eso ya es plata que volvió.
     await registrarCobro(j.base.db, j.admin, { clienteId: j.ids.restaurante!, monto: "100.000", medioPago: "EFECTIVO" });
-    expect(await resumen()).toMatchObject({ aCobrar: debe.minus(100000).toFixed(0), ganancia: "-262500", pagado: "362500", credito: "290550" });
-    // Paga el resto: no queda nada a cobrar de lo entregado.
+    expect(await resumen()).toMatchObject({ aCobrar: debe.minus(100000).plus(porEntregar).toFixed(0), ganancia: "-262500", pagado: "362500", credito: "290550" });
+    // Paga el resto: de lo entregado no queda nada a cobrar; sigue lo que falta entregar.
     await registrarCobro(j.base.db, j.admin, { clienteId: j.ids.restaurante!, medioPago: "EFECTIVO" });
-    expect(await resumen()).toMatchObject({ aCobrar: "0", ganancia: debe.minus(362500).toFixed(0) });
+    expect(await resumen()).toMatchObject({ aCobrar: porEntregar.toFixed(0), ganancia: debe.minus(362500).toFixed(0) });
   });
 
   it("la caja inicial se carga por día; si los gastos la superan, lo avisan el resumen y la campanita", async () => {

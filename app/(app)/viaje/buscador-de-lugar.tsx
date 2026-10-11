@@ -10,6 +10,11 @@ import { buscarEnMapaAccion, sugerirLugaresAccion } from "./acciones";
 // se escribe la dirección aparecen los lugares de Tucumán que coinciden (Photon, OpenStreetMap) y se
 // elige uno con un toque o con las flechas y Enter. Si Enter no encuentra sugerencias, se busca de la
 // forma de siempre (Nominatim). Lo elegido lleva el mapa a ese lugar para afinarlo y guardarlo.
+//
+// Si el lugar no figura en el mapa (un country, un local sin cargar), aparece la zona donde queda
+// (11/10/2026): al elegirla no se cambia lo escrito; quien lo usa abre el mapa ahí para marcar el punto
+// exacto. Y al tocar un casillero que ya trae una dirección escrita se vuelve a buscar, sin tener que
+// borrarla y escribirla de nuevo.
 
 const ESPERA_MS = 350;
 
@@ -85,7 +90,8 @@ export function BuscadorDeLugar({
     espera.current = setTimeout(() => consultar(texto), ESPERA_MS);
   };
   const elegir = (l: LugarSugerido) => {
-    alCambiar(l.detalle ? `${l.etiqueta}, ${l.detalle}` : l.etiqueta);
+    // Una zona aproximada no reemplaza lo que se escribió (el nombre del lugar, que no está en el mapa).
+    if (!l.aproximado) alCambiar(l.detalle ? `${l.etiqueta}, ${l.detalle}` : l.etiqueta);
     setAbierto(false);
     setSugerencias([]);
     alElegir(l);
@@ -109,7 +115,11 @@ export function BuscadorDeLugar({
         value={valor}
         autoFocus={autoFocus}
         onChange={(e) => cambiar(e.target.value)}
-        onFocus={() => sugerencias.length && setAbierto(true)}
+        onFocus={() => {
+          if (sugerencias.length) setAbierto(true);
+          // Ya hay una dirección escrita (al editar): se busca de nuevo con solo tocar el casillero.
+          else if (!abierto && !buscando && valor.trim().length >= 3) consultar(valor);
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && sugerencias.length) {
             e.preventDefault();
@@ -145,6 +155,11 @@ export function BuscadorDeLugar({
       )}
       {abierto && (
         <ul id={`${id}-lista`} role="listbox" className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-borde bg-superficie py-1 shadow-xl">
+          {sugerencias[0]?.aproximado && (
+            <li role="presentation" className="px-3 py-2 text-sm text-texto-suave">
+              <b className="text-texto">«{sugerencias[0].aproximado.falta}»</b> no figura en el mapa. Elegí la zona y marcá el punto exacto:
+            </li>
+          )}
           {sugerencias.map((l, i) => (
             <li key={`${l.coordenada.lat},${l.coordenada.lng},${l.etiqueta}`} role="option" aria-selected={i === marcada}>
               <button
@@ -160,11 +175,11 @@ export function BuscadorDeLugar({
           ))}
           {sugerencias.length === 0 && (
             <li className="px-3 py-2 text-sm text-texto-suave">
-              No aparece en Tucumán.{" "}
+              No figura en el mapa. Probá con la calle o la localidad,{" "}
               <button type="button" onClick={() => consultar(valor, true)} className="font-semibold text-marca underline underline-offset-2">
-                Buscar de otra forma
+                buscá de otra forma
               </button>{" "}
-              o marcalo en el mapa.
+              o marcalo a mano en el mapa.
             </li>
           )}
         </ul>

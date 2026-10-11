@@ -166,7 +166,7 @@ export default async function PrepararEntrega({ params }: PageProps<"/preparacio
             )}
             {e.estado === "PREPARADA" && sesion.permisos.includes("repartos.gestionar") && (
               <BotonAccion accion={salenAhoraAccion} datos={{ entrega: e.id }} mostrarExito className={clasesBoton("principal")}>
-                🚚 Sale ahora (pasa a En camino)
+                🚚 Salir ahora (pasa a En camino)
               </BotonAccion>
             )}
           </div>

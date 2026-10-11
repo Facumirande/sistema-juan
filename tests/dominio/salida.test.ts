@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { enumerar, planDeSalida } from "@/dominio/entregas/salida";
 
-// "🚚 Sale ahora" (RN-153): qué repartos salen con las entregas elegidas.
+// "🚚 Salir ahora" (RN-153): qué repartos salen con las entregas elegidas.
 
 const e = (id: string, repartoPlanificado: string | null = null, yaSalio = false) => ({ id, repartoPlanificado, yaSalio });
 

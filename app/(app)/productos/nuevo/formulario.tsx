@@ -35,7 +35,8 @@ export interface ProductoAEditar {
   categoriaId: string;
   unidadBase: string;
   /** Todavía se puede cambiar cómo se vende (no tiene otros envases ni precios cargados). */
-  unidadEditable: boolean;
+  /** No tiene otros envases ni precios cargados: cambiarle cómo se vende no toca nada. */
+  unidadSinUso: boolean;
   admiteFraccion: boolean;
   /** La ganancia propia del producto, en %; vacía si usa la de su categoría o la general. */
   recargo: string;
@@ -146,16 +147,26 @@ export function FormularioProducto({
     if (aMano) setUnidadAMano(true);
     setUnidad(x.valor);
     setFraccion(x.fraccion);
+    setOtroEnvase(false);
+    // Al editar, cambiar cómo se vende no le agrega un envase: queda el que tenía (si vuelve a la suya) o suelto.
+    if (editando) {
+      setEnvaseId(x.valor === unidadInicial ? (producto.envaseDeCompraId ?? null) : null);
+      setEnvase("");
+      setCantidad("");
+      return;
+    }
     const primero = envasesSugeridos(x.valor)[0];
     setEnvaseId(null);
     setEnvase(primero?.envase ?? "");
     setCantidad(primero?.cantidad ?? "");
-    setOtroEnvase(false);
   };
   // Los envases de siempre que el producto todavía no tiene (al editar, los que tiene van primero).
   const yaTiene = new Set((producto?.envasesDeCompra ?? []).map((e) => normalizar(e.nombre)));
   const sugeridos = envasesSugeridos(unidad).filter((e) => !yaTiene.has(normalizar(nombreDePresentacion(e.envase, e.cantidad, u.corta))));
-  const puedeCambiarUnidad = !editando || producto.unidadEditable;
+  // Al editar se puede cambiar cómo se vende (pedido del usuario, 11/10/2026). Si ya tiene envases o precios,
+  // se avisa qué pasa con ellos.
+  const cambiaConUso = editando && !producto.unidadSinUso && unidad !== unidadInicial;
+  const unidadDeAntes = UNIDADES.find((x) => x.valor === unidadInicial)!;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -222,35 +233,26 @@ export function FormularioProducto({
           )}
         </Pregunta>
 
-        <Pregunta n={2} titulo="¿Cómo se vende?" ayuda={puedeCambiarUnidad ? "Así se anotan los pedidos y se calculan los precios. Después no se puede cambiar." : "Así se anotan los pedidos y se calculan los precios."}>
-          {puedeCambiarUnidad ? (
-            <>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {unidadesVisibles.map((x) => (
-                  <button key={x.valor} type="button" onClick={() => elegirUnidad(x)} aria-pressed={x.valor === unidad} className={`${opcion(x.valor === unidad)} flex-col items-start`}>
-                    <span className="text-2xl" aria-hidden>
-                      {x.icono}
-                    </span>
-                    <span className="font-semibold">{x.nombre}</span>
-                    <span className="text-xs text-texto-suave">{x.ejemplo}</span>
-                  </button>
-                ))}
-              </div>
-              {!verTodas && (
-                <button type="button" onClick={() => setVerTodas(true)} className="self-start text-sm font-medium underline underline-offset-2">
-                  Otra forma (docena, maple, bandeja, paquete, litro, bolsón, ristra)
-                </button>
-              )}
-            </>
-          ) : (
-            <p className="flex flex-wrap items-center gap-3 rounded-xl bg-fondo px-3 py-2">
-              <span className="text-2xl" aria-hidden>
-                {u.icono}
-              </span>
-              <span>
-                <b>{u.nombre}</b>
-                <span className="block text-sm text-texto-suave">Ya tiene envases o precios cargados en esta medida: no se cambia. Si hace falta otra, se crea un producto nuevo.</span>
-              </span>
+        <Pregunta n={2} titulo="¿Cómo se vende?" ayuda="Así se anotan los pedidos y se calculan los precios.">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {unidadesVisibles.map((x) => (
+              <button key={x.valor} type="button" onClick={() => elegirUnidad(x)} aria-pressed={x.valor === unidad} className={`${opcion(x.valor === unidad)} flex-col items-start`}>
+                <span className="text-2xl" aria-hidden>
+                  {x.icono}
+                </span>
+                <span className="font-semibold">{x.nombre}</span>
+                <span className="text-xs text-texto-suave">{x.ejemplo}</span>
+              </button>
+            ))}
+          </div>
+          {!verTodas && (
+            <button type="button" onClick={() => setVerTodas(true)} className="self-start text-sm font-medium underline underline-offset-2">
+              Otra forma (docena, maple, bandeja, paquete, litro, bolsón, ristra)
+            </button>
+          )}
+          {cambiaConUso && (
+            <p role="status" className="rounded-xl border-2 border-amber-500/70 bg-amber-500/10 px-3 py-2 text-sm">
+              <b>Este producto ya tiene envases o precios cargados {unidadDeAntes.nombre.toLowerCase()}.</b> Al cambiarlo conservan sus números y pasan a leerse {u.nombre.toLowerCase()} (lo que decía «el {unidadDeAntes.corta}» dirá «el {u.corta}»). Después de guardar se abre su ficha para revisar los precios y los envases.
             </p>
           )}
         </Pregunta>

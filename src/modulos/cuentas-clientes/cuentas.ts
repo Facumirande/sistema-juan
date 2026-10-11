@@ -1,8 +1,8 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { auditar } from "@/db/auditoria";
-import { cliente, cobroCliente, entrega, jornada, medioPago, puntoEntrega, usuario } from "@/db/esquema";
+import { cliente, cobroCliente, entrega, jornada, medioPago, pedido, pedidoItem, puntoEntrega, usuario } from "@/db/esquema";
 import { siguienteNumero } from "@/db/secuencia";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { debeDesde, repartirCobros, type CuentaDeCliente, type EstadoDeCobro } from "@/dominio/cuentas/clientes";
@@ -22,6 +22,7 @@ import { numeroOpcional, textoOpcional, validar } from "@/modulos/validacion";
 // anula con motivo. El reparto de lo cobrado está en `src/dominio/cuentas/clientes.ts`.
 
 export const numeroCobro = (n: number) => formatearNumeroDocumento("COB-", n);
+const numeroPedido = (n: number) => formatearNumeroDocumento("PED-", n);
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 export type MedioDeCobro = (typeof medioPago.enumValues)[number];
@@ -41,6 +42,14 @@ interface FilaEntrega {
   importe: string;
   punto: string;
 }
+/** Un pedido con lo suyo ya comprado y todavía sin entregar: lo que se anticipa de "A cobrar". */
+interface FilaPorEntregar {
+  id: string;
+  clienteId: string;
+  numero: number;
+  fecha: FechaISO;
+  importe: string;
+}
 interface FilaCobro {
   id: string;
   clienteId: string;
@@ -51,12 +60,24 @@ interface FilaCobro {
   medioPago: MedioDeCobro;
 }
 
+/** El renglón de la lista de compras del día del pedido para el producto de la línea, en el estado dado. */
+const enLaLista = (estado: "COMPRADO" | "NO_CONSEGUIDO") =>
+  sql`exists (select 1 from lista_compra_item li inner join lista_compra lc on lc.id = li.lista_compra_id where lc.jornada_id = ${pedido.jornadaId} and li.producto_id = ${pedidoItem.productoId} and li.estado = ${estado})`;
+
 /**
- * Lo entregado y lo cobrado de un cliente (o de todos), con la cuenta ya repartida. Tres consultas
- * que salen juntas: sirve para la pantalla "A cobrar", la cuenta de un cliente y el balance.
+ * Lo entregado, lo cobrado y lo comprado por entregar de un cliente (o de todos), con la cuenta ya
+ * repartida. Cuatro consultas que salen juntas: sirve para la pantalla "A cobrar", la cuenta de un
+ * cliente, el balance y el resumen balance del tablero.
+ *
+ * Lo comprado por entregar (RN-198): de un pedido en la lista de compras, las líneas ya compradas (o
+ * tildadas); de uno que ya se prepara o está en camino, todas menos las que no se consiguieron. Por
+ * el importe calculado de cada línea. Los días cerrados no cuentan: lo que no se entregó ya no sale.
  */
-export async function cuentasDeClientes(tx: Transaccion, clienteId?: string): Promise<{ cliente: FilaCliente; entregas: FilaEntrega[]; cobros: FilaCobro[]; cuenta: CuentaDeCliente }[]> {
-  const [clientes, entregas, cobros] = await Promise.all([
+export async function cuentasDeClientes(
+  tx: Transaccion,
+  clienteId?: string,
+): Promise<{ cliente: FilaCliente; entregas: FilaEntrega[]; cobros: FilaCobro[]; porEntregar: FilaPorEntregar[]; cuenta: CuentaDeCliente }[]> {
+  const [clientes, entregas, cobros, porEntregar] = await Promise.all([
     tx
       .select({ id: cliente.id, nombre: cliente.nombre, tipo: cliente.tipoCliente, saldoInicial: cliente.saldoInicial, activo: cliente.activo })
       .from(cliente)
@@ -74,11 +95,27 @@ export async function cuentasDeClientes(tx: Transaccion, clienteId?: string): Pr
       .from(cobroCliente)
       .where(and(eq(cobroCliente.estado, "REGISTRADO"), clienteId ? eq(cobroCliente.clienteId, clienteId) : undefined))
       .orderBy(asc(cobroCliente.fecha), asc(cobroCliente.numero)),
+    tx
+      .select({ id: pedido.id, clienteId: pedido.clienteId, numero: pedido.numero, fecha: jornada.fecha, importe: sql<string>`coalesce(sum(${pedidoItem.subtotalEstimado}), 0)::numeric(14,2)` })
+      .from(pedidoItem)
+      .innerJoin(pedido, eq(pedido.id, pedidoItem.pedidoId))
+      .innerJoin(jornada, eq(jornada.id, pedido.jornadaId))
+      .where(
+        and(
+          eq(pedidoItem.cancelado, false),
+          ne(jornada.estado, "CERRADA"),
+          clienteId ? eq(pedido.clienteId, clienteId) : undefined,
+          sql`((${pedido.estado} = 'EN_COMPRA' and ${enLaLista("COMPRADO")}) or (${pedido.estado} in ('EN_PREPARACION', 'PREPARADO', 'EN_REPARTO') and not ${enLaLista("NO_CONSEGUIDO")}))`,
+        ),
+      )
+      .groupBy(pedido.id, pedido.clienteId, pedido.numero, jornada.fecha)
+      .orderBy(asc(jornada.fecha), asc(pedido.numero)),
   ]);
   return clientes.map((c) => {
     const suyas = entregas.filter((e) => e.clienteId === c.id);
     const suyos = cobros.filter((k) => k.clienteId === c.id);
-    return { cliente: c, entregas: suyas, cobros: suyos, cuenta: repartirCobros(c.saldoInicial, suyas, suyos) };
+    const porEntregarle = porEntregar.filter((p) => p.clienteId === c.id && dec(p.importe).gt(0));
+    return { cliente: c, entregas: suyas, cobros: suyos, porEntregar: porEntregarle, cuenta: repartirCobros(c.saldoInicial, suyas, suyos, porEntregarle) };
   });
 }
 
@@ -86,8 +123,12 @@ export interface CuentaClienteListada {
   clienteId: string;
   cliente: string;
   tipo: string;
-  /** Lo que falta cobrarle. */
+  /** Todo lo que falta cobrarle: lo entregado más lo comprado que está por entregarse. */
   aCobrar: string;
+  /** La parte ya entregada: lo que se le puede cobrar hoy. */
+  entregado: string;
+  /** La parte comprada y todavía sin entregar (se anticipa). */
+  porEntregar: string;
   /** Lo que pagó de más. */
   aFavor: string;
   entregasSinCobrar: number;
@@ -97,7 +138,7 @@ export interface CuentaClienteListada {
 }
 
 /** P-65 "A cobrar": cada cliente con lo que debe (primero el que más), y el total. */
-export async function listarCuentasClientes(db: BaseDatos, authUserId: string): Promise<{ cuentas: CuentaClienteListada[]; total: { aCobrar: string; aFavor: string; clientes: number } }> {
+export async function listarCuentasClientes(db: BaseDatos, authUserId: string): Promise<{ cuentas: CuentaClienteListada[]; total: { aCobrar: string; entregado: string; porEntregar: string; aFavor: string; clientes: number } }> {
   return ejecutarComoUsuario(db, authUserId, "cobranzas.ver", async (tx) => {
     const cuentas = (await cuentasDeClientes(tx))
       .map(
@@ -106,6 +147,8 @@ export async function listarCuentasClientes(db: BaseDatos, authUserId: string): 
           cliente: c.nombre,
           tipo: c.tipo,
           aCobrar: cuenta.aCobrar.toFixed(2),
+          entregado: cuenta.aCobrarEntregado.toFixed(2),
+          porEntregar: cuenta.aCobrarPorEntregar.toFixed(2),
           aFavor: cuenta.aFavor.toFixed(2),
           entregasSinCobrar: cuenta.entregas.filter((e) => !e.pendiente.isZero()).length,
           desde: debeDesde(cuenta),
@@ -117,7 +160,13 @@ export async function listarCuentasClientes(db: BaseDatos, authUserId: string): 
       .sort((a, b) => dec(b.aCobrar).cmp(a.aCobrar) || a.cliente.localeCompare(b.cliente, "es"));
     return {
       cuentas,
-      total: { aCobrar: sumar(cuentas.map((c) => c.aCobrar)).toFixed(2), aFavor: sumar(cuentas.map((c) => c.aFavor)).toFixed(2), clientes: cuentas.filter((c) => dec(c.aCobrar).gt(0)).length },
+      total: {
+        aCobrar: sumar(cuentas.map((c) => c.aCobrar)).toFixed(2),
+        entregado: sumar(cuentas.map((c) => c.entregado)).toFixed(2),
+        porEntregar: sumar(cuentas.map((c) => c.porEntregar)).toFixed(2),
+        aFavor: sumar(cuentas.map((c) => c.aFavor)).toFixed(2),
+        clientes: cuentas.filter((c) => dec(c.aCobrar).gt(0)).length,
+      },
     };
   });
 }
@@ -127,10 +176,17 @@ export interface CuentaDeUnCliente {
   cliente: string;
   saldoInicial: string;
   saldoInicialPendiente: string;
+  /** Todo lo que falta cobrarle: lo entregado más lo que está por entregarse. */
   aCobrar: string;
+  /** Lo que falta cobrar de lo ya entregado (y de lo de antes): lo que se le puede cobrar hoy. */
+  aCobrarEntregado: string;
+  /** Lo que falta cobrar de lo comprado y todavía sin entregar. */
+  aCobrarPorEntregar: string;
   aFavor: string;
   entregado: string;
   cobrado: string;
+  /** Los pedidos con lo suyo ya comprado y todavía sin entregar, del más cercano al más lejano. */
+  porEntregar: { pedidoId: string; numero: string; fecha: FechaISO; importe: string; pendiente: string }[];
   /** De la más nueva a la más vieja. */
   entregas: { id: string; numero: string; fecha: FechaISO; punto: string; importe: string; cobrado: string; pendiente: string; estado: EstadoDeCobro }[];
   /** Del más nuevo al más viejo, también los anulados. */
@@ -163,17 +219,21 @@ export async function cuentaDeCliente(db: BaseDatos, authUserId: string, cliente
         .orderBy(desc(cobroCliente.fecha), desc(cobroCliente.numero)),
     ]);
     if (!datos) throw new ErrorDeNegocio("NO_ENCONTRADO", "No se encontró el cliente.");
-    const { cliente: c, entregas, cuenta } = datos;
+    const { cliente: c, entregas, porEntregar, cuenta } = datos;
     const numeros = new Map(entregas.map((e) => [e.id, e]));
+    const pedidos = new Map(porEntregar.map((p) => [p.id, p]));
     return {
       clienteId: c.id,
       cliente: c.nombre,
       saldoInicial: c.saldoInicial,
       saldoInicialPendiente: cuenta.saldoInicialPendiente.toFixed(2),
       aCobrar: cuenta.aCobrar.toFixed(2),
+      aCobrarEntregado: cuenta.aCobrarEntregado.toFixed(2),
+      aCobrarPorEntregar: cuenta.aCobrarPorEntregar.toFixed(2),
       aFavor: cuenta.aFavor.toFixed(2),
       entregado: sumar(entregas.map((e) => e.importe)).toFixed(2),
       cobrado: cuenta.cobrado.toFixed(2),
+      porEntregar: cuenta.porEntregar.map((p) => ({ pedidoId: p.id, numero: numeroPedido(pedidos.get(p.id)!.numero), fecha: p.fecha, importe: p.importe.toFixed(2), pendiente: p.pendiente.toFixed(2) })),
       entregas: cuenta.entregas
         .map((e) => ({
           id: e.id,
@@ -239,9 +299,10 @@ export async function registrarCobro(db: BaseDatos, authUserId: string, datos: z
     if (fecha > hoy) throw new ErrorDeNegocio("VALIDACION", "El día del cobro no puede ser posterior a hoy.");
     const deLaEntrega = d.entregaId ? cuenta.entregas.find((e) => e.id === d.entregaId) : null;
     if (d.entregaId && !deLaEntrega) throw new ErrorDeNegocio("VALIDACION", `Esa entrega no es de ${cli.nombre} o todavía no se entregó: recargá la página.`);
-    const loQueFalta = deLaEntrega ? deLaEntrega.pendiente : cuenta.aCobrar;
+    // "Todo lo que debe" es lo ya entregado: lo comprado que todavía no se le llevó se cobra al entregarlo.
+    const loQueFalta = deLaEntrega ? deLaEntrega.pendiente : cuenta.aCobrarEntregado;
     if (d.monto === null && loQueFalta.lte(0)) {
-      throw new ErrorDeNegocio("VALIDACION", deLaEntrega ? "Esa entrega ya figura cobrada." : `${cli.nombre} no debe nada: ya está todo cobrado.`);
+      throw new ErrorDeNegocio("VALIDACION", deLaEntrega ? "Esa entrega ya figura cobrada." : `${cli.nombre} no debe nada de lo ya entregado. Si pagó por adelantado, escribí cuánto.`);
     }
     const monto = d.monto === null ? loQueFalta : dec(d.monto);
     if (monto.lte(0)) throw new ErrorDeNegocio("VALIDACION", "El importe tiene que ser mayor que $0.");

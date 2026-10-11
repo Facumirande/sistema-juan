@@ -48,7 +48,7 @@ export default async function EditarProducto({ params, searchParams }: PageProps
           codigo: p.codigo,
           categoriaId: p.categoriaId,
           unidadBase: p.unidadBase,
-          unidadEditable: p.unidadBaseEditable,
+          unidadSinUso: p.unidadSinUso,
           admiteFraccion: p.admiteFraccion,
           recargo: p.ganancia.propia === null ? "" : String(Number(p.ganancia.propia)).replace(".", ","),
           observaciones: p.observaciones ?? "",

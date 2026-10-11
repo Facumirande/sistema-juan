@@ -32,6 +32,8 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
   const [coordenada, setCoordenada] = useState<Coordenada | null>(null);
   const [comoFavorito, setComoFavorito] = useState(false);
   const [conMapa, setConMapa] = useState(false);
+  /** La zona de un lugar que no figura en el mapa: el mapa se abre ahí para marcarlo a mano. */
+  const [cerca, setCerca] = useState<Coordenada | null>(null);
   const [editando, setEditando] = useState(false);
   const [nombres, setNombres] = useState<Record<string, string>>({});
   const [aviso, setAviso] = useState<{ texto: string; grave: boolean } | null>(null);
@@ -49,6 +51,7 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
   };
   const marcar = (c: Coordenada) => {
     setCoordenada(c);
+    setCerca(null);
     setConMapa(false);
     setAviso(null);
   };
@@ -148,12 +151,16 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
             actual={coordenada}
             direccion={direccion}
             centro={centro}
+            acercarA={cerca}
             guardando={false}
             alGuardar={(c, escrita) => {
               marcar(c);
               if (!direccion.trim() && escrita.trim()) setDireccion(escrita.trim());
             }}
-            alCancelar={() => setConMapa(false)}
+            alCancelar={() => {
+              setConMapa(false);
+              setCerca(null);
+            }}
           />
         ) : (
           <>
@@ -161,7 +168,13 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
               <p className="font-medium">
                 Dirección <span className="font-normal text-texto-suave">(o un enlace de Google Maps)</span>
               </p>
-              <BuscadorDeLugar valor={direccion} alCambiar={escribir} alElegir={(l) => marcar(l.coordenada)} etiqueta="Dirección del destino" placeholder="Calle y número, o el nombre del lugar" />
+              <BuscadorDeLugar valor={direccion} alCambiar={escribir} alElegir={(l) => {
+                  // Si no figura en el mapa, se abre el mapa en su zona para marcarlo a mano.
+                  if (!l.aproximado) return marcar(l.coordenada);
+                  setCerca(l.coordenada);
+                  setConMapa(true);
+                }}
+                etiqueta="Dirección del destino" placeholder="Calle y número, o el nombre del lugar" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setConMapa(true)} className={boton}>

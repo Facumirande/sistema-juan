@@ -235,11 +235,13 @@ body {
 :root {
   /* Lo que ocupan la hora y la batería cuando la pantalla llega hasta arriba (ver más abajo); 0 en el resto. */
   --arriba-seguro: env(safe-area-inset-top, 0px);
-  --alto-barra: calc(4.25rem + var(--arriba-seguro));
+  /* El alto de la barra sola y, con la zona de la hora y la batería, lo que queda ocupado arriba. */
+  --alto-barra-sola: 4.25rem;
+  --alto-barra: calc(var(--alto-barra-sola) + var(--arriba-seguro));
 }
 @media (min-width: 640px) {
   :root {
-    --alto-barra: calc(3.5rem + var(--arriba-seguro));
+    --alto-barra-sola: 3.5rem;
   }
 }
 .marco-barra {
@@ -247,35 +249,48 @@ body {
   --nav-borde: var(--borde);
   --nav-encima: var(--superficie);
   color: var(--nav-texto);
-  padding-top: var(--arriba-seguro);
 }
 
-/* La pantalla llega hasta arriba (pedido del usuario, 11/10/2026): instalada en el iPhone quedaba una
-   franja negra en el lugar de la hora y la batería. Ahora el sistema se dibuja también ahí detrás
-   (`black-translucent` en `app/layout.tsx`) y lo que va arriba —la barra, el menú, lo que se abre
-   encima— baja lo que mide esa zona (`--arriba-seguro`), que es 0 en la computadora, en Android y
-   en el navegador del iPhone: ahí nada cambia de lugar. El iPhone escribe la hora y la batería en
-   blanco, así que `.franja-de-estado` les pone detrás un fondo donde hace falta para leerlas: verde
-   en modo claro; nada en modo oscuro ni sobre la imagen del tablero, que ya son oscuros. */
+/* La zona de la hora y la batería del teléfono (pedidos del usuario, 11/10/2026: sin franja negra y,
+   después, sin el borde semioscuro que aparecía al rato: "transparente siempre"). Instalada en el
+   iPhone, la página ocupa también esa zona (`black-translucent` en `app/layout.tsx`); el iPhone
+   actual ya no la deja ver a través: si encuentra ahí contenido, le pone encima un velo oscuro, y
+   si encuentra algo fijo arriba, la pinta de ese color. Así que el sistema no dibuja nada en esa
+   zona y la deja del mismo color liso que la pantalla tiene arriba: se ve como si la pantalla
+   siguiera hasta el borde, sin banda ni velo.
+   - `--arriba-seguro` es lo que mide la zona: 0 en la computadora, en Android y en el navegador
+     del iPhone (ahí nada cambia de lugar). El marco empieza debajo de ella.
+   - Su color es el de base de la página (`html`, `body`): el fondo del sistema o, con el tablero a
+     la vista, el del borde de arriba de la imagen (`--tablero-arriba`); la imagen empieza justo
+     debajo, así que no se nota el empalme.
+   - `.franja-de-estado` es un recuadro fijo de ese mismo color sobre la zona: es lo que el iPhone
+     mira para pintarla (algo fijo y opaco arriba) y tapa lo que pudiera pasar por detrás. Va por
+     debajo de lo que se abre encima (el menú, una tarjeta abierta), que la oscurecen con el resto. */
+.marco-contenido {
+  padding-top: var(--arriba-seguro);
+}
 .franja-de-estado {
   position: fixed;
   inset: 0 0 auto;
-  z-index: 70;
+  z-index: 35;
   height: var(--arriba-seguro);
-  background: var(--marca);
+  background: var(--fondo);
   pointer-events: none;
-}
-/* Con el menú abierto sobre el tablero (es claro), el verde vuelve. */
-[data-tema="oscuro"] .franja-de-estado,
-body:has(.marco-principal > .a-pantalla-completa):not(:has(.marco[data-cajon="abierto"])) .franja-de-estado {
-  background: transparent;
 }
 /* Las pantallas sin marco (el ingreso) empiezan debajo de esa zona. */
 body:not(:has(.marco)) {
   padding-top: var(--arriba-seguro);
 }
-.menu-lateral {
-  padding-top: var(--arriba-seguro);
+/* El menú: en el celular es un cajón que empieza debajo de la zona; fijo al costado, deja ese lugar libre. */
+@media (max-width: 767.98px) {
+  .menu-lateral {
+    top: var(--arriba-seguro);
+  }
+}
+@media (min-width: 768px) {
+  .menu-lateral {
+    padding-top: var(--arriba-seguro);
+  }
 }
 @media print {
   .franja-de-estado {
@@ -283,14 +298,15 @@ body:not(:has(.marco)) {
   }
 }
 @media screen {
+  /* La imagen del tablero va de la barra para abajo: en la zona de la hora y la batería queda el color liso. */
   .marco-contenido:has(> .marco-principal > .a-pantalla-completa) {
     background: var(--tablero-fondo);
+    background-clip: content-box;
+    background-origin: content-box;
   }
-  /* Sin franja negra arriba en el teléfono (pedido del usuario, 11/10/2026): los iPhone nuevos pintan la zona
-     de la hora y la batería con el color de base de la página, no con la imagen. Con el tablero a la vista,
-     ese color de base es el del borde de arriba de la imagen, así la imagen parece seguir hasta arriba. */
   html:has(.marco-principal > .a-pantalla-completa),
-  body:has(.marco-principal > .a-pantalla-completa) {
+  body:has(.marco-principal > .a-pantalla-completa),
+  body:has(.marco-principal > .a-pantalla-completa) .franja-de-estado {
     background: var(--tablero-arriba);
   }
   .marco-contenido:has(> .marco-principal > .a-pantalla-completa) > .marco-barra {

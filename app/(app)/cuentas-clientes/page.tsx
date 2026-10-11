@@ -29,7 +29,7 @@ export default async function PaginaACobrar() {
 
   return (
     <section className="flex max-w-5xl flex-col gap-5">
-      <Encabezado titulo="A cobrar" descripcion="Lo que ya se entregó y los clientes todavía no pagaron. Cuando un cliente paga, tocá cómo pagó: se cancela lo más viejo que debe.">
+      <Encabezado titulo="A cobrar" descripcion="Lo que ya se entregó y los clientes todavía no pagaron, más lo que ya se compró para ellos y está por entregarse. Cuando un cliente paga, tocá cómo pagó: se cancela lo más viejo que debe.">
         <Link href="/cuentas-proveedores" className={clasesBoton("secundario")}>
           📤 Ver lo que hay a pagar
         </Link>
@@ -43,11 +43,19 @@ export default async function PaginaACobrar() {
           <span className="font-semibold">🤝 Falta cobrar en total</span>
           <b className="text-4xl tabular-nums sm:text-5xl">{formatearMoneda(total.aCobrar)}</b>
         </p>
-        <p className="text-lg">{total.clientes === 0 ? "Nadie debe nada: está todo cobrado." : total.clientes === 1 ? "Lo debe 1 cliente." : `Lo deben ${total.clientes} clientes.`}</p>
+        <p className="flex flex-col text-lg">
+          <span>{total.clientes === 0 ? "Nadie debe nada: está todo cobrado." : total.clientes === 1 ? "Es de 1 cliente." : `Es de ${total.clientes} clientes.`}</span>
+          {/* Lo que se anticipa: ya se compró y todavía no se entregó (se cobra al entregarlo). */}
+          {dec(total.porEntregar).gt(0) && (
+            <span className="text-base">
+              🚚 Ya entregado: <b className="tabular-nums">{formatearMoneda(total.entregado)}</b> · 🛒 Comprado, por entregar: <b className="tabular-nums">{formatearMoneda(total.porEntregar)}</b>
+            </span>
+          )}
+        </p>
       </div>
 
       {deben.length === 0 ? (
-        <p className="rounded-2xl border border-borde bg-superficie p-4 text-lg">✓ No hay nada para cobrar. Lo que se entregue va a aparecer acá hasta que se cobre.</p>
+        <p className="rounded-2xl border border-borde bg-superficie p-4 text-lg">✓ No hay nada para cobrar. Lo que se compre para un cliente va a aparecer acá hasta que se cobre.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {deben.map((c) => (
@@ -61,30 +69,38 @@ export default async function PaginaACobrar() {
                     {c.cliente}
                   </Link>
                   <p className="text-texto-suave">
-                    {c.entregasSinCobrar === 0 ? "Debe de antes" : c.entregasSinCobrar === 1 ? "1 entrega sin cobrar" : `${c.entregasSinCobrar} entregas sin cobrar`}
+                    {c.entregasSinCobrar > 0 ? (c.entregasSinCobrar === 1 ? "1 entrega sin cobrar" : `${c.entregasSinCobrar} entregas sin cobrar`) : dec(c.entregado).gt(0) ? "Debe de antes" : "Comprado, por entregar"}
                     {c.desde && <> · desde el {fechaConDia(c.desde)}</>}
                     {c.ultimoCobro && <> · último cobro el {fechaConDia(c.ultimoCobro)}</>}
                   </p>
                 </div>
-                <b className="text-3xl tabular-nums">{formatearMoneda(c.aCobrar)}</b>
+                <p className="flex flex-col text-right">
+                  <b className="text-3xl tabular-nums">{formatearMoneda(c.aCobrar)}</b>
+                  {dec(c.porEntregar).gt(0) && dec(c.entregado).gt(0) && (
+                    <span className="text-sm text-texto-suave">
+                      {formatearMoneda(c.entregado)} entregado · {formatearMoneda(c.porEntregar)} por entregar
+                    </span>
+                  )}
+                </p>
               </div>
               {/* Cuánto pesa cada cliente en lo que falta cobrar. */}
               <div className="h-3 w-full overflow-hidden rounded-full bg-fondo" aria-hidden>
                 <div className="h-3 rounded-r-[4px] bg-serie-1" style={{ width: `${Math.max(1, (Number(c.aCobrar) / (mayor || 1)) * 100)}%` }} />
               </div>
               <div className="flex flex-wrap gap-2">
-                {puedeCobrar && (
+                {/* "Pagó todo" es lo ya entregado: lo que está por entregarse se cobra cuando se le lleva. */}
+                {puedeCobrar && dec(c.entregado).gt(0) && (
                   <>
-                    <BotonAccion accion={registrarCobroAccion} datos={{ clienteId: c.clienteId, medioPago: "EFECTIVO" }} className={clasesBoton("principal")} titulo={`Pagó todo lo que debe (${formatearMoneda(c.aCobrar)}) en efectivo`}>
+                    <BotonAccion accion={registrarCobroAccion} datos={{ clienteId: c.clienteId, medioPago: "EFECTIVO" }} className={clasesBoton("principal")} titulo={`Pagó todo lo ya entregado (${formatearMoneda(c.entregado)}) en efectivo`}>
                       💵 Pagó todo en efectivo
                     </BotonAccion>
-                    <BotonAccion accion={registrarCobroAccion} datos={{ clienteId: c.clienteId, medioPago: "TRANSFERENCIA" }} className={clasesBoton("principal")} titulo={`Pagó todo lo que debe (${formatearMoneda(c.aCobrar)}) por transferencia`}>
+                    <BotonAccion accion={registrarCobroAccion} datos={{ clienteId: c.clienteId, medioPago: "TRANSFERENCIA" }} className={clasesBoton("principal")} titulo={`Pagó todo lo ya entregado (${formatearMoneda(c.entregado)}) por transferencia`}>
                       🏦 Pagó todo por transferencia
                     </BotonAccion>
                   </>
                 )}
                 <Link href={`/cuentas-clientes/${c.clienteId}`} className={clasesBoton("secundario")}>
-                  Pagó una parte · ver su cuenta
+                  {dec(c.entregado).gt(0) ? "Pagó una parte · ver su cuenta" : "Ver su cuenta (o anotar un adelanto)"}
                 </Link>
               </div>
             </li>

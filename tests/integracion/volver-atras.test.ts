@@ -104,7 +104,9 @@ describe("volver una tarjeta un paso atrás", () => {
     expect([despues.estado, despues.recibidoPor, await estadoDe(j.ids.pedRestaurante!), await columnaDe(j.ids.pedRestaurante!)]).toEqual(["EN_REPARTO", null, "EN_REPARTO", "en_camino"]);
     expect(despues.lineas.every((l) => l.cantidadEntregada === null)).toBe(true);
     expect(await comprobantes()).toEqual([{ estado: "ANULADA", activa: false }]);
-    expect((await listarCuentasClientes(j.base.db, j.admin)).cuentas.map((c) => c.cliente)).not.toContain("Restaurante La Esquina");
+    // En su cuenta deja de figurar como entregado: vuelve a ser lo comprado que está por entregarse (RN-198).
+    const delRestaurante = (await listarCuentasClientes(j.base.db, j.admin)).cuentas.find((c) => c.cliente === "Restaurante La Esquina");
+    expect([delRestaurante?.entregado, delRestaurante?.entregasSinCobrar, delRestaurante?.porEntregar === delRestaurante?.aCobrar]).toEqual(["0.00", 0, true]);
     const [rep] = await enLaBase((tx) => tx.select({ estado: reparto.estado }).from(reparto).innerJoin(entrega, eq(entrega.repartoId, reparto.id)).where(eq(entrega.id, e.id)));
     expect(rep?.estado).toBe("EN_CURSO");
     // Y se puede volver a marcar entregado.

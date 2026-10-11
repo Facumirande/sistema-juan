@@ -32,13 +32,17 @@ beforeAll(async () => {
 });
 
 describe("a cobrar: la cuenta de cada cliente", () => {
-  it("lo entregado es lo que debe cada cliente; lo que no se entregó todavía no se debe", async () => {
+  it("lo entregado es lo que debe cada cliente; lo ya comprado y todavía sin entregar se anticipa (RN-198)", async () => {
     const { cuentas, total } = await listarCuentasClientes(j.base.db, j.admin);
-    expect(cuentas.map((c) => [c.cliente, c.aCobrar, c.entregasSinCobrar, c.desde])).toEqual([
-      ["Verdulería Don Pepe", "227410.00", 1, j.manana],
-      ["Restaurante La Esquina", "114400.00", 1, j.manana],
+    // Al hospital todavía no se le entregó, pero lo suyo ya está comprado: cuenta desde ahora, aparte de lo entregado.
+    expect(cuentas.map((c) => [c.cliente, c.aCobrar, c.entregado, c.porEntregar, c.entregasSinCobrar, c.desde])).toEqual([
+      ["Hospital San Martín", "486840.00", "0.00", "486840.00", 0, null],
+      ["Verdulería Don Pepe", "227410.00", "227410.00", "0.00", 1, j.manana],
+      ["Restaurante La Esquina", "114400.00", "114400.00", "0.00", 1, j.manana],
     ]);
-    expect(total).toEqual({ aCobrar: "341810.00", aFavor: "0.00", clientes: 2 });
+    expect(total).toEqual({ aCobrar: "828650.00", entregado: "341810.00", porEntregar: "486840.00", aFavor: "0.00", clientes: 3 });
+    // "Pagó todo" es lo ya entregado: al hospital todavía no hay nada para cobrarle.
+    expect(await codigoDeError(registrarCobro(j.base.db, j.admin, { clienteId: j.ids.hospital!, medioPago: "EFECTIVO" }))).toBe("VALIDACION");
   });
 
   it("“pagó todo” es un toque: cobra lo que debe, y un segundo toque no cobra dos veces", async () => {
@@ -187,12 +191,15 @@ describe("el balance del dinero: real, pendiente y total", () => {
     expect(d.entro).toBe(dec(d.cobrado).plus(d.ingresos).toFixed(2));
     expect(d.salio).toBe(dec(d.pagado).plus(d.gastos).toFixed(2));
     expect(d.real).toBe(dec(d.entro).minus(d.salio).toFixed(2));
-    // A cobrar: lo de la verdulería ($227.410 + $50.000 de antes − $100.000).
-    expect(d.aCobrar).toBe("177410.00");
+    // A cobrar: lo de la verdulería ($227.410 + $50.000 de antes − $100.000) y lo ya comprado para el hospital, que falta entregar ($486.840).
+    expect([d.aCobrar, d.porEntregar]).toEqual(["664250.00", "486840.00"]);
     expect(d.aPagar).toBe(b.totales.deuda);
     expect(d.pendiente).toBe(dec(d.aCobrar).minus(d.aPagar).toFixed(2));
     expect(d.total).toBe(dec(d.real).plus(d.pendiente).toFixed(2));
-    expect(b.aCobrarPorCliente).toEqual([{ clienteId: j.ids.verduleria, cliente: "Verdulería Don Pepe", saldo: "177410.00", desde: j.manana }]);
+    expect(b.aCobrarPorCliente).toEqual([
+      { clienteId: j.ids.hospital, cliente: "Hospital San Martín", saldo: "486840.00", porEntregar: "486840.00", desde: null },
+      { clienteId: j.ids.verduleria, cliente: "Verdulería Don Pepe", saldo: "177410.00", porEntregar: "0.00", desde: j.manana },
+    ]);
     expect(sumar(b.aPagarPorProveedor.map((p) => p.saldo)).gte(d.aPagar)).toBe(true);
     // Lo que entró y salió cada día suma lo mismo que el total.
     expect(sumar(b.series.map((s) => s.valores.entro)).toFixed(2)).toBe(d.entro);
@@ -234,10 +241,14 @@ describe("el balance del dinero: real, pendiente y total", () => {
     const libro = await libroDelMes(j.base.db, j.admin, hoy.slice(0, 7), hoy);
     const resumen = Object.fromEntries(libro.hojas[0]!.filas.map((f) => [f[0], f[1]]));
     expect(resumen["DINERO REAL · salió: gastos generales"]).toEqual({ numero: "58000" });
-    expect(resumen["DINERO PENDIENTE · a cobrar a los clientes (hoy)"]).toEqual({ numero: "177410" });
+    expect(resumen["DINERO PENDIENTE · a cobrar a los clientes (hoy)"]).toEqual({ numero: "664250" });
     expect(Object.keys(resumen)).toContain("BALANCE TOTAL (real + pendiente)");
     const hoja = (nombre: string) => libro.hojas.find((h) => h.nombre === nombre)!;
-    expect(hoja("A cobrar").filas).toEqual([["Verdulería Don Pepe", { numero: "177410" }, expect.any(String)]]);
+    expect(resumen["DINERO PENDIENTE · de eso, ya comprado y por entregar"]).toEqual({ numero: "486840" });
+    expect(hoja("A cobrar").filas).toEqual([
+      ["Hospital San Martín", { numero: "486840" }, { numero: "486840" }, null],
+      ["Verdulería Don Pepe", { numero: "177410" }, { numero: "0" }, expect.any(String)],
+    ]);
     expect(hoja("Gastos e ingresos").filas.map((f) => [f[0], f[1], f[2]])).toEqual([
       ["⛽ Nafta", { numero: "50000" }, "Gasto"],
       ["🚿 Lavado", { numero: "8000" }, "Gasto"],

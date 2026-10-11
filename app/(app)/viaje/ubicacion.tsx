@@ -43,6 +43,8 @@ export function MarcarUbicacion({
   const [buscando, empezar] = useTransition();
   /** El lugar elegido en el buscador, para abrir el mapa con el punto puesto. */
   const [propuesta, setPropuesta] = useState<Coordenada | null>(null);
+  /** La zona de un lugar que no figura en el mapa: el mapa se abre ahí para marcar el punto a mano. */
+  const [cerca, setCerca] = useState<Coordenada | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [texto, setTexto] = useState(direccion);
   const [pegado, setPegado] = useState("");
@@ -57,6 +59,7 @@ export function MarcarUbicacion({
     }
     if (guardaDireccion && conDireccion?.trim()) fd.append("direccion", conDireccion.trim());
     setPropuesta(null);
+    setCerca(null);
     setAviso(null);
     setConMapa(false);
     startTransition(() => guardar(fd));
@@ -100,20 +103,41 @@ export function MarcarUbicacion({
         )}
       </p>
       {conMapa ? (
-        <MapaParaMarcar actual={propuesta ?? actual} direccion={texto} centro={centro} guardando={guardando} alGuardar={enviar} alCancelar={() => setConMapa(false)} />
+        <MapaParaMarcar
+          actual={propuesta ?? actual}
+          direccion={texto}
+          centro={centro}
+          acercarA={cerca}
+          guardando={guardando}
+          alGuardar={enviar}
+          alCancelar={() => {
+            setConMapa(false);
+            setCerca(null);
+          }}
+        />
       ) : (
         <>
           <BuscadorDeLugar
             valor={texto}
             alCambiar={setTexto}
             alElegir={(l) => {
-              setPropuesta(l.coordenada);
+              // Si no figura en el mapa, se abre el mapa en su zona sin dar por bueno ningún punto.
+              if (l.aproximado) setCerca(l.coordenada);
+              else setPropuesta(l.coordenada);
               setConMapa(true);
             }}
             etiqueta={`Buscar la dirección (${titulo.toLowerCase()})`}
           />
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setConMapa(true)} disabled={guardando} className={boton}>
+            <button
+              type="button"
+              onClick={() => {
+                setCerca(null);
+                setConMapa(true);
+              }}
+              disabled={guardando}
+              className={boton}
+            >
               🗺️ {actual ? "Cambiarla en el mapa" : "Marcar en el mapa"}
             </button>
             <button type="button" onClick={estoyAca} disabled={ocupado} className={boton}>
