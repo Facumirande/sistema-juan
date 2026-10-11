@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearCantidad, formatearMoneda, type UnidadMedida } from "@/dominio/dinero/formato";
@@ -8,6 +7,7 @@ import { obtenerComprobante } from "@/modulos/facturacion/facturacion";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
+import Link from "@/ui/enlace";
 import { parametro } from "@/ui/parametros";
 
 export const metadata: Metadata = { title: "DOC-08 Comprobante interno · Sistema Repartos" };

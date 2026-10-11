@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { textoDeNovedades } from "@/dominio/colaboracion/avisos";
@@ -10,6 +9,7 @@ import type { AvisoVisible, BandejaDeAvisos } from "@/modulos/colaboracion/aviso
 
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
+import Link from "@/ui/enlace";
 import { enlaceDeEntidad } from "@/ui/enlaces";
 import { fechaConDia, nombreDelDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
@@ -170,7 +170,8 @@ export function Campanita({ zonaHoraria }: { zonaHoraria: string }) {
         aria-expanded={abierta}
         aria-haspopup="dialog"
         aria-label={nuevos ? `${nuevos} ${nuevos === 1 ? "aviso nuevo" : "avisos nuevos"}` : "Avisos"}
-        className={`relative flex size-11 items-center justify-center rounded-full text-xl hover:bg-fondo ${abierta ? "bg-fondo" : ""}`}
+        // En el celular va grande, como el ☰ y la persona de la barra (pedido del usuario, 11/10/2026).
+        className={`relative flex size-[3.6rem] items-center justify-center rounded-full text-[2.25rem] leading-none hover:bg-[var(--nav-encima)] sm:size-11 sm:text-xl ${abierta ? "bg-[var(--nav-encima)]" : ""}`}
       >
         <span aria-hidden>🔔</span>
         {nuevos > 0 && <span className="absolute top-1 right-0.5 min-w-5 rounded-full bg-[var(--vence-fondo)] px-1 text-center text-xs leading-5 font-bold text-white">{nuevos > 9 ? "9+" : nuevos}</span>}
@@ -185,7 +186,7 @@ export function Campanita({ zonaHoraria }: { zonaHoraria: string }) {
       </button>
 
       {abierta && (
-        <div role="dialog" aria-label="Avisos, actividad y notificaciones" className="fixed inset-x-2 top-16 z-50 flex max-h-[78dvh] flex-col overflow-hidden rounded-2xl border border-borde bg-superficie shadow-2xl sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[26rem]">
+        <div role="dialog" aria-label="Avisos, actividad y notificaciones" className="fixed inset-x-2 top-[var(--alto-barra)] z-50 flex max-h-[78dvh] flex-col overflow-hidden rounded-2xl border border-borde bg-superficie text-texto shadow-2xl sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[26rem]">
           <div className="flex flex-col gap-2 border-b border-borde px-3 pt-3 pb-2">
             <div role="tablist" aria-label="Qué ver" className="grid grid-cols-3 gap-1 rounded-xl bg-fondo p-1">
               {(

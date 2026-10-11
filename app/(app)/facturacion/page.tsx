@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { formatearFecha, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { listarComprobantes, pendientesDeFacturar, type Periodicidad } from "@/modulos/facturacion/facturacion";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import Link from "@/ui/enlace";
 import { PERIODICIDADES, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Encabezado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";

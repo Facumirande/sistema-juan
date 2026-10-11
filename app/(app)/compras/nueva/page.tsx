@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -15,6 +14,7 @@ import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { listarProveedores, obtenerProveedor } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { Encabezado } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";

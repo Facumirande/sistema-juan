@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { enlaceWaze, enlacesGoogleMaps, type DestinoGps } from "@/dominio/entregas/navegacion";
 import { misRepartos, obtenerReparto } from "@/modulos/entregas/repartos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import Link from "@/ui/enlace";
 import { ESTADOS_ENTREGA, ESTADOS_REPARTO, fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Encabezado, clasesBoton } from "@/ui/formularios";

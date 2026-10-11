@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { datosParaCargarPedido } from "@/modulos/pedidos/carga";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 
 import { CargadorDePedido } from "../../cargador";
 

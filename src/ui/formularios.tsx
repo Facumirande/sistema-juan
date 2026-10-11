@@ -1,4 +1,5 @@
-import Link from "next/link";
+import Link from "./enlace";
+
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 // Piezas de formulario compartidas. Controles de al menos 44 px de alto y texto de 16 px (01 §16).

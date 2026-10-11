@@ -7,7 +7,8 @@ export interface PersonaAvatar {
   color: string;
 }
 
-const TAMANOS = { chico: "size-6 text-[10px]", medio: "size-8 text-xs", grande: "size-12 text-base" } as const;
+// "barra": el de la barra de arriba, que en el celular va grande (se toca con el dedo).
+const TAMANOS = { chico: "size-6 text-[10px]", medio: "size-8 text-xs", grande: "size-12 text-base", barra: "size-[3.6rem] text-xl sm:size-8 sm:text-xs" } as const;
 
 export function Avatar({ persona, tamano = "medio", className = "" }: { persona: PersonaAvatar; tamano?: keyof typeof TAMANOS; className?: string }) {
   return (

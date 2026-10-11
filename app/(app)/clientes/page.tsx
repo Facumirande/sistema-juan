@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { listarClientes, type ClienteListado } from "@/modulos/clientes/clientes";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { CampoBuscar } from "@/ui/buscador";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
+import Link from "@/ui/enlace";
 import { PERIODICIDADES, TIPOS_CLIENTE, fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente, etiquetaDeTipo } from "@/ui/etiquetas-tablero";
 import { Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -8,6 +7,7 @@ import { formatearFecha, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas
 import { gastosEIngresos } from "@/modulos/gastos/gastos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
+import Link from "@/ui/enlace";
 import { MEDIOS_PAGO, fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, Encabezado, Tarjeta, clasesBoton } from "@/ui/formularios";

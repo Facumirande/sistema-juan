@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 import { interpretarNumero } from "@/dominio/dinero/entrada";
 import { formatearMoneda } from "@/dominio/dinero/formato";
+import { DibujoDeProducto } from "@/ui/dibujos";
 import { FormularioAccion } from "@/ui/formulario-accion";
 
 import { registrarCompraAccion } from "../acciones";
@@ -113,7 +113,7 @@ export function FormularioCompra({
               <input type="hidden" name={`item_${n}_presentacion`} value={r.presentacionId} />
               <div className="flex items-center gap-3">
                 <span aria-hidden className="text-3xl leading-none">
-                  {dibujoDeProducto(r.producto)}
+                  <DibujoDeProducto nombre={r.producto} />
                 </span>
                 <p className="min-w-0 flex-1">
                   <span className="block text-lg font-semibold">{r.producto}</span>
@@ -163,7 +163,7 @@ export function FormularioCompra({
                 {sugeridos.map((p) => (
                   <button key={clavePP(p)} type="button" onClick={() => agregar(p)} className="flex min-h-12 items-center gap-2 rounded-xl border-2 border-borde bg-superficie px-3 text-left hover:border-marca">
                     <span aria-hidden className="text-2xl">
-                      {dibujoDeProducto(p.producto)}
+                      <DibujoDeProducto nombre={p.producto} />
                     </span>
                     <span>
                       <span className="block font-semibold">{p.producto}</span>

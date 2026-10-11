@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearMoneda } from "@/dominio/dinero/formato";
@@ -12,6 +11,7 @@ import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { obtenerProveedor } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { CONDICIONES_COMPRA, CONDICIONES_PAGO, ESTADOS_PAGO } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { CampoNumero, Encabezado, Estado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
@@ -8,6 +7,7 @@ import { jornadaEnCurso } from "@/modulos/pedidos/jornadas";
 import { diaElegido } from "@/ui/dia-elegido";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { FechaGrande } from "@/ui/fecha-grande";
 import { Encabezado, Tarjeta, clasesBoton } from "@/ui/formularios";

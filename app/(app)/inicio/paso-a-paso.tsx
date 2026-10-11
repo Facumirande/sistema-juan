@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { dec } from "@/dominio/dinero/decimal";
@@ -7,6 +6,7 @@ import { sumarDias } from "@/dominio/fechas/fechas";
 import type { ClavePaso, EstadoPaso } from "@/dominio/jornadas/pasos";
 import { datosDelPanel, type DiaDeTrabajo } from "@/modulos/jornadas/dia";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { FlechaNavegacion } from "@/ui/iconos";

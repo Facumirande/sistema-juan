@@ -7,31 +7,42 @@ import { ESTADO_INICIAL } from "@/ui/estado-accion";
 
 import { guardarCajaInicialAccion } from "./acciones";
 
-// El resumen balance (pedido del usuario, 10/10/2026): el cartel de arriba del tablero. Dice lo
-// gastado en el día que se mira (Gastos), cuánto de eso ya se pagó (Pagado) y cuánto quedó a cuenta
-// (Crédito), y a la derecha la Caja inicial, la plata con la que se cuenta, que se carga tocándola.
-// Si los gastos la superan, el cartel lo avisa en rojo (y la campanita también). Se pone al día
-// solo con cada cambio. La cuenta está en `src/dominio/reportes/resumen-balance.ts` (RN-180).
+// El resumen balance (pedido del usuario, 10 y 11/10/2026): el cartel de arriba del tablero, con el
+// día que se mira en tres apartados. Uno con lo Pagado y, debajo, el Crédito (lo retirado que falta
+// pagar); otro con la Ganancia (lo ya cobrado menos lo pagado) y, debajo, lo que falta cobrar; y a
+// la derecha la Caja inicial, la plata con la que se cuenta, que se carga tocándola. Son apartados
+// distintos: no se suman a la vista. Si los gastos del día superan la caja, el cartel lo avisa en
+// rojo (y la campanita también). Se pone al día solo con cada cambio. La cuenta está en
+// `src/dominio/reportes/resumen-balance.ts` (RN-180, RN-194).
 
 export interface ResumenParaVer {
   fecha: string;
-  gastos: string;
   pagado: string;
   credito: string;
+  ganancia: string;
+  aCobrar: string;
   cajaInicial: string | null;
   exceso: string | null;
   /** Puede cargar o cambiar la caja inicial (tiene el permiso y el día no está cerrado). */
   editable: boolean;
 }
 
-const AYUDA = {
-  gastos: "Lo comprado para este día y los gastos de esta fecha: lo pagado más lo que quedó a crédito.",
-  pagado: "Lo que ya se pagó: las compras pagadas y los gastos de esta fecha.",
-  credito: "Lo comprado a cuenta que todavía falta pagar.",
-  caja: "La plata con la que contás este día.",
-} as const;
+/** Los cuatro números, de a dos por apartado: el de arriba y el de abajo. */
+const APARTADOS = [
+  [
+    { clave: "pagado", titulo: "Pagado", ayuda: "Lo que ya se pagó: las compras de este día pagadas y los gastos de esta fecha.", color: "text-[#ffb3a7]" },
+    { clave: "credito", titulo: "Crédito", ayuda: "Lo que se retiró de los proveedores este día y todavía falta pagar.", color: "text-[#ffd96a]" },
+  ],
+  [
+    { clave: "ganancia", titulo: "Ganancia", ayuda: "Lo que ya se cobró de lo entregado este día, menos lo pagado.", color: "text-[#86efc3]" },
+    { clave: "aCobrar", titulo: "A cobrar", ayuda: "Lo entregado este día que los clientes todavía no pagaron.", color: "text-[#a9d4ff]" },
+  ],
+] as const;
 
-const COLOR = { gastos: "text-[#ffb3a7]", pagado: "text-[#86efc3]", credito: "text-[#ffd96a]", caja: "text-white" } as const;
+const AYUDA_CAJA = "La plata con la que contás este día.";
+
+/** El color de cada número; la ganancia en negativo (salió más plata de la que volvió) va en el de lo pagado. */
+const colorDe = (a: (typeof APARTADOS)[number][number], r: ResumenParaVer) => (a.clave === "ganancia" && r.ganancia.startsWith("-") ? "text-[#ffb3a7]" : a.color);
 
 /** El recuadro para escribir la caja inicial: se abre debajo del cartel, sin tapar el tablero entero. */
 function EditorDeCaja({ resumen, cerrar }: { resumen: ResumenParaVer; cerrar: () => void }) {
@@ -143,15 +154,13 @@ function valorDeCaja(r: ResumenParaVer): string {
 }
 
 /**
- * En la computadora, en el encabezado: Gastos = Pagado + Crédito y, en el recuadro de la derecha,
- * la Caja inicial. Cada número se achica solo si no entra en su lugar.
+ * En la computadora, en el encabezado: Pagado sobre Crédito, Ganancia sobre A cobrar y, en el
+ * recuadro de la derecha, la Caja inicial. Cada número se achica solo si no entra en su lugar.
  */
 export function ResumenBalanceGrande({ resumen }: { resumen: ResumenParaVer }) {
   const [editando, setEditando] = useState(false);
-  const numero = "px-1 leading-tight font-black whitespace-nowrap tabular-nums";
-  const titulo = "flex items-center gap-1 text-xs leading-tight font-bold tracking-wide uppercase opacity-90";
+  const numero = "leading-tight font-black whitespace-nowrap tabular-nums";
   const celda = "@container flex min-w-0 flex-col items-center justify-center px-2 py-1.5 text-center";
-  const signo = "flex items-center text-xl font-black opacity-60";
   const cajaAdentro = (
     <>
       {/* El título se achica con el recuadro para entrar siempre en un renglón, con su lápiz. */}
@@ -164,47 +173,36 @@ export function ResumenBalanceGrande({ resumen }: { resumen: ResumenParaVer }) {
           </span>
         )}
       </span>
-      <span className={`${numero} ${resumen.cajaInicial === null ? "text-[clamp(0.95rem,11cqw,1.5rem)] opacity-90" : "text-[clamp(1.05rem,15cqw,2.2rem)]"} ${COLOR.caja}`}>{valorDeCaja(resumen)}</span>
+      <span className={`${numero} px-1 ${resumen.cajaInicial === null ? "text-[clamp(0.95rem,11cqw,1.5rem)] opacity-90" : "text-[clamp(1.05rem,15cqw,2.2rem)]"}`}>{valorDeCaja(resumen)}</span>
     </>
   );
   return (
-    <section aria-label="Resumen balance del día" className="relative w-full max-w-[50rem] min-w-[26rem] flex-1">
+    <section aria-label="Resumen balance del día" className="relative w-full max-w-[52rem] min-w-[30rem] flex-1">
       <div className={`overflow-hidden rounded-xl bg-black/35 text-white ring-1 ${resumen.exceso ? "ring-2 ring-[var(--vence-fondo)]" : "ring-white/15"}`}>
-        <div className="grid w-full grid-cols-[minmax(0,1.1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,1.35fr)]">
-          <p className={celda} title={AYUDA.gastos}>
-            <span className={titulo}>
-              <span aria-hidden>💸</span>
-              Gastos
-            </span>
-            <span className={`${numero} text-[clamp(1.05rem,15cqw,2.2rem)] ${COLOR.gastos}`}>{formatearMoneda(resumen.gastos)}</span>
-          </p>
-          <span aria-hidden className={signo}>
-            =
-          </span>
-          <p className={celda} title={AYUDA.pagado}>
-            <span className={titulo}>Pagado</span>
-            <span className={`${numero} text-[clamp(1rem,13cqw,1.7rem)] ${COLOR.pagado}`}>{formatearMoneda(resumen.pagado)}</span>
-          </p>
-          <span aria-hidden className={signo}>
-            +
-          </span>
-          <p className={celda} title={AYUDA.credito}>
-            <span className={titulo}>Crédito</span>
-            <span className={`${numero} text-[clamp(1rem,13cqw,1.7rem)] ${COLOR.credito}`}>{formatearMoneda(resumen.credito)}</span>
-          </p>
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)] divide-x divide-white/20">
+          {APARTADOS.map((apartado) => (
+            <dl key={apartado[0].clave} className="@container flex min-w-0 flex-col justify-center gap-0.5 px-3 py-1.5">
+              {apartado.map((a) => (
+                <div key={a.clave} className="flex items-baseline justify-between gap-2" title={a.ayuda}>
+                  <dt className="text-[clamp(0.62rem,5.6cqw,0.8rem)] leading-tight font-bold tracking-wide whitespace-nowrap uppercase opacity-90">{a.titulo}</dt>
+                  <dd className={`${numero} text-[clamp(0.95rem,9cqw,1.55rem)] ${colorDe(a, resumen)}`}>{formatearMoneda(resumen[a.clave])}</dd>
+                </div>
+              ))}
+            </dl>
+          ))}
           {resumen.editable ? (
             <button
               type="button"
               onClick={() => setEditando(true)}
               aria-haspopup="dialog"
               aria-expanded={editando}
-              title={`${AYUDA.caja} Tocá para ${resumen.cajaInicial === null ? "cargarla" : "cambiarla"}.`}
-              className={`${celda} border-l border-white/20 bg-white/10 hover:bg-white/20`}
+              title={`${AYUDA_CAJA} Tocá para ${resumen.cajaInicial === null ? "cargarla" : "cambiarla"}.`}
+              className={`${celda} bg-white/10 hover:bg-white/20`}
             >
               {cajaAdentro}
             </button>
           ) : (
-            <p className={`${celda} border-l border-white/20 bg-white/10`} title={AYUDA.caja}>
+            <p className={`${celda} bg-white/10`} title={AYUDA_CAJA}>
               {cajaAdentro}
             </p>
           )}
@@ -217,15 +215,15 @@ export function ResumenBalanceGrande({ resumen }: { resumen: ResumenParaVer }) {
 }
 
 /**
- * En el celular, arriba del tablero: en letra normal, con los dos números que importan (Gastos y
- * Caja inicial) un poco más grandes y, debajo de Gastos, cuánto es Pagado y cuánto Crédito.
+ * En el celular, arriba del tablero: los mismos tres apartados, en letra normal. En cada uno, el
+ * nombre chico y su importe un poco más grande; el de arriba y el de abajo, uno debajo del otro.
  */
 export function ResumenBalanceChico({ resumen }: { resumen: ResumenParaVer }) {
   const [editando, setEditando] = useState(false);
-  const titulo = "text-xs leading-tight font-semibold opacity-90";
+  const titulo = "text-[clamp(0.66rem,10.5cqw,0.8rem)] leading-tight font-semibold opacity-90";
   const cajaAdentro = (
     <>
-      <span className={titulo}>
+      <span className={`${titulo} whitespace-nowrap`}>
         <span aria-hidden>💰</span> Caja inicial
         {resumen.editable && (
           <span aria-hidden className="opacity-80">
@@ -234,29 +232,24 @@ export function ResumenBalanceChico({ resumen }: { resumen: ResumenParaVer }) {
           </span>
         )}
       </span>
-      <span className={`leading-tight font-black whitespace-nowrap tabular-nums ${resumen.cajaInicial === null ? "text-sm opacity-90" : "text-lg"} ${COLOR.caja}`}>{valorDeCaja(resumen)}</span>
+      <span className={`leading-tight font-black whitespace-nowrap tabular-nums ${resumen.cajaInicial === null ? "text-[clamp(0.8rem,12.5cqw,1rem)] opacity-90" : "text-[clamp(0.85rem,14.5cqw,1.2rem)]"}`}>{valorDeCaja(resumen)}</span>
     </>
   );
-  const celdaCaja = "flex min-w-0 flex-col items-center justify-center bg-white/10 px-2 py-1 text-center";
+  const celdaCaja = "@container flex min-w-0 flex-col items-center justify-center gap-0.5 bg-white/10 px-1.5 py-1 text-center";
   return (
     <section aria-label="Resumen balance del día" className="relative shrink-0">
       <div className={`overflow-hidden rounded-xl bg-black/35 text-white ring-1 ${resumen.exceso ? "ring-2 ring-[var(--vence-fondo)]" : "ring-white/15"}`}>
-        <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] divide-x divide-white/20">
-          {/* Como una suma: el total arriba y, debajo, sus dos partes, con los importes en una misma columna. */}
-          <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] content-center items-baseline gap-x-2 px-2.5 py-1 leading-tight">
-            <dt className={titulo} title={AYUDA.gastos}>
-              <span aria-hidden>💸</span> Gastos
-            </dt>
-            <dd className={`text-right text-lg leading-tight font-black whitespace-nowrap tabular-nums ${COLOR.gastos}`}>{formatearMoneda(resumen.gastos)}</dd>
-            <dt className="pl-[1.35em] text-xs opacity-90" title={AYUDA.pagado}>
-              Pagado
-            </dt>
-            <dd className={`text-right text-xs font-bold whitespace-nowrap tabular-nums ${COLOR.pagado}`}>{formatearMoneda(resumen.pagado)}</dd>
-            <dt className="pl-[1.35em] text-xs opacity-90" title={AYUDA.credito}>
-              Crédito
-            </dt>
-            <dd className={`text-right text-xs font-bold whitespace-nowrap tabular-nums ${COLOR.credito}`}>{formatearMoneda(resumen.credito)}</dd>
-          </dl>
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)] divide-x divide-white/20">
+          {APARTADOS.map((apartado) => (
+            <dl key={apartado[0].clave} className="@container flex min-w-0 flex-col justify-center gap-1 px-2 py-1">
+              {apartado.map((a) => (
+                <div key={a.clave} title={a.ayuda}>
+                  <dt className={titulo}>{a.titulo}</dt>
+                  <dd className={`text-[clamp(0.8rem,13.5cqw,1.1rem)] leading-tight font-black whitespace-nowrap tabular-nums ${colorDe(a, resumen)}`}>{formatearMoneda(resumen[a.clave])}</dd>
+                </div>
+              ))}
+            </dl>
+          ))}
           {resumen.editable ? (
             <button type="button" onClick={() => setEditando(true)} aria-haspopup="dialog" aria-expanded={editando} className={`${celdaCaja} active:bg-white/20`}>
               {cajaAdentro}

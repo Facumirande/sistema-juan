@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { ETAPAS_PARA_ELEGIR } from "@/dominio/pedidos/responsables";
 import { REDONDEOS, configuracionDeEmpresa, responsablesDelNegocio, type ClaveRedondeo } from "@/modulos/configuracion/empresa";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import Link from "@/ui/enlace";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, CampoNumero, Encabezado, Selector } from "@/ui/formularios";
 

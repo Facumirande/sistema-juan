@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -9,6 +8,7 @@ import { fechaConDia, nombreDelDia } from "@/ui/etiquetas";
 
 import { elegirDia } from "./dia-en-curso";
 import { diasDelMesAccion } from "./dias-acciones";
+import Link from "./enlace";
 
 // Los días para elegir en qué jornada se trabaja (como el selector de tableros de Trello). Una tira
 // con hoy y los próximos días (siempre) más los que tienen algo, cada uno con cuántos pedidos tiene;

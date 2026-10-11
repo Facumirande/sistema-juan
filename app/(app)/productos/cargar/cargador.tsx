@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 
 import type { ProductoAImportar } from "@/dominio/catalogo/importacion";
 import { UNIDADES_EN_PALABRAS, type UnidadDeVenta } from "@/dominio/catalogo/productos";
+import Link from "@/ui/enlace";
 
 import { cargarProductosDePlanillaAccion, leerPlanillaDeProductosAccion } from "../acciones";
 

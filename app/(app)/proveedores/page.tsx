@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import type { Semaforo } from "@/dominio/compras/credito";
@@ -9,6 +8,7 @@ import { listarProveedores, type ProveedorListado } from "@/modulos/proveedores/
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { CampoBuscar } from "@/ui/buscador";
 import { Dato, Grupo, TarjetaRegistro, VistaTarjetasOLista } from "@/ui/cuadricula";
+import Link from "@/ui/enlace";
 import { CONDICIONES_PAGO } from "@/ui/etiquetas";
 import { Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";

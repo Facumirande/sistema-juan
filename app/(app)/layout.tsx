@@ -1,14 +1,18 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment, Suspense, type ReactNode } from "react";
 
+import { obtenerBaseDatos } from "@/db/cliente";
 import { hoyEnEmpresa } from "@/dominio/fechas/fechas";
+import { dibujosElegidos } from "@/modulos/catalogo/dibujos";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
+import Link from "@/ui/enlace";
+import { COOKIE_PULSO } from "@/ui/accion-servidor";
 import { EnlaceDeMenu } from "@/ui/enlace-menu";
 import { diaElegido } from "@/ui/dia-elegido";
+import { DibujosDeProductos } from "@/ui/dibujos";
 import { MarcoConMenu } from "@/ui/marco";
 import { InstalarApp } from "@/ui/instalar-app";
 import { Pulso } from "@/ui/pulso";
@@ -92,7 +96,7 @@ function Menu({ grupos, authUserId, permisos, dia, hoy }: { grupos: GrupoMenu[];
 function BotonSalir({ enMenu = false }: { enMenu?: boolean }) {
   return (
     <form action="/auth/salir" method="post" className={enMenu ? "sm:hidden" : "hidden sm:block"}>
-      <button type="submit" className={enMenu ? "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left font-medium text-texto-suave hover:bg-marca/10" : "min-h-11 rounded-lg border border-borde px-3 font-medium"}>
+      <button type="submit" className={enMenu ? "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left font-medium text-texto-suave hover:bg-marca/10" : "min-h-11 rounded-lg border border-[var(--nav-borde)] px-3 font-medium hover:bg-[var(--nav-encima)]"}>
         {enMenu && (
           <span aria-hidden className="w-6 text-center text-lg leading-none">
             🚪
@@ -117,17 +121,25 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
 
   const grupos = menuDisponible(sesion.permisos);
   // El menú queda como se lo dejó la última vez (abierto o guardado): la página ya llega así.
-  const menuCerrado = (await cookies()).get("menu")?.value === "cerrado";
+  const galletas = await cookies();
+  // Los dibujos elegidos a mano para los productos: los usa toda pantalla que muestra un producto.
+  const elegidos = await dibujosElegidos(obtenerBaseDatos(), authUserId).catch((error: unknown) => {
+    console.error("No se pudieron leer los dibujos de los productos:", error);
+    return {};
+  });
+  const menuCerrado = galletas.get("menu")?.value === "cerrado";
   return (
+    <DibujosDeProductos elegidos={elegidos}>
     <MarcoConMenu
       menuCerrado={menuCerrado}
       menu={<Menu grupos={grupos} authUserId={authUserId} permisos={sesion.permisos} dia={await diaElegido()} hoy={hoyEnEmpresa(new Date(), sesion.zonaHoraria)} />}
       barra={
         <>
           <Campanita zonaHoraria={sesion.zonaHoraria} />
-          <Pulso />
+          {/* Hasta dónde llegan los datos de esta pantalla (lo anota cada acción al guardar): lo propio no la hace redibujar de nuevo. */}
+          <Pulso alDia={galletas.get(COOKIE_PULSO)?.value ?? null} />
           <Link href="/mi-cuenta" className="flex min-h-11 items-center gap-2 font-medium underline-offset-4 hover:underline">
-            <Avatar persona={{ nombre: sesion.nombre, color: sesion.color }} />
+            <Avatar persona={{ nombre: sesion.nombre, color: sesion.color }} tamano="barra" />
             <span className="hidden sm:inline">{sesion.nombre}</span>
           </Link>
           <BotonSalir />
@@ -136,5 +148,6 @@ export default async function LayoutAplicacion({ children }: LayoutProps<"/">) {
     >
       {children}
     </MarcoConMenu>
+    </DibujosDeProductos>
   );
 }

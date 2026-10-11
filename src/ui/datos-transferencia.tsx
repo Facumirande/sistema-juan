@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import Link from "./enlace";
+
 import { useState } from "react";
 
 import { cbuParaLeer } from "@/dominio/proveedores/transferencia";

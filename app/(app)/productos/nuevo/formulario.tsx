@@ -5,20 +5,52 @@ import { useMemo, useState } from "react";
 import { categoriaSugerida, CATEGORIAS_PREELEGIDAS, normalizar } from "@/dominio/catalogo/categorias";
 import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envasesSugeridos, explicarPresentacion, grupoDeProducto, nombreDePresentacion, unidadSugerida } from "@/dominio/catalogo/productos";
 import { formatearMoneda } from "@/dominio/dinero/formato";
+import { ElegirDibujo } from "@/ui/elegir-dibujo";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Pregunta, campoGrande, opcion } from "@/ui/guiado";
 
-import { crearProductoGuiadoAccion } from "../acciones";
+import { crearProductoGuiadoAccion, editarProductoGuiadoAccion } from "../acciones";
 
-// Alta de un producto en tres preguntas (qué es, cómo se vende, en qué envase se compra), con la
-// tarjeta de cómo va a quedar. La ganancia, el código y las notas quedan en "Más opciones". La
-// categoría se elige entre las que ya se usan, las preelegidas (Duras, Blandas, Frágiles…),
-// "Ninguna" u otra escrita; mientras no se elija, se propone una según el nombre (RN-154).
+// Un producto en tres preguntas (qué es, cómo se vende, en qué envase se compra), con la tarjeta de
+// cómo va a quedar. La ganancia, el código y las notas quedan en "Más opciones". La categoría se
+// elige entre las que ya se usan, las preelegidas (Duras, Blandas, Frágiles…), "Ninguna" u otra
+// escrita; mientras no se elija, se propone una según el nombre (RN-154). El dibujo sale solo del
+// nombre y se puede cambiar por otro de la lista.
+//
+// El mismo formulario sirve para crear y para editar (pedido del usuario, 11/10/2026: "al editor de
+// productos dejalo con las mismas herramientas que cuando los creas"): con `producto` arranca con
+// sus datos y guarda los cambios.
 
 interface Categoria {
   id: string;
   nombre: string;
   grupo: string;
+}
+
+/** Lo que hace falta de un producto para editarlo con este formulario. */
+export interface ProductoAEditar {
+  id: string;
+  nombre: string;
+  codigo: string;
+  categoriaId: string;
+  unidadBase: string;
+  /** Todavía se puede cambiar cómo se vende (no tiene otros envases ni precios cargados). */
+  unidadEditable: boolean;
+  admiteFraccion: boolean;
+  /** La ganancia propia del producto, en %; vacía si usa la de su categoría o la general. */
+  recargo: string;
+  observaciones: string;
+  nombreCorto: string;
+  dibujo: string | null;
+  /** Los envases que ya tiene (sin el de la unidad en que se cuenta) y sirven para comprar. */
+  envasesDeCompra: { id: string; nombre: string }[];
+  /** El envase en que se compra (nulo = suelto). */
+  envaseDeCompraId: string | null;
+  /** En qué se puede vender, para elegir el de siempre. */
+  envasesDeVenta: { id: string; nombre: string }[];
+  envaseDeVentaId: string | null;
+  /** A dónde se vuelve después de guardar. */
+  volver: "lista" | "ficha";
 }
 
 const UNIDADES = [
@@ -37,6 +69,7 @@ const UNIDADES = [
   { valor: "BOLSON", icono: "🛍️", nombre: "Por bolsón", ejemplo: "zanahoria", corta: "bolsón", fraccion: false, comun: false },
   { valor: "RISTRA", icono: "🧄", nombre: "Por ristra", ejemplo: "ajo", corta: "ristra", fraccion: false, comun: false },
 ] as const;
+type Unidad = (typeof UNIDADES)[number]["valor"];
 /** Las que son un envase: se cuenta en ese envase y no se pregunta cuántos kilos trae (10/10/2026). */
 const DE_ENVASE: ReadonlySet<string> = new Set(["CAJON", "CAJA", "BOLSA", "JAULA", "BOLSON", "RISTRA"]);
 
@@ -48,27 +81,36 @@ export function FormularioProducto({
   recargoGlobal,
   recargoPorCategoria,
   verRecargos,
+  producto,
 }: {
   categorias: Categoria[];
   codigos: string[];
   recargoGlobal: string;
   recargoPorCategoria: Record<string, string | null>;
   verRecargos: boolean;
+  /** Con esto, el formulario edita ese producto en vez de crear uno. */
+  producto?: ProductoAEditar;
 }) {
-  const [nombre, setNombre] = useState("");
+  const editando = producto !== undefined;
+  const unidadInicial = (UNIDADES.find((x) => x.valor === producto?.unidadBase)?.valor ?? "KG") as Unidad;
+  const [nombre, setNombre] = useState(producto?.nombre ?? "");
   /** "id:<uuid>", "nombre:<texto>" o "ninguna"; null = la que se propone por el nombre. */
-  const [elegida, setElegida] = useState<string | null>(null);
+  const [elegida, setElegida] = useState<string | null>(producto ? `id:${producto.categoriaId}` : null);
   const [otraCategoria, setOtraCategoria] = useState<string | null>(null);
-  const [unidad, setUnidad] = useState<(typeof UNIDADES)[number]["valor"]>("KG");
-  const [unidadAMano, setUnidadAMano] = useState(false);
+  const [unidad, setUnidad] = useState<Unidad>(unidadInicial);
+  // Al editar, la forma de vender no sigue al nombre: ya está elegida.
+  const [unidadAMano, setUnidadAMano] = useState(editando);
   const [verTodas, setVerTodas] = useState(false);
-  const [fraccion, setFraccion] = useState(true);
-  const [envase, setEnvase] = useState("Cajón");
-  const [cantidad, setCantidad] = useState("18");
+  const [fraccion, setFraccion] = useState(producto?.admiteFraccion ?? true);
+  /** El envase que ya tiene y se eligió para comprar (solo al editar); nulo = uno nuevo o suelto. */
+  const [envaseId, setEnvaseId] = useState<string | null>(producto?.envaseDeCompraId ?? null);
+  const [envase, setEnvase] = useState(editando ? "" : "Cajón");
+  const [cantidad, setCantidad] = useState(editando ? "" : "18");
   const [otroEnvase, setOtroEnvase] = useState(false);
-  const [codigoPropio, setCodigoPropio] = useState<string | null>(null);
-  const [recargo, setRecargo] = useState("");
+  const [codigoPropio, setCodigoPropio] = useState<string | null>(producto?.codigo ?? null);
+  const [recargo, setRecargo] = useState(producto?.recargo ?? "");
   const [precioEjemplo, setPrecioEjemplo] = useState("");
+  const [dibujoElegido, setDibujoElegido] = useState<string | null>(producto?.dibujo ?? null);
 
   // La categoría propuesta por el nombre: la que ya existe con ese nombre o la preelegida.
   const sugerida = useMemo(() => {
@@ -89,39 +131,50 @@ export function FormularioProducto({
   };
   const u = UNIDADES.find((x) => x.valor === unidad)!;
   const codigoAuto = useMemo(() => (nombre.trim() ? codigoSugerido(nombre, new Set(codigos)) : "—"), [nombre, codigos]);
-  const presentacion = envase.trim() ? nombreDePresentacion(envase, cantidad, u.corta) : "";
-  const explicacion = envase.trim() ? explicarPresentacion(presentacion, cantidad, u.corta) : null;
+  const envaseQueTiene = producto?.envasesDeCompra.find((e) => e.id === envaseId) ?? null;
+  const presentacionNueva = envase.trim() ? nombreDePresentacion(envase, cantidad, u.corta) : "";
+  const presentacion = envaseQueTiene?.nombre ?? presentacionNueva;
+  const explicacion = !envaseQueTiene && envase.trim() ? explicarPresentacion(presentacionNueva, cantidad, u.corta) : null;
   const recargoQueAplica = recargo.trim() || recargoPorCategoria[categoriaId] || recargoGlobal;
   const origenRecargo = recargo.trim() ? "la de este producto" : recargoPorCategoria[categoriaId] ? `la de ${categoria?.nombre ?? "la categoría"}` : "la general";
-  const ejemplo = envase.trim() && precioEjemplo ? ejemploDeCostos({ precioEnvase: precioEjemplo, cantidad, recargoPct: recargoQueAplica }) : null;
+  const ejemplo = !envaseQueTiene && envase.trim() && precioEjemplo ? ejemploDeCostos({ precioEnvase: precioEjemplo, cantidad, recargoPct: recargoQueAplica }) : null;
   const grupo = grupoDeProducto(nombre, categoria?.grupo);
-  const dibujo = dibujoDeProducto(nombre, grupo);
+  const dibujoAutomatico = dibujoDeProducto(nombre, grupo);
+  const dibujo = dibujoElegido ?? dibujoAutomatico;
   const unidadesVisibles = UNIDADES.filter((x) => x.comun || verTodas || x.valor === unidad);
   const elegirUnidad = (x: (typeof UNIDADES)[number], aMano = true) => {
     if (aMano) setUnidadAMano(true);
     setUnidad(x.valor);
     setFraccion(x.fraccion);
     const primero = envasesSugeridos(x.valor)[0];
+    setEnvaseId(null);
     setEnvase(primero?.envase ?? "");
     setCantidad(primero?.cantidad ?? "");
     setOtroEnvase(false);
   };
+  // Los envases de siempre que el producto todavía no tiene (al editar, los que tiene van primero).
+  const yaTiene = new Set((producto?.envasesDeCompra ?? []).map((e) => normalizar(e.nombre)));
+  const sugeridos = envasesSugeridos(unidad).filter((e) => !yaTiene.has(normalizar(nombreDePresentacion(e.envase, e.cantidad, u.corta))));
+  const puedeCambiarUnidad = !editando || producto.unidadEditable;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <FormularioAccion accion={crearProductoGuiadoAccion} boton="Crear el producto" className="flex flex-col gap-4">
+      <FormularioAccion accion={editando ? editarProductoGuiadoAccion : crearProductoGuiadoAccion} boton={editando ? "Guardar los cambios" : "Crear el producto"} className="flex flex-col gap-4">
+        {editando && <input type="hidden" name="id" value={producto.id} />}
+        {editando && <input type="hidden" name="volver" value={producto.volver} />}
         <input type="hidden" name="unidadBase" value={unidad} />
         <input type="hidden" name="categoria" value={valorCategoria} />
         {fraccion && <input type="hidden" name="admiteFraccion" value="on" />}
-        <input type="hidden" name="envase" value={envase} />
-        <input type="hidden" name="cantidadEnvase" value={cantidad} />
+        <input type="hidden" name="presentacionCompraId" value={envaseId ?? ""} />
+        <input type="hidden" name="envase" value={envaseId ? "" : envase} />
+        <input type="hidden" name="cantidadEnvase" value={envaseId ? "" : cantidad} />
         {codigoPropio !== null && <input type="hidden" name="codigo" value={codigoPropio} />}
 
         <Pregunta n={1} titulo="¿Qué producto es?" ayuda="El nombre como lo dicen ustedes y en qué grupo va.">
           <input
             name="nombre"
             required
-            autoFocus
+            autoFocus={!editando}
             value={nombre}
             onChange={(e) => {
               setNombre(e.target.value);
@@ -135,6 +188,7 @@ export function FormularioProducto({
             aria-label="Nombre del producto"
             className={campoGrande}
           />
+          <ElegirDibujo name="dibujo" elegido={dibujoElegido} automatico={dibujoAutomatico} alElegir={setDibujoElegido} />
           <p className="text-sm font-medium">
             Categoría{elegida === null && otraCategoria === null && nombre.trim() && sugerida !== "ninguna" && <span className="font-normal text-texto-suave"> (propuesta por el nombre: cambiala si querés)</span>}
           </p>
@@ -158,96 +212,144 @@ export function FormularioProducto({
               Otra…
             </button>
           </div>
-          <p className="text-sm text-texto-suave">
-            Su código y su dibujo se arman solos: <b className="text-texto">{codigoAuto}</b> <span aria-hidden>{dibujo}</span>. El código sirve para buscarlo y para las planillas de Excel.
-          </p>
+          {!editando && (
+            <p className="text-sm text-texto-suave">
+              Su código se arma solo: <b className="text-texto">{codigoAuto}</b>. Sirve para buscarlo y para las planillas de Excel.
+            </p>
+          )}
           {otraCategoria !== null && (
             <input value={otraCategoria} onChange={(e) => setOtraCategoria(e.target.value)} maxLength={80} placeholder="Nombre de la categoría (ej. Verduras de estación)" aria-label="Nombre de otra categoría" className={campoGrande} />
           )}
         </Pregunta>
 
-        <Pregunta n={2} titulo="¿Cómo se vende?" ayuda="Así se anotan los pedidos y se calculan los precios. Después no se puede cambiar.">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {unidadesVisibles.map((x) => (
-              <button key={x.valor} type="button" onClick={() => elegirUnidad(x)} aria-pressed={x.valor === unidad} className={`${opcion(x.valor === unidad)} flex-col items-start`}>
-                <span className="text-2xl" aria-hidden>
-                  {x.icono}
-                </span>
-                <span className="font-semibold">{x.nombre}</span>
-                <span className="text-xs text-texto-suave">{x.ejemplo}</span>
-              </button>
-            ))}
-          </div>
-          {!verTodas && (
-            <button type="button" onClick={() => setVerTodas(true)} className="self-start text-sm font-medium underline underline-offset-2">
-              Otra forma (docena, maple, bandeja, paquete, litro, bolsón, ristra)
-            </button>
+        <Pregunta n={2} titulo="¿Cómo se vende?" ayuda={puedeCambiarUnidad ? "Así se anotan los pedidos y se calculan los precios. Después no se puede cambiar." : "Así se anotan los pedidos y se calculan los precios."}>
+          {puedeCambiarUnidad ? (
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {unidadesVisibles.map((x) => (
+                  <button key={x.valor} type="button" onClick={() => elegirUnidad(x)} aria-pressed={x.valor === unidad} className={`${opcion(x.valor === unidad)} flex-col items-start`}>
+                    <span className="text-2xl" aria-hidden>
+                      {x.icono}
+                    </span>
+                    <span className="font-semibold">{x.nombre}</span>
+                    <span className="text-xs text-texto-suave">{x.ejemplo}</span>
+                  </button>
+                ))}
+              </div>
+              {!verTodas && (
+                <button type="button" onClick={() => setVerTodas(true)} className="self-start text-sm font-medium underline underline-offset-2">
+                  Otra forma (docena, maple, bandeja, paquete, litro, bolsón, ristra)
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="flex flex-wrap items-center gap-3 rounded-xl bg-fondo px-3 py-2">
+              <span className="text-2xl" aria-hidden>
+                {u.icono}
+              </span>
+              <span>
+                <b>{u.nombre}</b>
+                <span className="block text-sm text-texto-suave">Ya tiene envases o precios cargados en esta medida: no se cambia. Si hace falta otra, se crea un producto nuevo.</span>
+              </span>
+            </p>
           )}
         </Pregunta>
 
         {DE_ENVASE.has(unidad) ? (
           <Pregunta n={3} titulo="¿En qué envase lo comprás?" ayuda="">
-            <p className="rounded-xl bg-fondo px-3 py-2 font-medium">
-              👉 Se compra y se vende por {u.corta}: no hace falta decir cuántos kilos trae.
-            </p>
+            <p className="rounded-xl bg-fondo px-3 py-2 font-medium">👉 Se compra y se vende por {u.corta}: no hace falta decir cuántos kilos trae.</p>
           </Pregunta>
         ) : (
-        <Pregunta n={3} titulo="¿En qué envase lo comprás?" ayuda="Para calcular cuánto cuesta cada kilo o unidad. Si se compra suelto, elegí “Suelto”. Si no sabés cuánto trae, dejalo vacío: se cuenta por ese envase.">
-          <div className="flex flex-wrap gap-2">
-            {envasesSugeridos(unidad).map((e) => {
-              const activo = !otroEnvase && envase === e.envase && cantidad === e.cantidad;
-              return (
+          <Pregunta
+            n={3}
+            titulo="¿En qué envase lo comprás?"
+            ayuda={
+              editando
+                ? "Para calcular cuánto cuesta cada kilo o unidad. Elegí uno de los que ya tiene o agregale otro; si se compra suelto, “Suelto”."
+                : "Para calcular cuánto cuesta cada kilo o unidad. Si se compra suelto, elegí “Suelto”. Si no sabés cuánto trae, dejalo vacío: se cuenta por ese envase."
+            }
+          >
+            <div className="flex flex-wrap gap-2">
+              {(producto?.envasesDeCompra ?? []).map((e) => (
                 <button
-                  key={`${e.envase}-${e.cantidad}`}
+                  key={e.id}
                   type="button"
                   onClick={() => {
-                    setEnvase(e.envase);
-                    setCantidad(e.cantidad);
+                    setEnvaseId(e.id);
                     setOtroEnvase(false);
                   }}
-                  aria-pressed={activo}
-                  className={opcion(activo)}
+                  aria-pressed={envaseId === e.id}
+                  className={opcion(envaseId === e.id)}
                 >
-                  {e.envase} de {e.cantidad} {u.corta}
+                  {e.nombre}
                 </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => {
-                setEnvase("");
-                setCantidad("");
-                setOtroEnvase(false);
-              }}
-              aria-pressed={!envase && !otroEnvase}
-              className={opcion(!envase && !otroEnvase)}
-            >
-              Suelto (sin envase)
-            </button>
-            <button type="button" onClick={() => setOtroEnvase(true)} aria-pressed={otroEnvase} className={opcion(otroEnvase)}>
-              Otro envase…
-            </button>
-          </div>
-          {otroEnvase && (
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="font-medium">Envase</span>
-                <input value={envase} onChange={(e) => setEnvase(e.target.value)} placeholder="Ej. Jaula, bolsa" className={`${campoGrande} w-44`} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="font-medium">Cuánto trae (opcional)</span>
-                <span className="flex items-center gap-2">
-                  <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="18" className={`${campoGrande} w-24`} />
-                  <span className="font-medium">{u.corta}</span>
-                </span>
-              </label>
+              ))}
+              {sugeridos.map((e) => {
+                const activo = !envaseId && !otroEnvase && envase === e.envase && cantidad === e.cantidad;
+                return (
+                  <button
+                    key={`${e.envase}-${e.cantidad}`}
+                    type="button"
+                    onClick={() => {
+                      setEnvaseId(null);
+                      setEnvase(e.envase);
+                      setCantidad(e.cantidad);
+                      setOtroEnvase(false);
+                    }}
+                    aria-pressed={activo}
+                    className={opcion(activo)}
+                  >
+                    {editando && "＋ "}
+                    {e.envase} de {e.cantidad} {u.corta}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  setEnvaseId(null);
+                  setEnvase("");
+                  setCantidad("");
+                  setOtroEnvase(false);
+                }}
+                aria-pressed={!envaseId && !envase && !otroEnvase}
+                className={opcion(!envaseId && !envase && !otroEnvase)}
+              >
+                Suelto (sin envase)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEnvaseId(null);
+                  setOtroEnvase(true);
+                }}
+                aria-pressed={otroEnvase}
+                className={opcion(otroEnvase)}
+              >
+                Otro envase…
+              </button>
             </div>
-          )}
-          {explicacion && <p className="rounded-xl bg-fondo px-3 py-2 font-medium">👉 {explicacion}</p>}
-        </Pregunta>
+            {otroEnvase && (
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="font-medium">Envase</span>
+                  <input value={envase} onChange={(e) => setEnvase(e.target.value)} placeholder="Ej. Jaula, bolsa" className={`${campoGrande} w-44`} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-medium">Cuánto trae{editando ? "" : " (opcional)"}</span>
+                  <span className="flex items-center gap-2">
+                    <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="18" className={`${campoGrande} w-24`} />
+                    <span className="font-medium">{u.corta}</span>
+                  </span>
+                </label>
+              </div>
+            )}
+            {explicacion && <p className="rounded-xl bg-fondo px-3 py-2 font-medium">👉 {explicacion}</p>}
+            {editando && <p className="text-sm text-texto-suave">Para cambiar cuánto trae un envase, desactivarlo o ver todos, están en la ficha del producto (“¿En qué envases viene?”).</p>}
+          </Pregunta>
         )}
 
-        <details className="rounded-2xl border border-borde bg-superficie p-4">
+        <details className="rounded-2xl border border-borde bg-superficie p-4" open={editando}>
           <summary className="cursor-pointer text-lg font-semibold">Más opciones (se pueden dejar como están)</summary>
           <div className="mt-4 flex flex-col gap-5">
             {verRecargos && (
@@ -260,7 +362,7 @@ export function FormularioProducto({
                     Si lo dejás vacío se usa {origenRecargo}: {recargoQueAplica} %.
                   </span>
                 </span>
-                {envase.trim() && (
+                {!envaseQueTiene && envase.trim() && (
                   <div className="flex flex-col gap-2 rounded-xl bg-fondo p-3">
                     <label className="flex flex-wrap items-center gap-2">
                       <span>Para probar: si el {presentacion.toLowerCase() || "envase"} te cuesta $</span>
@@ -291,12 +393,34 @@ export function FormularioProducto({
                   </button>
                 </p>
               ) : (
-                <input value={codigoPropio} onChange={(e) => setCodigoPropio(e.target.value.toUpperCase())} maxLength={20} placeholder="Ej. TOM-R" className={`${campoGrande} w-44 uppercase`} />
+                <input value={codigoPropio} onChange={(e) => setCodigoPropio(e.target.value.toUpperCase())} maxLength={20} placeholder="Ej. TOM-R" aria-label="Código del producto" className={`${campoGrande} w-44 uppercase`} />
               )}
             </div>
+            {editando && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="font-medium">
+                    Nombre corto <span className="font-normal text-texto-suave">(opcional, para donde hay poco lugar)</span>
+                  </span>
+                  <input name="nombreCorto" defaultValue={producto.nombreCorto} maxLength={40} className={`${campoGrande} max-w-sm`} />
+                </label>
+                {producto.envasesDeVenta.length > 1 && (
+                  <label className="flex flex-col gap-1">
+                    <span className="font-medium">¿En qué se vende de siempre?</span>
+                    <select name="presentacionVentaDefaultId" defaultValue={producto.envaseDeVentaId ?? ""} className={`${campoGrande} max-w-sm`}>
+                      {producto.envasesDeVenta.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
             <label className="flex flex-col gap-1">
               <span className="font-medium">Notas</span>
-              <textarea name="observaciones" rows={2} placeholder="Ej. elegir los más maduros" className="rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-base" />
+              <textarea name="observaciones" rows={2} defaultValue={producto?.observaciones ?? ""} placeholder="Ej. elegir los más maduros" className="rounded-xl border-2 border-borde bg-superficie px-3 py-2 text-base" />
             </label>
           </div>
         </details>
@@ -322,7 +446,11 @@ export function FormularioProducto({
             <p className="text-sm text-tarjeta-suave">🏷 {nombreCategoria ?? "Sin categoría"}</p>
           </div>
         </div>
-        <p className="text-sm text-texto-suave">Después de crearlo, en su ficha le cargás qué proveedores lo venden y a qué precio (o se carga solo con la primera compra).</p>
+        <p className="text-sm text-texto-suave">
+          {editando
+            ? "Los puestos que lo venden, sus precios y el resto de los envases se manejan en su ficha."
+            : "Después de crearlo, en su ficha le cargás qué proveedores lo venden y a qué precio (o se carga solo con la primera compra)."}
+        </p>
       </aside>
     </div>
   );

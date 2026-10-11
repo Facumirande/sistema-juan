@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -11,6 +10,7 @@ import { obtenerCompra } from "@/modulos/compras/compras";
 import { cuentaDeProveedor } from "@/modulos/compras/cuenta";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { CONDICIONES_COMPRA, ESTADOS_PAGO, MEDIOS_PAGO } from "@/ui/etiquetas";
 import { BotonAccion } from "@/ui/boton-accion";
 import { FormularioAccion } from "@/ui/formulario-accion";

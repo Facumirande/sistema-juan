@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { startTransition, useActionState, useState } from "react";
 
 import { interpretarNumero } from "@/dominio/dinero/entrada";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
+import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
 import { comprarDeLaListaAccion } from "./acciones";

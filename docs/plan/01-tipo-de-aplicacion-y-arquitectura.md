@@ -236,7 +236,8 @@ Todo cálculo de dinero, unidades, saldos y estados vive en `src/dominio` como *
 5. **Consultas sin precios:** las pantallas y documentos de preparación y reparto se arman con consultas que no leen precios (02 §8).
 6. **Sin `SELECT *`**; columnas explícitas.
 7. **Nombres:** tablas y campos como en 03; funciones en `camelCase` en español (`registrarCompra`, `avisoDeFaltante`).
-8. **Antes de dar algo por terminado:** `pnpm typecheck`, `pnpm lint` y `pnpm test`.
+8. **Enlaces:** se usa `Enlace` (`import Link from "@/ui/enlace"`) y no `next/link`: precarga la pantalla recién cuando se la va a usar (al pasar el mouse, apoyar el dedo o enfocar), no cada enlace que aparece a la vista (`docs/tecnico/base-de-datos.md`, "Velocidad").
+9. **Antes de dar algo por terminado:** `pnpm typecheck`, `pnpm lint` y `pnpm test`.
 
 ---
 
@@ -322,6 +323,7 @@ Referencia: Android de gama media con 4G irregular.
 3. Los montos siempre esperan la confirmación del servidor.
 4. Botones de al menos 48 px de alto, letra grande en la computadora (18 px de base; ningún texto por debajo de unos 15 px) y letra normal de aplicación en el celular (14 px de base; 16 en lo que se escribe), alto contraste (legible al sol), teclado numérico para cantidades y precios, acciones principales al alcance del pulgar.
 5. Índices de 03 para las consultas del día (por jornada, proveedor y cliente).
+6. En el celular se usa como una app: la página no se mueve ni se agranda, la barra de arriba es transparente con sus botones grandes y arrastrar el dedo hacia la derecha no vuelve atrás (08 §1, principio 13).
 
 ---
 

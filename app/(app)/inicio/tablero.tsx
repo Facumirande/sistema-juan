@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useSyncExternalStore, useTransition, type PointerEvent as EventoPuntero } from "react";
 import { createPortal } from "react-dom";
 
@@ -10,6 +9,7 @@ import type { PersonaVisible } from "@/modulos/colaboracion/personas";
 import type { ColumnaDelTablero, ProductoDeTarjeta, TarjetaPedido } from "@/modulos/pedidos/tablero";
 import { Avatar } from "@/ui/avatar";
 import { Checklist, conTildeDeCompra, motivoParaNoTildar, type Tilde } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 import { Hoja } from "@/ui/hoja";
@@ -113,19 +113,21 @@ const PLAZO: Record<TarjetaPedido["estadoPlazo"], string> = {
   a_tiempo: "bg-black/5 dark:bg-white/10",
 };
 
-// Tarjetas minimizadas (pedido del usuario, 10/10/2026): se recuerdan en este aparato.
-const CLAVE_PLEGADAS = "tablero:plegadas";
-const AVISO_PLEGADAS = "tablero:plegadas-cambio";
-const VACIAS: ReadonlySet<string> = new Set();
-let plegadasLeidas: { texto: string | null; valor: ReadonlySet<string> } = { texto: null, valor: VACIAS };
-function leerPlegadas(): ReadonlySet<string> {
+// Las tarjetas llegan minimizadas (pedido del usuario, 11/10/2026): se ve cada pedido sin su lista
+// entera de productos, y se despliega la que hace falta. Las que quedaron desplegadas se recuerdan
+// en este aparato.
+const CLAVE_ABIERTAS = "tablero:abiertas";
+const AVISO_ABIERTAS = "tablero:abiertas-cambio";
+const NINGUNA: ReadonlySet<string> = new Set();
+let abiertasLeidas: { texto: string | null; valor: ReadonlySet<string> } = { texto: null, valor: NINGUNA };
+function leerAbiertas(): ReadonlySet<string> {
   let texto: string | null = null;
   try {
-    texto = window.localStorage.getItem(CLAVE_PLEGADAS);
+    texto = window.localStorage.getItem(CLAVE_ABIERTAS);
   } catch {
-    // Sin almacenamiento (modo privado): ninguna queda minimizada al volver.
+    // Sin almacenamiento (modo privado): al volver, todas minimizadas.
   }
-  if (texto !== plegadasLeidas.texto) {
+  if (texto !== abiertasLeidas.texto) {
     let ids: string[] = [];
     try {
       const v: unknown = JSON.parse(texto ?? "[]");
@@ -133,29 +135,29 @@ function leerPlegadas(): ReadonlySet<string> {
     } catch {
       ids = [];
     }
-    plegadasLeidas = { texto, valor: new Set(ids) };
+    abiertasLeidas = { texto, valor: new Set(ids) };
   }
-  return plegadasLeidas.valor;
+  return abiertasLeidas.valor;
 }
-const suscribirPlegadas = (avisar: () => void) => {
-  window.addEventListener(AVISO_PLEGADAS, avisar);
+const suscribirAbiertas = (avisar: () => void) => {
+  window.addEventListener(AVISO_ABIERTAS, avisar);
   window.addEventListener("storage", avisar);
   return () => {
-    window.removeEventListener(AVISO_PLEGADAS, avisar);
+    window.removeEventListener(AVISO_ABIERTAS, avisar);
     window.removeEventListener("storage", avisar);
   };
 };
-function alternarPlegada(id: string) {
-  const nuevas = new Set(leerPlegadas());
+function alternarAbierta(id: string) {
+  const nuevas = new Set(leerAbiertas());
   if (nuevas.has(id)) nuevas.delete(id);
   else nuevas.add(id);
   try {
     // Solo las últimas 200: las de días viejos se van solas.
-    window.localStorage.setItem(CLAVE_PLEGADAS, JSON.stringify([...nuevas].slice(-200)));
+    window.localStorage.setItem(CLAVE_ABIERTAS, JSON.stringify([...nuevas].slice(-200)));
   } catch {
     // Sin almacenamiento no se puede recordar.
   }
-  window.dispatchEvent(new Event(AVISO_PLEGADAS));
+  window.dispatchEvent(new Event(AVISO_ABIERTAS));
 }
 
 const sinProductos = (t: TarjetaPedido) => ({
@@ -250,7 +252,7 @@ function Tarjeta({
   alTildar,
   alSeparar,
   siguiente,
-  plegada = false,
+  plegada = true,
   alPlegar,
 }: {
   t: TarjetaPedido;
@@ -264,14 +266,16 @@ function Tarjeta({
   alSeparar?: (p: ProductoDeTarjeta, separado: boolean) => void;
   /** El botón verde que la hace avanzar al paso que sigue. */
   siguiente?: { texto: string; alTocar: () => void; ocupado: boolean } | null;
-  /** Minimizada: solo el cliente y un renglón con lo que lleva. */
+  /** Minimizada (así llega): el cliente, su resumen y el botón verde, sin la lista de productos. */
   plegada?: boolean;
+  /** Despliega la lista de productos o la vuelve a ocultar. */
   alPlegar?: () => void;
 }) {
   const etiquetas = etiquetasDePedido(t);
   // El mismo checklist en todas las columnas: con tildes donde se compra o se prepara, y a la vista en las demás.
   const conTildes = Boolean(alTildar || alSeparar);
-  const productos = (
+  const cuantos = t.productos.length === 1 ? "1 producto" : `${t.productos.length} productos`;
+  const lista = (
     <Checklist
       productos={t.productos}
       modo={alTildar ? "compra" : alSeparar ? "separar" : t.columna === "preparando" ? "visto" : "ver"}
@@ -290,12 +294,12 @@ function Tarjeta({
   // "SANATORIO", entra completa en vez de partirse en dos renglones. Con lugar (`@[18rem]`), todo en
   // una fila: el dibujo, el nombre grande y quién se encarga a la derecha.
   const cabecera = (
-    <div className={`flex items-center gap-2 bg-[var(--col-fuerte)] px-2 py-1.5 text-[var(--col-fuerte-texto)] @[18rem]:gap-3 @[18rem]:px-3 @[18rem]:py-2.5 ${alPlegar ? "@[18rem]:pr-12" : ""}`}>
+    <div className="flex items-center gap-2 bg-[var(--col-fuerte)] px-2 py-1.5 text-[var(--col-fuerte-texto)] @[18rem]:gap-3 @[18rem]:px-3 @[18rem]:py-2.5">
       <span aria-hidden className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-white/25 text-2xl @[18rem]:flex">
         {dibujoDeCliente(t.tipoCliente)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className={`text-[clamp(0.9rem,8.4cqw,1.2rem)] leading-tight font-bold text-balance [overflow-wrap:anywhere] @[18rem]:text-xl ${alPlegar ? "pr-7 @[18rem]:pr-0" : ""}`}>{t.cliente}</p>
+        <p className="text-[clamp(0.9rem,8.4cqw,1.2rem)] leading-tight font-bold text-balance [overflow-wrap:anywhere] @[18rem]:text-xl">{t.cliente}</p>
         <p className="flex items-center justify-between gap-1.5 text-sm">
           <span className="min-w-0 opacity-90">
             {t.numero}
@@ -327,6 +331,15 @@ function Tarjeta({
   const vacia = <p className="rounded-lg bg-[var(--pronto-fondo)] px-3 py-2 text-sm font-semibold text-[var(--pronto-texto)]">🧺 Sin productos todavía · tocá para cargarlos</p>;
   const clases = `block w-full overflow-hidden rounded-xl bg-tarjeta text-left text-tarjeta-texto shadow-tarjeta outline-offset-2 transition-[filter] hover:brightness-[1.03] focus-visible:outline-3 focus-visible:outline-white ${elegida ? "outline-4 outline-white" : ""}`;
   const destino = t.lineas === 0 && t.estado === "BORRADOR" ? `/pedidos/${t.id}/cambiar` : href;
+  // El renglón que va en lugar de la lista (minimizada) o arriba de ella (desplegada): cuántos
+  // productos lleva y, si se puede, el toque para verlos u ocultarlos.
+  const renglon = "flex min-h-10 w-full items-center gap-2 rounded-lg bg-[var(--col-claro)] px-2.5 text-left text-base leading-tight font-bold text-[var(--col-claro-texto)]";
+  const cuantosLleva = (
+    <>
+      <span aria-hidden>🧺</span>
+      {cuantos}
+    </>
+  );
 
   if (eligiendo) {
     return (
@@ -336,7 +349,7 @@ function Tarjeta({
           <input type="checkbox" checked={elegida} onChange={alElegir} className="mt-1 size-6 shrink-0" aria-label={`Elegir ${t.numero} de ${t.cliente}`} />
           <span className="flex min-w-0 flex-1 flex-col gap-2 @[18rem]:gap-3">
             {etiquetasALaVista}
-            {t.productos.length > 0 ? productos : vacia}
+            {t.productos.length === 0 ? vacia : plegada ? <span className={renglon}>{cuantosLleva}</span> : lista}
             <Insignias t={t} />
           </span>
         </span>
@@ -352,72 +365,61 @@ function Tarjeta({
       className="flex min-h-14 w-full items-center justify-center rounded-xl bg-marca px-2 py-2 text-center text-base leading-tight font-extrabold text-balance text-marca-texto shadow-sm hover:brightness-110 disabled:animate-pulse disabled:opacity-70 @[18rem]:px-3 @[18rem]:text-lg"
     >
       {siguiente.texto}
-      {"\u00a0→"}
+      {" →"}
     </button>
   );
-  const plegar = alPlegar && (
+  // Ver los productos u ocultarlos: el mismo toque, en el mismo lugar.
+  const verUOcultar = alPlegar ? (
     <button
       type="button"
       data-sin-arrastre
       onClick={alPlegar}
       aria-expanded={!plegada}
-      aria-label={plegada ? `Mostrar lo que lleva ${t.cliente}` : `Minimizar la tarjeta de ${t.cliente}`}
-      title={plegada ? "Mostrar" : "Minimizar"}
-      className="absolute top-1 right-1 z-10 flex size-7 items-center justify-center rounded-full bg-black/15 text-base leading-none font-bold text-[var(--col-fuerte-texto)] hover:bg-black/30 @[18rem]:top-2 @[18rem]:right-2 @[18rem]:size-8"
+      aria-label={plegada ? `Ver lo que lleva ${t.cliente}: ${cuantos}` : `Ocultar lo que lleva ${t.cliente}`}
+      className={`${renglon} hover:brightness-95`}
     >
-      <span aria-hidden>{plegada ? "▸" : "▾"}</span>
+      {cuantosLleva}
+      <span className="ml-auto flex shrink-0 items-center gap-1 text-sm font-semibold opacity-85">
+        {plegada ? "Ver" : "Ocultar"}
+        <span aria-hidden>{plegada ? "▾" : "▴"}</span>
+      </span>
     </button>
+  ) : (
+    <p className={renglon}>{cuantosLleva}</p>
   );
-  if (plegada) {
-    const n = t.productos.length;
-    return (
-      <article className={`${clases} relative`}>
-        <Link href={destino} scroll={false} draggable={false} className="block" aria-label={`Abrir ${t.numero} de ${t.cliente}`}>
-          {cabecera}
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 text-sm font-semibold @[18rem]:px-3">
-            <span>{n === 1 ? "1 producto" : `${n} productos`}</span>
-            {t.avance && t.avance.total > 0 && (
-              <span className="text-tarjeta-suave">
-                ☑ {t.avance.hechos}/{t.avance.total}
-              </span>
-            )}
-            {t.totalEstimado !== null && t.lineas > 0 && <span className="ml-auto tabular-nums">{formatearMoneda(t.totalEstimado)}</span>}
-          </span>
-        </Link>
-        {plegar}
-      </article>
+  const productos =
+    t.productos.length === 0 ? (
+      <Link href={destino} scroll={false} draggable={false} className="block">
+        {vacia}
+      </Link>
+    ) : (
+      <>
+        {verUOcultar}
+        {!plegada &&
+          (conTildes ? (
+            lista
+          ) : (
+            // Sin nada para tildar, tocar la lista abre la tarjeta.
+            <Link href={destino} scroll={false} draggable={false} className="block">
+              {lista}
+            </Link>
+          ))}
+      </>
     );
-  }
-  if ((alTildar || alSeparar || botonSiguiente) && t.productos.length > 0) {
-    // Los tildes y el botón verde son botones: no pueden ir dentro del enlace que abre la tarjeta.
-    return (
-      <article className={`${clases} relative`}>
-        {plegar}
-        <Link href={destino} scroll={false} draggable={false} className="block" aria-label={`Abrir ${t.numero} de ${t.cliente}`}>
-          {cabecera}
-        </Link>
-        <div className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
-          {etiquetasALaVista}
-          {productos}
-          <Link href={destino} scroll={false} draggable={false} className="block empty:hidden">
-            <Insignias t={t} />
-          </Link>
-          {botonSiguiente}
-        </div>
-      </article>
-    );
-  }
+  // Los tildes, "Ver" y el botón verde son botones: no pueden ir dentro del enlace que abre la tarjeta.
   return (
     <article className={`${clases} relative`}>
-      {plegar}
-      <Link href={destino} scroll={false} draggable={false} className="block">
+      <Link href={destino} scroll={false} draggable={false} className="block" aria-label={`Abrir ${t.numero} de ${t.cliente}`}>
         {cabecera}
-        <span className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
-          {etiquetasALaVista}
-          {t.productos.length > 0 ? productos : vacia}
-          <Insignias t={t} />
-        </span>
       </Link>
+      <div className="flex flex-col gap-2 p-1.5 @[18rem]:gap-3 @[18rem]:p-3">
+        {etiquetasALaVista}
+        {productos}
+        <Link href={destino} scroll={false} draggable={false} className="block empty:hidden">
+          <Insignias t={t} />
+        </Link>
+        {botonSiguiente}
+      </div>
     </article>
   );
 }
@@ -468,7 +470,7 @@ interface Agarre {
 export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, personas, responsables, yo, base, puede, cerrado, enlaces, dias, hoy, titulo, otras }: Props) {
   const [eligiendo, setEligiendo] = useState(false);
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
-  const plegadas = useSyncExternalStore(suscribirPlegadas, leerPlegadas, () => VACIAS);
+  const abiertas = useSyncExternalStore(suscribirAbiertas, leerAbiertas, () => NINGUNA);
   const [filtroPersona, setFiltroPersona] = useState<string | null>(null);
   const [soloUrgentes, setSoloUrgentes] = useState(false);
   const [arrastrando, setArrastrando] = useState<{ id: string; desde: ClaveColumna; ancho: number } | null>(null);
@@ -1006,8 +1008,8 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
                       alTildar={seTilda && sinElegir ? tildar : undefined}
                       alSeparar={col.clave === "preparando" && puede.preparar && sinElegir ? separar : undefined}
                       siguiente={paso && puedeAvanzar[col.clave] && sinElegir && !cerrado ? { texto: paso.texto, alTocar: () => soltar(t.id, col.clave, paso.hacia), ocupado: false } : null}
-                      plegada={sinElegir && plegadas.has(t.id)}
-                      alPlegar={sinElegir ? () => alternarPlegada(t.id) : undefined}
+                      plegada={!abiertas.has(t.id)}
+                      alPlegar={sinElegir ? () => alternarAbierta(t.id) : undefined}
                     />
                   </li>
                 ))}
@@ -1062,22 +1064,22 @@ export function TableroTrello({ fecha, columnas: columnasGuardadas, cancelados, 
         createPortal(
           <div ref={fantasma} aria-hidden data-no-redibujar className={`${COLOR_COLUMNA[arrastrando.desde]} @container pointer-events-none fixed top-0 left-0 z-50 will-change-transform`} style={{ width: arrastrando.ancho }}>
             <div className="tarjeta-en-el-aire">
-              <Tarjeta t={enElAire} href="#" />
+              <Tarjeta t={enElAire} href="#" plegada={!abiertas.has(enElAire.id)} />
             </div>
           </div>,
           document.body,
         )}
 
-      {/* En el celular, Nuevo pedido flota abajo a la derecha, a mano del pulgar (con el menú guardado no hay otro a la vista). */}
+      {/* En el celular, Nuevo pedido flota abajo a la derecha, a mano del pulgar (con el menú guardado no hay otro a la vista):
+          un botón redondo con el ＋ solo (pedido del usuario, 11/10/2026). */}
       {puede.crear && !eligiendo && !arrastrando && !conOpciones && (
         <Link
           href={`/pedidos/nuevo?fecha=${fecha}`}
-          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex min-h-14 items-center gap-2 rounded-full bg-white px-5 text-lg font-bold text-[#172b4d] shadow-xl ring-1 ring-black/10 @[34rem]/tablero:hidden"
+          aria-label="Nuevo pedido"
+          title="Nuevo pedido"
+          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex size-16 items-center justify-center rounded-full bg-white text-[2.5rem] leading-none font-bold text-[#172b4d] shadow-xl ring-1 ring-black/10 @[34rem]/tablero:hidden"
         >
-          <span aria-hidden className="text-2xl leading-none">
-            ＋
-          </span>
-          Nuevo pedido
+          <span aria-hidden>＋</span>
         </Link>
       )}
 

@@ -1,4 +1,5 @@
-import Link from "next/link";
+import Link from "./enlace";
+
 import type { ReactNode } from "react";
 
 // Registros en cuadrícula (clientes, productos, proveedores): tarjetas como las de Trello, con una

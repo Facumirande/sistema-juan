@@ -1,8 +1,8 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import type { Balance } from "@/modulos/reportes/balance";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { BarrasHorizontales } from "@/ui/graficos";
 

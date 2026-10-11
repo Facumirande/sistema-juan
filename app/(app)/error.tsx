@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
+
+import Link from "@/ui/enlace";
 
 /**
  * Si una pantalla falla por un problema del sistema (la base no responde, un error de

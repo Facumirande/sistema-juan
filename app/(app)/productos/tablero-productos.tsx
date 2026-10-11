@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, useTransition, type PointerEvent as EventoPuntero } from "react";
 
+import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
 import { moverProductoAccion } from "./acciones";
@@ -10,7 +10,8 @@ import { moverProductoAccion } from "./acciones";
 // Productos en tarjetas por categoría (pedido del usuario, 06/10/2026): las tarjetas se arrastran
 // de una categoría a otra (con el mouse, o en el celular manteniendo el dedo apretado un momento)
 // o se mueven con "↔ Mover". Soltarlas en "＋ Nueva categoría" crea una (preelegida u otra). Las
-// categorías que quedan vacías desaparecen (RN-154).
+// categorías que quedan vacías desaparecen (RN-154). Cada tarjeta lleva arriba a la derecha el ↔ para
+// cambiarla de categoría y, abajo a la derecha, un lápiz que abre el editor del producto (11/10/2026).
 
 export interface TarjetaDeProducto {
   id: string;
@@ -209,7 +210,7 @@ export function TableroDeProductos({ grupos, preelegidas, puedeEditar }: { grupo
     <div className="flex flex-col gap-6" aria-busy={pendiente}>
       {puedeEditar && (
         <p className="text-sm text-texto-suave">
-          Para cambiar un producto de categoría, arrastrá su tarjeta (en el celular, mantené el dedo apretado un momento) o tocá <b>↔</b> en la tarjeta.
+          Para cambiar un producto de categoría, arrastrá su tarjeta (en el celular, mantené el dedo apretado un momento) o tocá <b>↔</b> en la tarjeta. Con el <b>✏️</b> se edita: el nombre, el dibujo, el envase y lo demás.
         </p>
       )}
       {mensaje.mensaje && (
@@ -283,15 +284,20 @@ export function TableroDeProductos({ grupos, preelegidas, puedeEditar }: { grupo
                     </span>
                   </Link>
                   {puedeEditar && (
-                    <button
-                      type="button"
-                      onClick={() => setEligiendo({ id: t.id, nombre: t.nombre, soloNuevas: false })}
-                      title="Mover a otra categoría"
-                      aria-label={`Mover ${t.nombre} a otra categoría`}
-                      className="absolute top-4 right-2 flex size-9 items-center justify-center rounded-full bg-fondo text-lg font-bold hover:bg-borde"
-                    >
-                      ↔
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEligiendo({ id: t.id, nombre: t.nombre, soloNuevas: false })}
+                        title="Mover a otra categoría"
+                        aria-label={`Mover ${t.nombre} a otra categoría`}
+                        className="absolute top-4 right-2 flex size-9 items-center justify-center rounded-full bg-fondo text-lg font-bold hover:bg-borde"
+                      >
+                        ↔
+                      </button>
+                      <Link href={`/productos/${t.id}/editar`} title="Editar el producto" aria-label={`Editar ${t.nombre}`} className="absolute right-2 bottom-2 flex size-9 items-center justify-center rounded-full bg-fondo text-lg hover:bg-borde">
+                        <span aria-hidden>✏️</span>
+                      </Link>
+                    </>
                   )}
                 </li>
               ))}

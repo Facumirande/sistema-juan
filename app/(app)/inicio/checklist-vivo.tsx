@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 
 import { Checklist, conTildeDeCompra, motivoParaNoTildar, type ProductoDeChecklist, type Tilde } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
 import { PrecioYPuesto, type DatosParaComprar } from "../lista-compra/precio-y-puesto";

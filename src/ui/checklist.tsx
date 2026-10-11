@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import type { EstadoLineaLista } from "@/dominio/compras/lista";
+
+import { useDibujoDeProducto } from "./dibujos";
 
 // El checklist de productos, igual en todos lados (pedido del usuario, 07/10/2026): en la tarjeta
 // cerrada del tablero, en la tarjeta abierta y en la pantalla de preparación. Al comprar se tilda
@@ -55,6 +56,7 @@ export function NombreDeProducto({
   /** Con `fluido`: clases solo para el renglón del nombre (tachado, apagado), sin tocar lo de `debajo`. */
   claseDelNombre?: string;
 }) {
+  const dibujoDeProducto = useDibujoDeProducto();
   if (fluido) {
     return (
       <span className={`block min-w-0 font-bold ${className}`} title={nombre}>

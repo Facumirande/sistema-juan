@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
@@ -7,6 +6,7 @@ import { otrasPersonas } from "@/modulos/colaboracion/personas";
 import { obtenerAuthUserId, obtenerSesion } from "@/modulos/seguridad/sesion";
 import { identificadorVisible, LARGO_MINIMO_CLAVE } from "@/seguridad/identificacion";
 import { CampoClave } from "@/ui/campo-clave";
+import Link from "@/ui/enlace";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { clasesBoton } from "@/ui/formularios";
 

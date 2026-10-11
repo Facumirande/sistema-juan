@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -9,6 +8,7 @@ import { cuentaCorriente } from "@/modulos/compras/cuenta-corriente";
 import { obtenerPago } from "@/modulos/compras/pagos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { MEDIOS_PAGO } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, Encabezado, Tarjeta } from "@/ui/formularios";

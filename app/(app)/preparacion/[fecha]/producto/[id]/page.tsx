@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -7,6 +6,7 @@ import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio
 import { productoEnPreparacion } from "@/modulos/entregas/preparacion";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { MOTIVOS_FALTANTE, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { CampoNumero, Encabezado, Selector } from "@/ui/formularios";

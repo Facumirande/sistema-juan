@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { CATEGORIAS_PREELEGIDAS } from "@/dominio/catalogo/categorias";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import Link from "@/ui/enlace";
 import { GRUPOS, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, Encabezado, Selector } from "@/ui/formularios";

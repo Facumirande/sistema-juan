@@ -16,9 +16,11 @@ import {
   editarPresentacion,
   editarProducto,
   marcarProveedorPreferido,
+  obtenerProducto,
   type UnidadBase,
 } from "@/modulos/catalogo/productos";
 import { envaseComoUnidad, nombreDePresentacion } from "@/dominio/catalogo/productos";
+import { interpretarNumero } from "@/dominio/dinero/entrada";
 import { cambiarRecargo } from "@/modulos/precios-venta/reglas";
 import { obtenerBaseDatos } from "@/db/cliente";
 import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
@@ -50,24 +52,6 @@ export async function guardarCategoriaAccion(_estado: EstadoAccion, datos: FormD
       orden: campo(datos, "orden"),
     });
     return { ok: true, mensaje: id ? "Categoría guardada." : "Categoría creada." };
-  });
-}
-
-export async function editarProductoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
-  return ejecutarAccion(async ({ db, authUserId }) => {
-    await editarProducto(db, authUserId, {
-      id: campo(datos, "id"),
-      codigo: campo(datos, "codigo"),
-      nombre: campo(datos, "nombre"),
-      nombreCorto: campo(datos, "nombreCorto"),
-      ...categoriaElegida(datos),
-      unidadBase: campo(datos, "unidadBase") as UnidadBase,
-      admiteFraccion: tildada(datos, "admiteFraccion"),
-      observaciones: campo(datos, "observaciones"),
-      presentacionVentaDefaultId: campo(datos, "presentacionVentaDefaultId") || null,
-      presentacionCompraDefaultId: campo(datos, "presentacionCompraDefaultId") || null,
-    });
-    return { ok: true, mensaje: "Cambios guardados." };
   });
 }
 
@@ -144,6 +128,7 @@ export async function crearProductoGuiadoAccion(_estado: EstadoAccion, datos: Fo
       unidadBase,
       admiteFraccion: fraccion,
       observaciones: campo(datos, "observaciones"),
+      dibujo: campo(datos, "dibujo"),
       presentacionCompraNombre: envase ? nombreDePresentacion(envase, cantidad, UNIDADES_CORTAS[unidadBase] ?? "") : "",
       presentacionCompraFactor: envase ? cantidad : "",
     });
@@ -158,6 +143,61 @@ export async function crearProductoGuiadoAccion(_estado: EstadoAccion, datos: Fo
     return { ok: true, mensaje: "Producto creado." };
   });
   if (resultado.ok) redirect(`/productos/${id}`);
+  return resultado;
+}
+
+/**
+ * Editar un producto con las mismas herramientas del alta (11/10/2026): nombre, dibujo y categoría,
+ * cómo se vende (mientras se pueda cambiar), en qué envase se compra (uno de los que ya tiene, o
+ * uno nuevo que se le agrega) y, en "Más opciones", la ganancia, el código y las notas. Al guardar
+ * vuelve a la lista de productos, o a la ficha si se vino de ahí.
+ */
+export async function editarProductoGuiadoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  const id = campo(datos, "id");
+  const resultado = await ejecutarAccion(async ({ db, authUserId }) => {
+    const actual = await obtenerProducto(db, authUserId, id);
+    const unidadBase = (actual.unidadBaseEditable ? campo(datos, "unidadBase") || actual.unidadBase : actual.unidadBase) as UnidadBase;
+    const corta = UNIDADES_CORTAS[unidadBase] ?? "";
+
+    // El envase en que se compra: uno que ya tiene, uno nuevo (se le agrega) o suelto.
+    let compraId: string | null = campo(datos, "presentacionCompraId") || null;
+    const envase = campo(datos, "envase").trim();
+    const cantidad = campo(datos, "cantidadEnvase").trim();
+    if (!compraId && envase) {
+      if (!cantidad) return { ok: false, mensaje: `Escribí cuántos ${corta} trae el ${envase.toLowerCase()}.` };
+      const nombre = nombreDePresentacion(envase, cantidad, corta);
+      const igual = actual.presentaciones.find((pr) => pr.nombre.toLowerCase() === nombre.toLowerCase());
+      if (igual && (!igual.activo || !igual.usableEnCompra)) {
+        return { ok: false, mensaje: `El producto ya tiene el envase “${igual.nombre}”, pero está desactivado o no es para comprar: activalo en su ficha.`, enlace: { href: `/productos/${id}`, texto: "Ir a la ficha" } };
+      }
+      compraId = igual?.id ?? (await agregarPresentacion(db, authUserId, { productoId: id, nombre, factorABase: cantidad, usableEnCompra: true, usableEnVenta: true }));
+    }
+
+    await editarProducto(db, authUserId, {
+      id,
+      codigo: campo(datos, "codigo") || actual.codigo,
+      nombre: campo(datos, "nombre"),
+      nombreCorto: datos.has("nombreCorto") ? campo(datos, "nombreCorto") : (actual.nombreCorto ?? ""),
+      ...categoriaElegida(datos),
+      unidadBase,
+      admiteFraccion: tildada(datos, "admiteFraccion"),
+      observaciones: campo(datos, "observaciones"),
+      presentacionVentaDefaultId: datos.has("presentacionVentaDefaultId") ? campo(datos, "presentacionVentaDefaultId") || null : actual.presentacionVentaDefaultId,
+      presentacionCompraDefaultId: compraId,
+      dibujo: campo(datos, "dibujo"),
+    });
+
+    // La ganancia propia, solo si se cambió (el casillero está solo para quien puede cambiarla).
+    if (datos.has("recargo")) {
+      const nueva = interpretarNumero(campo(datos, "recargo"));
+      const antes = actual.ganancia.propia === null ? null : interpretarNumero(String(Number(actual.ganancia.propia)));
+      const cambio = nueva === null ? antes !== null : antes === null || !nueva.eq(antes);
+      if (campo(datos, "recargo").trim() && nueva === null) return { ok: false, mensaje: "La ganancia va en números (ej. 30). El resto de los cambios ya quedó guardado." };
+      if (cambio) await cambiarRecargo(db, authUserId, { ambito: "PRODUCTO", id, valor: campo(datos, "recargo"), confirmar: tildada(datos, "confirmarVariacion") });
+    }
+    return { ok: true, mensaje: "Cambios guardados." };
+  });
+  if (resultado.ok) redirect(campo(datos, "volver") === "ficha" ? `/productos/${id}` : "/productos");
   return resultado;
 }
 

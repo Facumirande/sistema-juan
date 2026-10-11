@@ -4,12 +4,14 @@ import { z } from "zod";
 import { auditar, diferencias } from "@/db/auditoria";
 import { categoria, empresa, presentacion, producto, proveedor, proveedorProducto, unidadMedida } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
+import { esDibujoParaElegir } from "@/dominio/catalogo/dibujos";
 import { codigoSugerido } from "@/dominio/catalogo/productos";
 import { dec } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
 import { ocultarCategoriasVacias, resolverCategoria } from "./categorias";
+import { olvidarDibujos } from "./dibujos";
 import { ejecutarComoUsuario } from "@/modulos/seguridad/contexto";
 import { recalcularPedidosPendientes } from "@/modulos/pedidos/pedidos";
 import { numeroObligatorio, numeroOpcional, textoObligatorio, textoOpcional, validar } from "@/modulos/validacion";
@@ -52,6 +54,8 @@ export interface ProductoListado {
   presentaciones: number;
   ofertas: number;
   proveedorPreferido: string | null;
+  /** El dibujo elegido a mano; nulo si sale solo del nombre. */
+  dibujo: string | null;
   activo: boolean;
 }
 
@@ -83,6 +87,8 @@ export interface FichaProducto {
   proveedorPreferido: string | null;
   presentacionVentaDefaultId: string | null;
   presentacionCompraDefaultId: string | null;
+  /** El dibujo elegido a mano; nulo si sale solo del nombre. */
+  dibujo: string | null;
   activo: boolean;
   presentaciones: PresentacionDeProducto[];
   /** Se puede cambiar la unidad base: todavía no tiene otras presentaciones ni ofertas (RN-001). */
@@ -109,11 +115,19 @@ const camposProducto = {
   observaciones: textoOpcional(500),
 };
 
+/** El dibujo elegido: uno de la lista; vacío o nulo = que salga solo del nombre. */
+const dibujoElegido = z
+  .string()
+  .nullish()
+  .transform((v) => (v?.trim() ? v.trim() : null))
+  .refine((v) => v === null || esDibujoParaElegir(v), { message: "Elegí el dibujo de la lista." });
+
 const esquemaNuevoProducto = z
   .object({
     ...camposProducto,
     /** Vacío = se arma solo con el nombre ("Tomate redondo" → "TOMA-R"). */
     codigo: textoOpcional(20).transform((v) => v?.toUpperCase() ?? null),
+    dibujo: dibujoElegido.optional(),
     /** Presentación de compra opcional al crear (ej. "Cajón 18 kg", 18). */
     presentacionCompraNombre: textoOpcional(60),
     presentacionCompraFactor: numeroOpcional(MENSAJE_FACTOR),
@@ -127,6 +141,8 @@ const esquemaEdicionProducto = z.object({
   ...camposProducto,
   presentacionVentaDefaultId: z.uuid().nullish(),
   presentacionCompraDefaultId: z.uuid().nullish(),
+  /** Si no viene, el dibujo queda como estaba. */
+  dibujo: dibujoElegido.optional(),
 });
 
 const esquemaPresentacion = z
@@ -175,6 +191,7 @@ export async function listarProductos(
         presentaciones: presentaciones.n,
         ofertas: ofertas.n,
         proveedorPreferido: proveedor.nombre,
+        dibujo: producto.dibujo,
         activo: producto.activo,
       })
       .from(producto)
@@ -245,6 +262,7 @@ export async function obtenerProducto(db: BaseDatos, authUserId: string, id: str
       proveedorPreferido: p.proveedorPreferido,
       presentacionVentaDefaultId: p.producto.presentacionVentaDefaultId,
       presentacionCompraDefaultId: p.producto.presentacionCompraDefaultId,
+      dibujo: p.producto.dibujo,
       activo: p.producto.activo,
       presentaciones: presentaciones.map((pr) => ({
         id: pr.id,
@@ -295,7 +313,9 @@ async function exigirNombrePresentacionLibre(tx: Transaccion, productoId: string
 
 export async function crearProducto(db: BaseDatos, authUserId: string, datos: z.input<typeof esquemaNuevoProducto>): Promise<string> {
   const d = validar(esquemaNuevoProducto, datos);
-  return ejecutarComoUsuario(db, authUserId, "productos.editar", (tx, c) => crearProductoEnTransaccion(tx, c, d));
+  const id = await ejecutarComoUsuario(db, authUserId, "productos.editar", (tx, c) => crearProductoEnTransaccion(tx, c, d));
+  if (d.dibujo) olvidarDibujos();
+  return id;
 }
 
 /**
@@ -324,6 +344,7 @@ export async function crearProductoEnTransaccion(
       unidadBase: d.unidadBase,
       admiteFraccion: d.admiteFraccion,
       recargoDefault: d.recargo ?? null,
+      dibujo: d.dibujo ?? null,
       alicuotaIva: e?.alicuota ?? "0.000", // RN-006
       observaciones: d.observaciones,
       creadoPor: c.usuarioId,
@@ -435,12 +456,15 @@ export async function editarProducto(db: BaseDatos, authUserId: string, datos: z
       observaciones: d.observaciones,
       presentacionVentaDefaultId: d.presentacionVentaDefaultId ?? null,
       presentacionCompraDefaultId: d.presentacionCompraDefaultId ?? null,
+      dibujo: d.dibujo === undefined ? actual.dibujo : d.dibujo,
     };
     if (!(await auditarCambioProducto(tx, c, actual, valores, `Cambios en el producto ${d.codigo} · ${d.nombre}.`))) return;
     await tx.update(producto).set({ ...valores, actualizadoPor: c.usuarioId }).where(eq(producto.id, d.id));
     await registrarActividad(tx, c, { accion: "MODIFICAR", entidadTipo: "PRODUCTO", entidadId: d.id, resumen: `cambió los datos del producto ${d.nombre}` });
     if (categoriaId !== actual.categoriaId) await ocultarCategoriasVacias(tx, c, [actual.categoriaId]);
   });
+  // El dibujo va por el nombre del producto: si cambió alguno de los dos, se vuelve a buscar.
+  olvidarDibujos();
 }
 
 /** RN-007: un producto desactivado no se ofrece en pedidos ni compras nuevas; su historia queda. */

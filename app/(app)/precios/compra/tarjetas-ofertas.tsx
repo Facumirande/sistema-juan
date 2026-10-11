@@ -1,8 +1,7 @@
-import Link from "next/link";
-
 import { formatearMoneda, formatearPorcentaje } from "@/dominio/dinero/formato";
 import { formatearFecha } from "@/dominio/fechas/fechas";
 import type { OfertaListada } from "@/modulos/precios-compra/ofertas";
+import Link from "@/ui/enlace";
 import { UNIDADES_CORTAS, haceDias } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 

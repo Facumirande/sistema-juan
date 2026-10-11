@@ -535,6 +535,7 @@ Ficha central del producto. Todo cálculo interno se hace en `unidad_base`.
 | codigo | text | No | — | Código corto, `unique (empresa_id, upper(codigo))`. Ej. `TOM-R`. |
 | nombre | text | No | — | `unique (empresa_id, lower(nombre))`. Ej. "Tomate redondo". Calidades distintas se modelan como productos distintos ("Tomate redondo primera" / "segunda"). |
 | nombre_corto | text | Sí | — | Para pantallas de celular y documentos angostos. |
+| dibujo | text | Sí | — | El dibujo (emoji) elegido a mano para reconocer el producto (RN-196); uno de la lista de `src/dominio/catalogo/dibujos.ts`. Nulo = sale solo del nombre o del grupo de su categoría (RN-004b). `check (dibujo is null or char_length(dibujo) between 1 and 16)`. |
 | categoria_id | uuid | No | — | FK `categoria`. |
 | unidad_base | unidad_medida | No | — | KG, UNIDAD, ATADO, CAJON, BOLSA... (un envase como unidad: se cuenta en cajones, sin kilos, RN-192). Inmutable si el producto tiene movimientos. |
 | admite_fraccion | boolean | No | `true` | `false` → cantidades en unidad base enteras (ej. lechuga por unidad). También define el paso al repartir faltantes (0,1 si admite fracción; 1 si no; ver 04-procesos-y-flujos.md). |

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
@@ -9,6 +8,7 @@ import { configuracionSupabase } from "@/lib/supabase/configuracion";
 import { configuracionInicialPendiente } from "@/modulos/configuracion/configuracion-inicial";
 import { LARGO_MINIMO_CLAVE } from "@/seguridad/identificacion";
 import { CampoClave } from "@/ui/campo-clave";
+import Link from "@/ui/enlace";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo } from "@/ui/formularios";
 

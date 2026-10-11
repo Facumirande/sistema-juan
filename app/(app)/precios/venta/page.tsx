@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -7,6 +6,7 @@ import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { listaDePreciosCliente, recargosActuales, type AmbitoRecargo } from "@/modulos/precios-venta/reglas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
+import Link from "@/ui/enlace";
 import { ALERTAS_PRECIO, ORIGENES_COSTO, ORIGENES_VENTA, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, Encabezado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";

@@ -1,8 +1,7 @@
-import Link from "next/link";
-
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { formatearFecha } from "@/dominio/fechas/fechas";
 import type { EstadoRegla, RecargosActuales, ReglaListada } from "@/modulos/precios-venta/reglas";
+import Link from "@/ui/enlace";
 import { ESTADOS_PEDIDO, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Campo, CampoNumero, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";

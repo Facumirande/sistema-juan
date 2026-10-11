@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { enlaceWaze, enlacesGoogleMaps } from "@/dominio/entregas/navegacion";
@@ -10,6 +9,7 @@ import { ultimosPedidosDeCliente } from "@/modulos/pedidos/pedidos";
 import { listarReglasCliente, recargosActuales } from "@/modulos/precios-venta/reglas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { DIAS_SEMANA, PERIODICIDADES, TIPOS_CLIENTE } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Encabezado, Estado, Tarjeta, clasesBoton } from "@/ui/formularios";

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -11,6 +10,7 @@ import { obtenerPreparacion, type EntregaEnPreparacion } from "@/modulos/entrega
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
 import { Checklist, type ProductoDeChecklist } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { FechaGrande } from "@/ui/fecha-grande";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { FlechaNavegacion } from "@/ui/iconos";

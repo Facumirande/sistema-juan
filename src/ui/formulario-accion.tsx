@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { startTransition, useActionState, useEffect, useRef, useState, type ReactNode } from "react";
 
+import Link from "./enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "./estado-accion";
 import { clasesBoton, type VarianteBoton } from "./formularios";
 

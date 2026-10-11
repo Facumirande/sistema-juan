@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -10,6 +9,7 @@ import { obtenerPedido, type LineaDePedido } from "@/modulos/pedidos/pedidos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { NombreDeProducto } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { ALERTAS_PRECIO, CANALES, ESTADOS_PEDIDO, ORIGENES_VENTA, UNIDADES_CORTAS, fechaConDia, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { AreaTexto, Aviso, Campo, CampoNumero, Encabezado, Selector, clasesBoton } from "@/ui/formularios";

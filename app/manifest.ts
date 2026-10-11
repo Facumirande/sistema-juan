@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 // Para instalar el sistema (pantalla de inicio del celular o la computadora) y abrirlo como una app,
 // sin nada del navegador (ni la barra con la dirección). Arranca en el tablero de pedidos;
-// manteniendo apretado el ícono aparecen los atajos a lo más usado. Los colores son los de la barra
-// de arriba y del fondo del sistema: al abrirla no se ve una franja de otro color.
+// manteniendo apretado el ícono aparecen los atajos a lo más usado. El color es el del fondo del
+// sistema (la barra de arriba es transparente): al abrirla no se ve una franja de otro color.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Sistema Repartos",
@@ -18,7 +18,7 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "any",
     categories: ["business", "productivity"],
     background_color: "#f6f7f5",
-    theme_color: "#ffffff",
+    theme_color: "#f6f7f5",
     icons: [
       { src: "/iconos/icono-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/iconos/icono-512.png", sizes: "512x512", type: "image/png", purpose: "any" },

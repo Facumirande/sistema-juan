@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { tiempoRelativo } from "@/dominio/colaboracion/tiempo";
@@ -14,6 +13,7 @@ import type { Permiso } from "@/seguridad/catalogo-permisos";
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
 import { Checklist, type ProductoDeChecklist } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { ESTADOS_PEDIDO, UNIDADES_CORTAS, fechaConDia } from "@/ui/etiquetas";
 import { FONDO_ETIQUETA, dibujoDeCliente, etiquetasDePedido } from "@/ui/etiquetas-tablero";
 import { FormularioAccion } from "@/ui/formulario-accion";

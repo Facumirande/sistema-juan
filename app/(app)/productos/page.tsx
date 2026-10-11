@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { CATEGORIAS_PREELEGIDAS, preelegida } from "@/dominio/catalogo/categorias";
@@ -10,6 +9,7 @@ import { listarProductos, type ProductoListado } from "@/modulos/catalogo/produc
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { CampoBuscar } from "@/ui/buscador";
 import { VistaTarjetasOLista } from "@/ui/cuadricula";
+import Link from "@/ui/enlace";
 import { UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { Aviso, Encabezado, Estado, Filtros, Selector, Tabla, clasesBoton } from "@/ui/formularios";
 import { OPCIONES_ESTADO, estadoFiltro, parametro } from "@/ui/parametros";
@@ -31,7 +31,7 @@ function tarjetaDe(p: ProductoListado): TarjetaDeProducto {
   return {
     id: p.id,
     nombre: p.nombre,
-    dibujo: dibujoDeProducto(p.nombre, grupo),
+    dibujo: p.dibujo ?? dibujoDeProducto(p.nombre, grupo),
     franja: FRANJA[grupo] ?? FRANJA.OTRO!,
     subtitulo: `${p.codigo} · se cuenta por ${unidad}`,
     datos,
@@ -147,7 +147,7 @@ export default async function PaginaProductos({ searchParams }: PageProps<"/prod
               <tr key={p.id}>
                 <td>
                   <Link href={`/productos/${p.id}`} className="font-medium underline-offset-4 hover:underline">
-                    <span aria-hidden>{dibujoDeProducto(p.nombre, grupoDeProducto(p.nombre, p.grupo))}</span> {p.nombre}
+                    <span aria-hidden>{p.dibujo ?? dibujoDeProducto(p.nombre, grupoDeProducto(p.nombre, p.grupo))}</span> {p.nombre}
                   </Link>
                   <span className="block text-sm text-texto-suave">{p.codigo}</span>
                 </td>

@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState, useTransition, type KeyboardEvent as EventoTecla, type PointerEvent as EventoPuntero } from "react";
 
 import { enlaceWaze, enlacesGoogleMaps, type DestinoGps } from "@/dominio/entregas/navegacion";
 import { estimarTramo, planearRecorrido, type Coordenada } from "@/dominio/entregas/recorrido";
 import { leerCoordenadas } from "@/dominio/entregas/ubicacion";
+import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 import { FlechaNavegacion } from "@/ui/iconos";
 

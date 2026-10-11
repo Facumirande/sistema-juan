@@ -209,6 +209,36 @@ body {
   background: var(--barra-encima) padding-box;
 }
 
+/* La barra de arriba es transparente (pedido del usuario, 11/10/2026): no tiene fondo ni raya, se ve
+   la pantalla detrás y cada cosa queda donde estaba. En el tablero y el paso a paso, la imagen de
+   fondo es de todo el marco (así queda también detrás de la barra) y la barra va con letra blanca.
+   `--alto-barra` es su alto: en el celular es más alta, porque el ☰, la campana y la persona van
+   grandes para el dedo; lo usan el tablero (que ocupa justo el resto de la pantalla) y la campanita. */
+:root {
+  --alto-barra: 4.25rem;
+}
+@media (min-width: 640px) {
+  :root {
+    --alto-barra: 3.5rem;
+  }
+}
+.marco-barra {
+  --nav-texto: var(--texto);
+  --nav-borde: var(--borde);
+  --nav-encima: var(--superficie);
+  color: var(--nav-texto);
+}
+@media screen {
+  .marco-contenido:has(> .marco-principal > .a-pantalla-completa) {
+    background: var(--tablero-fondo);
+  }
+  .marco-contenido:has(> .marco-principal > .a-pantalla-completa) > .marco-barra {
+    --nav-texto: #ffffff;
+    --nav-borde: rgb(255 255 255 / 0.55);
+    --nav-encima: rgb(255 255 255 / 0.2);
+  }
+}
+
 /* En el celular el sistema se ve y se usa como una app (pedido del usuario, 10/10/2026): la página
    no se mueve ni rebota (lo que se desplaza es el contenido, adentro del marco, con la barra de
    arriba quieta), no se agranda con dos dedos ni con doble toque y no deja ver franjas blancas o
@@ -221,6 +251,7 @@ html {
   html {
     height: 100%;
     overflow: hidden;
+    overscroll-behavior: none;
   }
   /* Las pantallas sin marco (el ingreso) se desplazan adentro del cuerpo, que tampoco rebota. */
   body {
@@ -263,8 +294,22 @@ html {
 }
 /* En los aparatos que se usan con el dedo: sin agrandar con dos dedos ni con doble toque (los mapas
    siguen acercándose: lo manejan ellos), y sin el menú del navegador al mantener apretado un botón
-   o un enlace (el que muestra la dirección). */
+   o un enlace (el que muestra la dirección). Tampoco se "vuelve atrás" al arrastrar el dedo hacia
+   la derecha, como en una página común (pedido del usuario, 11/10/2026): lo que se desliza de
+   costado (las columnas del tablero, la fila de días) no le pasa el arrastre a la página, y la
+   página no lo toma como un pedido de volver. El iPhone necesita además `src/ui/sin-gesto-de-volver.tsx`. */
+@layer base {
+  @media (pointer: coarse) {
+    * {
+      overscroll-behavior-x: contain;
+    }
+  }
+}
 @media (pointer: coarse) {
+  html,
+  body {
+    overscroll-behavior-x: none;
+  }
   html {
     touch-action: pan-x pan-y;
   }

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec, sumar } from "@/dominio/dinero/decimal";
@@ -15,6 +14,7 @@ import { avanceDeTarjeta } from "@/modulos/pedidos/tablero";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { contarPedidosPendientes } from "@/modulos/usuarios/acceso";
 import type { Permiso } from "@/seguridad/catalogo-permisos";
+import Link from "@/ui/enlace";
 import { enlaceDeEntidad } from "@/ui/enlaces";
 import { fechaConDia } from "@/ui/etiquetas";
 import { queDiaEs } from "@/ui/fecha-grande";
@@ -97,14 +97,15 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
 
   const base = dia ? `/inicio?fecha=${dia.fecha}${vista === "pasos" ? "&vista=pasos" : ""}` : "/inicio";
   const tablero = enTablero ? dia.tablero : null;
-  // El resumen balance (gastos y caja inicial del día): va arriba del tablero.
+  // El resumen balance (pagado y crédito, ganancia y a cobrar, y la caja inicial del día): va arriba del tablero.
   const resumen: ResumenParaVer | null =
     enTablero && dia.resumen
       ? {
           fecha: dia.fecha,
-          gastos: dia.resumen.gastos.toString(),
           pagado: dia.resumen.pagado.toString(),
           credito: dia.resumen.credito.toString(),
+          ganancia: dia.resumen.ganancia.toString(),
+          aCobrar: dia.resumen.aCobrar.toString(),
           cajaInicial: dia.resumen.cajaInicial?.toString() ?? null,
           exceso: dia.resumen.exceso?.toString() ?? null,
           editable: puede("pagos.registrar") && dia.panel.estado !== "CERRADA",
@@ -126,8 +127,9 @@ export default async function Inicio({ searchParams }: PageProps<"/inicio">) {
         sobre
           ? // En el tablero, este recuadro es el contenedor "tablero": su ancho (no el de la ventana) decide
             // si se ve como en la computadora o como en el celular.
-            // `a-pantalla-completa`: en el celular llega hasta el borde de abajo con su fondo (globals.css).
-            `a-pantalla-completa -m-3 flex flex-col gap-2 p-3 [background:var(--tablero-fondo)] sm:-m-4 sm:gap-3 sm:px-4 ${enTablero ? "@container/tablero h-[calc(100dvh-3rem)] overflow-hidden sm:h-[calc(100dvh-3.5rem)]" : "min-h-[calc(100dvh-3rem)] pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:min-h-[calc(100dvh-3.5rem)]"}`
+            // `a-pantalla-completa`: la imagen de fondo la pone el marco, detrás de esto y de la barra de arriba, y en el
+            // celular llega hasta el borde de abajo (globals.css). El alto es el de la pantalla menos esa barra.
+            `a-pantalla-completa -m-3 flex flex-col gap-2 p-3 sm:-m-4 sm:gap-3 sm:px-4 ${enTablero ? "@container/tablero h-[calc(100dvh-var(--alto-barra))] overflow-hidden" : "min-h-[calc(100dvh-var(--alto-barra))] pb-[calc(0.75rem+env(safe-area-inset-bottom))]"}`
           : "flex max-w-3xl flex-col gap-5"
       }
     >

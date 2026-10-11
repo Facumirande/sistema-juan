@@ -160,9 +160,20 @@ const claveDe = (nombre: string) => {
   return DIBUJOS.find(([clave]) => palabras.some((p) => p.startsWith(clave)));
 };
 
-/** Un dibujo para reconocer el producto de un vistazo (por su nombre, o por su grupo). */
-export function dibujoDeProducto(nombre: string, grupo?: string | null): string {
-  return claveDe(nombre)?.[1] ?? DIBUJO_DEL_GRUPO[grupo ?? ""] ?? "📦";
+/** Los dibujos elegidos a mano, por el nombre del producto (con `claveDeDibujo`). */
+export type DibujosElegidos = Readonly<Record<string, string>>;
+
+/** Cómo se busca un producto entre los dibujos elegidos: su nombre sin acentos ni mayúsculas. */
+export function claveDeDibujo(nombre: string): string {
+  return sinAcentos(nombre).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Un dibujo para reconocer el producto de un vistazo: el que se le eligió a mano, si tiene
+ * (11/10/2026); si no, sale solo de su nombre o de su grupo.
+ */
+export function dibujoDeProducto(nombre: string, grupo?: string | null, elegidos?: DibujosElegidos): string {
+  return elegidos?.[claveDeDibujo(nombre)] ?? claveDe(nombre)?.[1] ?? DIBUJO_DEL_GRUPO[grupo ?? ""] ?? "📦";
 }
 
 /**

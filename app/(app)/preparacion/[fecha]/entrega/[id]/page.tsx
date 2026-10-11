@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
-import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { dec } from "@/dominio/dinero/decimal";
 import { formatearCantidad, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { avisoDeFaltante } from "@/dominio/entregas/entregas";
@@ -11,6 +9,8 @@ import { obtenerEntregaParaPreparar, type LineaAPreparar } from "@/modulos/entre
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonAccion } from "@/ui/boton-accion";
+import { DibujoDeProducto } from "@/ui/dibujos";
+import Link from "@/ui/enlace";
 import { ESTADOS_ENTREGA, MOTIVOS_FALTANTE, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, CampoNumero, Encabezado, Selector, clasesBoton } from "@/ui/formularios";
@@ -40,7 +40,7 @@ function Linea({ l, editable, productos, aceptaSustituciones }: { l: LineaAPrepa
     <li className={`flex flex-col gap-3 rounded-2xl border-2 bg-superficie p-4 ${lista ? (falta ? "border-[var(--etiqueta-naranja)]" : "border-[var(--listo-fondo)]") : "border-borde"}`}>
       <div className="flex items-start gap-3">
         <span aria-hidden className="text-4xl leading-none">
-          {dibujoDeProducto(l.producto)}
+          <DibujoDeProducto nombre={l.producto} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xl leading-tight font-semibold">{l.producto}</p>

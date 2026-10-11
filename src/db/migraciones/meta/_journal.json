@@ -197,6 +197,13 @@
       "when": 1791665002033,
       "tag": "0027_caja_inicial",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791698216941,
+      "tag": "0028_dibujo_del_producto",
+      "breakpoints": true
     }
   ]
 }

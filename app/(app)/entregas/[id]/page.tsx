@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -8,6 +7,7 @@ import { formatearFechaHora } from "@/dominio/fechas/fechas";
 import { obtenerEntrega } from "@/modulos/entregas/entregas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { ESTADOS_ENTREGA, ESTADOS_PEDIDO, MOTIVOS_DIFERENCIA, MOTIVOS_FALTANTE, fechaConDia, opciones } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, CampoNumero, Encabezado, Selector, Tabla, Tarjeta, clasesBoton } from "@/ui/formularios";

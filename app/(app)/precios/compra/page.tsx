@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { listarCategorias } from "@/modulos/catalogo/categorias";
@@ -7,6 +6,7 @@ import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { listarProveedores } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { CampoBuscar } from "@/ui/buscador";
+import Link from "@/ui/enlace";
 import { Casilla, Encabezado, Filtros, Selector, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 

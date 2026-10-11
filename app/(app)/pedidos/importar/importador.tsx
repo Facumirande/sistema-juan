@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 
 import { MAXIMO_BYTES_PLANILLA } from "@/dominio/pedidos/planilla";
 import type { PedidoCargado } from "@/modulos/pedidos/pedidos";
 import type { RevisionDePlanilla } from "@/modulos/pedidos/planilla";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 
 import { importarPedidosAccion, revisarPlanillaAccion } from "./acciones";

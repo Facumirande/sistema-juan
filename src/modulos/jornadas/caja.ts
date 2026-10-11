@@ -3,16 +3,18 @@ import { z } from "zod";
 
 import { compra, imputacionPagoProveedor, jornada, movimientoExtra } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
-import { aNumeric, dec } from "@/dominio/dinero/decimal";
+import { aNumeric, dec, sumar } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import { sumarDias, type FechaISO } from "@/dominio/fechas/fechas";
 import { resumenBalance, type ResumenBalance } from "@/dominio/reportes/resumen-balance";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
+import { cuentasDeClientes } from "@/modulos/cuentas-clientes/cuentas";
 import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/contexto";
 import { numeroOpcional, validar } from "@/modulos/validacion";
 
-// La caja inicial de cada día (la plata con la que se cuenta) y el resumen balance del tablero:
-// lo gastado ese día, separado en pagado y crédito, frente a esa caja (RN-180).
+// La caja inicial de cada día (la plata con la que se cuenta) y el resumen balance del tablero: lo
+// pagado y lo que quedó a crédito de las compras de ese día, y la ganancia (lo ya cobrado menos lo
+// pagado) y lo que falta cobrar de lo entregado ese día (RN-180, RN-194).
 
 /** Lo ya pagado de cada compra: sus imputaciones vigentes. Con varias tablas en la consulta, el nombre va completo. */
 const PAGADO_DE_LA_COMPRA = sql<string>`coalesce((select sum(i.monto) from ${imputacionPagoProveedor} i where i.compra_id = "compra"."id" and i.activa), 0)`;
@@ -25,11 +27,12 @@ const gastosDe = (tx: Transaccion, fecha: FechaISO) =>
     .where(and(eq(movimientoExtra.fecha, fecha), eq(movimientoExtra.tipo, "GASTO"), eq(movimientoExtra.estado, "REGISTRADO")));
 
 /**
- * El resumen balance de un día. Las tres consultas salen juntas (y junto con lo demás que se pida
- * en el mismo `Promise.all`): una sola ida a la base.
+ * El resumen balance de un día. Todo sale junto (y junto con lo demás que se pida en el mismo
+ * `Promise.all`): una sola ida a la base. Lo cobrado de cada entrega es el del reparto de "A cobrar"
+ * (un cobro cancela lo más viejo, RN-166): son los mismos números que da el balance de ese día.
  */
 export async function resumenBalanceDelDia(tx: Transaccion, fecha: FechaISO): Promise<ResumenBalance> {
-  const [[compras], [gastos], [j]] = await Promise.all([
+  const [[compras], [gastos], [j], cuentas] = await Promise.all([
     tx
       .select({ total: sum(compra.total), pagado: sql<string | null>`sum(${PAGADO_DE_LA_COMPRA})` })
       .from(compra)
@@ -37,8 +40,18 @@ export async function resumenBalanceDelDia(tx: Transaccion, fecha: FechaISO): Pr
       .where(and(eq(jornada.fecha, fecha), eq(compra.estado, "REGISTRADA"))),
     gastosDe(tx, fecha),
     tx.select({ caja: jornada.cajaInicial }).from(jornada).where(eq(jornada.fecha, fecha)),
+    cuentasDeClientes(tx),
   ]);
-  return resumenBalance({ compras: compras?.total ?? "0", pagadoDeCompras: compras?.pagado ?? "0", gastos: gastos?.total ?? "0", cajaInicial: j?.caja ?? null });
+  // Lo entregado ese día: cuánto ya pagaron los clientes y cuánto falta.
+  const delDia = cuentas.flatMap((c) => c.cuenta.entregas.filter((e) => e.fecha === fecha));
+  return resumenBalance({
+    compras: compras?.total ?? "0",
+    pagadoDeCompras: compras?.pagado ?? "0",
+    gastos: gastos?.total ?? "0",
+    cobrado: sumar(delDia.map((e) => e.cobrado)),
+    aCobrar: sumar(delDia.map((e) => e.pendiente)),
+    cajaInicial: j?.caja ?? null,
+  });
 }
 
 export interface CajaSuperada {
@@ -70,7 +83,7 @@ export async function diasConCajaSuperada(tx: Transaccion, c: ContextoUsuario, h
     .orderBy(jornada.fecha);
   return filas.flatMap((f) => {
     // Para avisar alcanza el total: cuánto de lo comprado ya se pagó no cambia si se superó la caja.
-    const r = resumenBalance({ compras: f.compras, pagadoDeCompras: "0", gastos: f.gastos, cajaInicial: f.caja });
+    const r = resumenBalance({ compras: f.compras, pagadoDeCompras: "0", gastos: f.gastos, cobrado: "0", aCobrar: "0", cajaInicial: f.caja });
     return r.exceso && r.cajaInicial ? [{ fecha: f.fecha, gastos: r.gastos.toString(), cajaInicial: r.cajaInicial.toString(), exceso: r.exceso.toString() }] : [];
   });
 }

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { tiempoRelativo, tituloDeDia } from "@/dominio/colaboracion/tiempo";
@@ -9,6 +8,7 @@ import { recuperarPedidoAccion } from "../inicio/acciones";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { Avatar } from "@/ui/avatar";
 import { BotonAccion } from "@/ui/boton-accion";
+import Link from "@/ui/enlace";
 import { enlaceDeEntidad } from "@/ui/enlaces";
 import { Encabezado } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";

@@ -35,7 +35,7 @@ export interface DiaDeTrabajo {
   tablero: TableroDePedidos | null;
   /** Solo con los permisos de precios y en el paso a paso: lo pedido y lo entregado a precio de venta, y lo comprado. */
   plata: { pedido: string | null; comprado: string | null; entregado: string | null };
-  /** El resumen balance del tablero: gastos (pagado y crédito) y caja inicial del día (con los permisos de costos y de pagos). */
+  /** El resumen balance del tablero: pagado, crédito, ganancia, a cobrar y caja inicial del día (con los permisos de costos, ventas, pagos y cobranzas). */
   resumen: ResumenBalance | null;
   dias: DiaCercano[];
 }
@@ -150,10 +150,10 @@ export async function diaDeTrabajo(db: BaseDatos, authUserId: string, pedida?: s
     const verVenta = c.permisos.tiene("precios.ver_venta");
     const verCostos = c.permisos.tiene("precios.ver_costos");
     const nada = Promise.resolve([] as { total: string | null }[]);
-    // En el tablero va el resumen balance (gastos y caja inicial): necesita ver costos y pagos. La
+    // En el tablero va el resumen balance (lo pagado y lo cobrado del día): necesita ver costos, ventas, pagos y cobranzas. La
     // plata de cada paso solo se muestra en el paso a paso: en el tablero no se pide.
     const conTablero = Boolean(opciones.conTablero);
-    const conResumen = conTablero && verCostos && c.permisos.tiene("pagos.ver");
+    const conResumen = conTablero && verCostos && verVenta && c.permisos.tiene("pagos.ver") && c.permisos.tiene("cobranzas.ver");
     // Lo que no depende entre sí sale junto: el panel, la plata del día, los días cercanos y el tablero.
     const [panel, [p], [e], [k], dias, tablero, resumen] = await Promise.all([
       panelEnTransaccion(tx, fecha),

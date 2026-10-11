@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearMoneda } from "@/dominio/dinero/formato";
@@ -7,6 +6,7 @@ import { coincideBusqueda } from "@/dominio/pedidos/carga";
 import { listaGeneralPreciosCompra } from "@/modulos/precios-compra/ofertas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { CampoBuscar } from "@/ui/buscador";
+import Link from "@/ui/enlace";
 import { UNIDADES_CORTAS, haceDias } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Encabezado, clasesBoton } from "@/ui/formularios";

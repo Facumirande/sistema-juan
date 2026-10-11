@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import Link from "./enlace";
+
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
@@ -97,8 +98,10 @@ export function MarcoConMenu({ menu, barra, menuCerrado, children }: { menu: Rea
         <div className="px-3 pt-1 pb-4">{menu}</div>
       </aside>
       <div className="marco-contenido flex min-w-0 flex-1 flex-col">
-        {/* En el celular, la barra y los márgenes son algo más chicos: queda más lugar para el contenido. */}
-        <header className="flex min-h-12 items-center justify-between gap-2 border-b border-borde bg-superficie px-2 sm:min-h-14 sm:px-3 print:hidden">
+        {/* La barra de arriba no tiene fondo ni raya (pedido del usuario, 11/10/2026): se ve la pantalla
+            detrás y cada cosa queda donde estaba. Su alto y sus colores salen de `globals.css`
+            (`--alto-barra`, `marco-barra`). En el celular, el ☰, la campana y la persona van grandes. */}
+        <header className="marco-barra flex min-h-[var(--alto-barra)] items-center justify-between gap-2 px-2 sm:px-3 print:hidden">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
@@ -106,7 +109,7 @@ export function MarcoConMenu({ menu, barra, menuCerrado, children }: { menu: Rea
               aria-controls="menu-lateral"
               aria-label="Abrir o guardar el menú"
               title="Menú"
-              className={`flex size-11 shrink-0 items-center justify-center rounded-lg border border-borde text-xl hover:bg-fondo ${enComputadora ? "md:hidden" : ""}`}
+              className={`flex size-[3.6rem] shrink-0 items-center justify-center rounded-xl border border-[var(--nav-borde)] text-[2.25rem] leading-none hover:bg-[var(--nav-encima)] sm:size-11 sm:rounded-lg sm:text-xl ${enComputadora ? "md:hidden" : ""}`}
             >
               <span aria-hidden>☰</span>
             </button>

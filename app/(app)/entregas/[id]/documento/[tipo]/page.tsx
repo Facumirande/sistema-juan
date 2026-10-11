@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
@@ -7,6 +6,7 @@ import { documentoDeEntrega } from "@/modulos/entregas/entregas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
+import Link from "@/ui/enlace";
 import { parametro } from "@/ui/parametros";
 
 import { ListaContable, ListaEntrega } from "../../../documentos-impresos";

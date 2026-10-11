@@ -23,7 +23,7 @@ const COLOR: Readonly<Record<string, string>> = {
 export default function CargandoElTablero() {
   const barra = "animate-pulse rounded-xl bg-white/25";
   return (
-    <div className="a-pantalla-completa @container/tablero -m-3 flex h-[calc(100dvh-3rem)] flex-col gap-2 overflow-hidden p-3 [background:var(--tablero-fondo)] sm:-m-4 sm:h-[calc(100dvh-3.5rem)] sm:gap-3 sm:px-4" role="status" aria-label="Cargando el tablero">
+    <div className="a-pantalla-completa @container/tablero -m-3 flex h-[calc(100dvh-var(--alto-barra))] flex-col gap-2 overflow-hidden p-3 sm:-m-4 sm:gap-3 sm:px-4" role="status" aria-label="Cargando el tablero">
       <Suspense fallback={<p className="min-h-9 shrink-0" />}>
         <DiaQueLlega />
       </Suspense>

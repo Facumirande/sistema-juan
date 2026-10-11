@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
+
+import Link from "@/ui/enlace";
 
 /**
  * Ventana encima del tablero (la tarjeta abierta). La tarjeta queda quieta en su lugar, con un

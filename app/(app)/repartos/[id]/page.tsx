@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearFechaHora } from "@/dominio/fechas/fechas";
@@ -7,6 +6,7 @@ import { entregasSinReparto, obtenerReparto, repartidoresDisponibles } from "@/m
 import { salidaDeRepartos } from "@/modulos/entregas/viaje";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
+import Link from "@/ui/enlace";
 import { ESTADOS_ENTREGA, ESTADOS_REPARTO, fechaConDia } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
 import { Aviso, Campo, Encabezado, Selector, Tarjeta, clasesBoton } from "@/ui/formularios";

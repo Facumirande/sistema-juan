@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useOptimistic, useRef, useState, useSyncExternalStore, useTransition, type PointerEvent as EventoPuntero } from "react";
 
 import { normalizarBusqueda } from "@/dominio/pedidos/carga";
 import { Buscador } from "@/ui/buscador";
 import { NombreDeProducto } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
 
 import { elegirPuestoAccion, noConseguidoAccion, ordenarListaAccion, pagadoDesdeLaListaAccion, tildarLineaAccion } from "./acciones";

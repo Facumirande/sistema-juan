@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { obtenerBaseDatos } from "@/db/cliente";
@@ -8,9 +7,11 @@ import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { diasEntre, formatearFecha, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas";
 import { MESES_QUE_SE_GUARDAN } from "@/dominio/reportes/meses";
 import { agrupacionSugerida, type Agrupacion } from "@/dominio/reportes/periodos";
+import { dibujosElegidos } from "@/modulos/catalogo/dibujos";
 import { balance } from "@/modulos/reportes/balance";
 import { balancesPorMes } from "@/modulos/reportes/balance-mensual";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { BarrasHorizontales, GraficoBarras } from "@/ui/graficos";
@@ -166,12 +167,13 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
   const anteriorHasta = sumarDias(desde, -1);
   const anteriorDesde = sumarDias(anteriorHasta, -(largo - 1));
   const db = obtenerBaseDatos();
-  const [b, anterior, semana, meses] = await Promise.all([
+  const [b, anterior, semana, meses, elegidos] = await Promise.all([
     balance(db, sesion.authUserId, { desde, hasta, agrupacion }),
     balance(db, sesion.authUserId, { desde: anteriorDesde, hasta: anteriorHasta, agrupacion: "MES" }),
     // Con un solo día, las barras muestran ese día junto a los seis anteriores.
     unDia ? balance(db, sesion.authUserId, { desde: sumarDias(hasta, -6), hasta, agrupacion: "DIA" }) : Promise.resolve(null),
     balancesPorMes(db, sesion.authUserId, hoy),
+    dibujosElegidos(db, sesion.authUserId),
   ]);
   const g = semana ?? b;
   const t = b.totales;
@@ -549,7 +551,7 @@ export default async function PaginaBalance({ searchParams }: PageProps<"/balanc
               </Tabla>
             }
           >
-            <BarrasHorizontales filas={b.productos.slice(0, 8).map((p) => ({ etiqueta: `${dibujoDeProducto(p.producto)} ${p.producto}`, valor: Number(p.vendido), texto: formatearMoneda(p.vendido), detalle: p.ganancia !== null ? `ganancia ${formatearMoneda(p.ganancia)}` : null }))} />
+            <BarrasHorizontales filas={b.productos.slice(0, 8).map((p) => ({ etiqueta: `${dibujoDeProducto(p.producto, null, elegidos)} ${p.producto}`, valor: Number(p.vendido), texto: formatearMoneda(p.vendido), detalle: p.ganancia !== null ? `ganancia ${formatearMoneda(p.ganancia)}` : null }))} />
           </Grafico>
         )}
       </div>

@@ -54,10 +54,13 @@ export const producto = pgTable(
     presentacionCompraDefaultId: uuid("presentacion_compra_default_id"),
     observaciones: text("observaciones"),
     imagenPath: text("imagen_path"),
+    /** El dibujo elegido a mano (un emoji de la lista de `dominio/catalogo/dibujos.ts`). Nulo = sale solo del nombre o de la categoría. */
+    dibujo: text("dibujo"),
     activo: boolean("activo").notNull().default(true),
   },
   (t): PgTableExtraConfigValue[] => [
     unique("producto_empresa_id_id").on(t.empresaId, t.id),
+    check("producto_dibujo", sql`${t.dibujo} is null or char_length(${t.dibujo}) between 1 and 16`),
     uniqueIndex("producto_codigo_unico").on(t.empresaId, sql`upper(${t.codigo})`),
     uniqueIndex("producto_nombre_unico").on(t.empresaId, sql`lower(${t.nombre})`),
     index("producto_categoria").on(t.categoriaId),

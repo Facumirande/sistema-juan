@@ -3,7 +3,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { auditoria, historialPrecioCompra, presentacion, proveedorProducto } from "@/db/esquema";
 import { enEmpresa } from "@/db/transaccion";
+import { claveDeDibujo } from "@/dominio/catalogo/productos";
 import { cambiarEstadoCategoria, guardarCategoria, listarCategorias } from "@/modulos/catalogo/categorias";
+import { dibujosElegidos } from "@/modulos/catalogo/dibujos";
 import {
   agregarPresentacion,
   cambiarEstadoPresentacion,
@@ -167,6 +169,32 @@ describe("productos y presentaciones (RN-001 a RN-009)", () => {
 
     const tomate = await obtenerProducto(base.db, admin, ids.tomate!);
     expect(await mensajeDeError(editarProducto(base.db, admin, { ...tomate, id: ids.tomate!, unidadBase: "UNIDAD" }))).toMatch(/RN-001/);
+  });
+
+  it("el dibujo se elige de la lista, se ve en todos lados y se puede volver al automático (RN-196)", async () => {
+    // Al crearlo ya se puede elegir.
+    const id = await crearProducto(base.db, admin, { codigo: "RABA", nombre: "Rabanito", categoriaId: ids.verduras!, unidadBase: "ATADO", admiteFraccion: false, dibujo: "🔴" });
+    const ficha = await obtenerProducto(base.db, admin, id);
+    expect(ficha.dibujo).toBe("🔴");
+    expect((await listarProductos(base.db, admin, {})).find((p) => p.id === id)?.dibujo).toBe("🔴");
+    // Queda a mano de toda pantalla que dibuja un producto, por su nombre.
+    expect((await dibujosElegidos(base.db, admin))[claveDeDibujo("Rabanito")]).toBe("🔴");
+
+    // Editar sin decir nada del dibujo lo deja como estaba.
+    await editarProducto(base.db, admin, { ...ficha, id, dibujo: undefined, observaciones: "De estación" });
+    expect((await obtenerProducto(base.db, admin, id)).dibujo).toBe("🔴");
+
+    // Se cambia por otro de la lista; lo que no está en la lista no se guarda.
+    await editarProducto(base.db, admin, { ...ficha, id, dibujo: "🟣" });
+    expect((await obtenerProducto(base.db, admin, id)).dibujo).toBe("🟣");
+    expect((await dibujosElegidos(base.db, admin))[claveDeDibujo("Rabanito")]).toBe("🟣");
+    expect(await mensajeDeError(editarProducto(base.db, admin, { ...ficha, id, dibujo: "🚀" }))).toMatch(/dibujo de la lista/);
+    expect((await obtenerProducto(base.db, admin, id)).dibujo).toBe("🟣");
+
+    // Vacío = automático: vuelve a salir solo del nombre.
+    await editarProducto(base.db, admin, { ...ficha, id, dibujo: "" });
+    expect((await obtenerProducto(base.db, admin, id)).dibujo).toBeNull();
+    expect((await dibujosElegidos(base.db, admin))[claveDeDibujo("Rabanito")]).toBeUndefined();
   });
 });
 

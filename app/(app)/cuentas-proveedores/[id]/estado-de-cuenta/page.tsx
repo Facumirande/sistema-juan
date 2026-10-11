@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -9,6 +8,7 @@ import { cuentaCorriente } from "@/modulos/compras/cuenta-corriente";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
+import Link from "@/ui/enlace";
 import { parametro } from "@/ui/parametros";
 
 export const metadata: Metadata = { title: "DOC-05 Estado de cuenta · Sistema Repartos" };

@@ -1,12 +1,14 @@
 import "server-only";
 
 import { refresh } from "next/cache";
+import { cookies } from "next/headers";
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import type { BaseDatos } from "@/db/tipos";
 import { esErrorDeNegocio } from "@/dominio/errores";
+import { pulsoDeCambios } from "@/modulos/colaboracion/pulso";
 import { obtenerAuthUserId } from "@/modulos/seguridad/sesion";
 
 import { resultadoDeAccion, type EstadoAccion } from "./estado-accion";
@@ -14,6 +16,24 @@ import { resultadoDeAccion, type EstadoAccion } from "./estado-accion";
 /** Lo que se muestra si algo falla por un problema del sistema (no por lo que hizo la persona). */
 export const MENSAJE_ERROR_INESPERADO =
   "No se pudo completar por un problema del sistema (no es un error tuyo). Probá de nuevo en un momento; si vuelve a pasar, avisale a Facundo qué estabas haciendo.";
+
+/** La cookie donde cada acción anota hasta qué número del pulso llega lo que acaba de guardar. */
+export const COOKIE_PULSO = "pulso";
+
+/**
+ * Anota el pulso de los cambios justo después de guardar: la pantalla que vuelve con la respuesta
+ * de la acción ya trae ese cambio, así que no hace falta volver a pedirla cuando el aviso de
+ * "alguien guardó algo" resulta ser por lo que guardó uno mismo (`src/ui/pulso.tsx`). Se lee antes
+ * de redibujar: lo que otra persona guarde después queda por encima de este número y sí redibuja.
+ * Si no se puede leer, no pasa nada: la pantalla se pide una vez de más, como antes.
+ */
+async function anotarPulsoPropio(db: BaseDatos): Promise<void> {
+  try {
+    (await cookies()).set(COOKIE_PULSO, await pulsoDeCambios(db), { path: "/", httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 });
+  } catch (error) {
+    console.error("No se pudo anotar el pulso de los cambios:", error);
+  }
+}
 
 /**
  * Cuerpo común de las acciones de formulario: sesión verificada, errores de negocio como
@@ -26,8 +46,12 @@ export async function ejecutarAccion(fn: (ctx: { db: BaseDatos; authUserId: stri
     return await resultadoDeAccion(async () => {
       const authUserId = await obtenerAuthUserId();
       if (!authUserId) redirect("/login");
-      const resultado = await fn({ db: obtenerBaseDatos(), authUserId });
-      if (resultado.ok) refresh();
+      const db = obtenerBaseDatos();
+      const resultado = await fn({ db, authUserId });
+      if (resultado.ok) {
+        await anotarPulsoPropio(db);
+        refresh();
+      }
       return resultado;
     });
   } catch (error) {

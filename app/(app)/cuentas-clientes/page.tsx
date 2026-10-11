@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
@@ -7,6 +6,7 @@ import { formatearMoneda } from "@/dominio/dinero/formato";
 import { listarCuentasClientes } from "@/modulos/cuentas-clientes/cuentas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente } from "@/ui/etiquetas-tablero";
 import { Encabezado, clasesBoton } from "@/ui/formularios";

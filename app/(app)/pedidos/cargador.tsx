@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 
 import { ABREVIATURA_UNIDAD, formatearMoneda } from "@/dominio/dinero/formato";
@@ -19,6 +18,7 @@ import type { ClienteParaCargar, DatosDeCarga, PedidoDelHistorial, ProductoParaC
 import type { PedidoCargado } from "@/modulos/pedidos/pedidos";
 import { Buscador } from "@/ui/buscador";
 import { NombreDeProducto } from "@/ui/checklist";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente } from "@/ui/etiquetas-tablero";
 

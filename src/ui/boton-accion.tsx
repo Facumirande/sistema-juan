@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { startTransition, useActionState, type ReactNode } from "react";
 
+import Link from "./enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "./estado-accion";
 
 // Un botón que llama a una acción de servidor con algunos datos fijos (borrar una nota, elegir una

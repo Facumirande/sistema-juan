@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { dec } from "@/dominio/dinero/decimal";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
-import { CATEGORIAS_PREELEGIDAS, SIN_CATEGORIA } from "@/dominio/catalogo/categorias";
-import { listarCategorias } from "@/modulos/catalogo/categorias";
 import { dibujoDeProducto } from "@/dominio/catalogo/productos";
 import { obtenerProducto } from "@/modulos/catalogo/productos";
 import { notasDe } from "@/modulos/colaboracion/notas";
@@ -13,9 +10,10 @@ import { historialDeOferta, listaGeneralPreciosCompra } from "@/modulos/precios-
 import { listarProveedores } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
-import { UNIDADES, UNIDADES_CORTAS, opciones } from "@/ui/etiquetas";
+import Link from "@/ui/enlace";
+import { UNIDADES, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
-import { AreaTexto, Campo, CampoNumero, Casilla, Encabezado, Estado, Selector, Tarjeta } from "@/ui/formularios";
+import { Campo, CampoNumero, Casilla, Encabezado, Estado, Selector, Tarjeta, clasesBoton } from "@/ui/formularios";
 
 import { HiloDeNotas } from "../../actividad/notas";
 import { crearOfertaAccion } from "../../precios/compra/acciones";
@@ -27,7 +25,6 @@ import {
   cambiarEstadoPresentacionAccion,
   cambiarEstadoProductoAccion,
   editarPresentacionAccion,
-  editarProductoAccion,
 } from "../acciones";
 
 export const metadata: Metadata = { title: "Producto · Sistema Repartos" };
@@ -42,8 +39,7 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
   const puedeEditar = sesion.permisos.includes("productos.editar");
   const verCostos = sesion.permisos.includes("precios.ver_costos");
   const puedeCrearOferta = sesion.permisos.includes("proveedores.editar") && sesion.permisos.includes("precios.editar_compra");
-  const [categorias, ofertas, proveedores, notas] = await Promise.all([
-    puedeEditar ? listarCategorias(db, sesion.authUserId) : Promise.resolve([]),
+  const [ofertas, proveedores, notas] = await Promise.all([
     verCostos ? listaGeneralPreciosCompra(db, sesion.authUserId, { productoId: id }).then((r) => r.ofertas) : Promise.resolve([]),
     puedeCrearOferta ? listarProveedores(db, sesion.authUserId) : Promise.resolve([]),
     notasDe(db, sesion.authUserId, { tipo: "PRODUCTO", id }),
@@ -70,12 +66,17 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
   const enPorcentaje = (v: string) => formatearNumero(v, { decimales: 2, recortarCeros: true });
   const activas = p.presentaciones.filter((pr) => pr.activo);
   const deCompra = activas.filter((pr) => pr.usableEnCompra).map((pr) => ({ valor: pr.id, etiqueta: pr.nombre }));
-  const deVenta = activas.filter((pr) => pr.usableEnVenta).map((pr) => ({ valor: pr.id, etiqueta: pr.nombre }));
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <Encabezado titulo={`${dibujoDeProducto(p.nombre, p.grupo)} ${p.nombre}`} volver={{ ruta: "/productos", texto: "Productos" }} descripcion={`Código ${p.codigo} · ${p.categoria} · se cuenta en ${UNIDADES[p.unidadBase]?.toLowerCase()}`}>
+      <Encabezado titulo={`${p.dibujo ?? dibujoDeProducto(p.nombre, p.grupo)} ${p.nombre}`} volver={{ ruta: "/productos", texto: "Productos" }} descripcion={`Código ${p.codigo} · ${p.categoria} · se cuenta en ${UNIDADES[p.unidadBase]?.toLowerCase()}`}>
         <Estado activo={p.activo} />
+        {/* El editor es el mismo formulario con que se crea un producto: nombre, dibujo, categoría, envase… */}
+        {puedeEditar && (
+          <Link href={`/productos/${p.id}/editar?volver=ficha`} className={clasesBoton("secundario")}>
+            ✏️ Editar el producto
+          </Link>
+        )}
       </Encabezado>
 
       {verCostos && (
@@ -235,52 +236,18 @@ export default async function FichaDeProducto({ params }: PageProps<"/productos/
 
       {puedeEditar && (
         <details className="rounded-lg border border-borde bg-superficie p-4">
-          <summary className="min-h-11 cursor-pointer text-lg font-semibold">✏️ Editar los datos del producto (o darlo de baja)</summary>
+          <summary className="min-h-11 cursor-pointer text-lg font-semibold">{p.activo ? "Dar de baja el producto" : "Volver a activar el producto"}</summary>
           <div className="mt-4 flex flex-col gap-3">
-          <FormularioAccion accion={editarProductoAccion} boton="Guardar cambios">
-            <input type="hidden" name="id" value={p.id} />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Campo etiqueta="Código" name="codigo" defaultValue={p.codigo} />
-              <Campo etiqueta="Nombre" name="nombre" defaultValue={p.nombre} />
-              <Selector
-                etiqueta="Categoría"
-                name="categoria"
-                ayuda="Las preelegidas y “Ninguna” se crean al usarlas. Para mover muchos, arrastrá las tarjetas en Productos."
-                opciones={[
-                  ...categorias.filter((c) => c.productosActivos > 0 || c.id === p.categoriaId).map((c) => ({ valor: `id:${c.id}`, etiqueta: c.nombre })),
-                  ...CATEGORIAS_PREELEGIDAS.filter((pre) => !categorias.some((c) => (c.productosActivos > 0 || c.id === p.categoriaId) && c.nombre.toLowerCase() === pre.nombre.toLowerCase())).map((pre) => ({
-                    valor: `nombre:${pre.nombre}`,
-                    etiqueta: `${pre.nombre} (preelegida)`,
-                  })),
-                  ...(p.categoria === SIN_CATEGORIA.nombre ? [] : [{ valor: "ninguna", etiqueta: "Ninguna" }]),
-                ]}
-                defaultValue={`id:${p.categoriaId}`}
-              />
-              {p.unidadBaseEditable ? (
-                <Selector etiqueta="Unidad base" name="unidadBase" opciones={opciones(UNIDADES)} defaultValue={p.unidadBase} />
-              ) : (
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">Unidad base</span>
-                  <input type="hidden" name="unidadBase" value={p.unidadBase} />
-                  <p className="flex h-12 items-center text-texto-suave">{UNIDADES[p.unidadBase]} (ya no se cambia)</p>
-                </div>
-              )}
-              <Campo etiqueta="Nombre corto (opcional)" name="nombreCorto" defaultValue={p.nombreCorto ?? ""} />
-              <Selector etiqueta="Presentación de venta por defecto" name="presentacionVentaDefaultId" opciones={deVenta} vacia="—" defaultValue={p.presentacionVentaDefaultId ?? ""} />
-              <Selector etiqueta="Presentación de compra por defecto" name="presentacionCompraDefaultId" opciones={deCompra} vacia="—" defaultValue={p.presentacionCompraDefaultId ?? ""} />
-            </div>
-            <Casilla etiqueta="Admite fracción" name="admiteFraccion" defaultChecked={p.admiteFraccion} />
-            <AreaTexto etiqueta="Observaciones" name="observaciones" defaultValue={p.observaciones ?? ""} />
-          </FormularioAccion>
-          <FormularioAccion
-            accion={cambiarEstadoProductoAccion}
-            boton={p.activo ? "Desactivar producto" : "Reactivar producto"}
-            variante={p.activo ? "peligro" : "secundario"}
-            confirmar={p.activo ? `¿Desactivar ${p.nombre}? No se va a poder usar en pedidos ni compras nuevas; su historia queda.` : undefined}
-          >
-            <input type="hidden" name="id" value={p.id} />
-            <input type="hidden" name="activo" value={String(!p.activo)} />
-          </FormularioAccion>
+            <p className="text-texto-suave">{p.activo ? "Dado de baja no se ofrece en pedidos ni compras nuevas; su historia queda y se puede reactivar cuando quieras." : "Vuelve a ofrecerse en pedidos y compras."}</p>
+            <FormularioAccion
+              accion={cambiarEstadoProductoAccion}
+              boton={p.activo ? "Desactivar producto" : "Reactivar producto"}
+              variante={p.activo ? "peligro" : "secundario"}
+              confirmar={p.activo ? `¿Desactivar ${p.nombre}? No se va a poder usar en pedidos ni compras nuevas; su historia queda.` : undefined}
+            >
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="activo" value={String(!p.activo)} />
+            </FormularioAccion>
           </div>
         </details>
       )}

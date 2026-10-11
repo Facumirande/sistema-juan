@@ -1,0 +1,2 @@
+ALTER TABLE "producto" ADD COLUMN "dibujo" text;--> statement-breakpoint
+ALTER TABLE "producto" ADD CONSTRAINT "producto_dibujo" CHECK ("producto"."dibujo" is null or char_length("producto"."dibujo") between 1 and 16);

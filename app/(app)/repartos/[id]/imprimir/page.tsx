@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearFechaHora } from "@/dominio/fechas/fechas";
@@ -7,6 +6,7 @@ import { obtenerReparto } from "@/modulos/entregas/repartos";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { cargarFicha, idDeRuta } from "@/ui/accion-servidor";
 import { BotonImprimir } from "@/ui/boton-imprimir";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 
 export const metadata: Metadata = { title: "DOC-04 Hoja de ruta · Sistema Repartos" };

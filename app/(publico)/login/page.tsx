@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { configuracionSupabase } from "@/lib/supabase/configuracion";
 import { configuracionInicialPendiente } from "@/modulos/configuracion/configuracion-inicial";
+import Link from "@/ui/enlace";
 
 import { AvisoGoogle, BotonGoogle } from "./boton-google";
 import { FormularioIngreso } from "./formulario-ingreso";

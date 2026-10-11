@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { formatearMoneda } from "@/dominio/dinero/formato";
@@ -7,6 +6,7 @@ import { formatearFecha, hoyEnEmpresa, sumarDias } from "@/dominio/fechas/fechas
 import { registroDeMovimientos, type TipoRegistro } from "@/modulos/reportes/balance";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonImprimir } from "@/ui/boton-imprimir";
+import Link from "@/ui/enlace";
 import { Encabezado, Tabla, clasesBoton } from "@/ui/formularios";
 import { parametro } from "@/ui/parametros";
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { codigoSugerido, dibujoDeProducto, ejemploDeCostos, envaseComoUnidad, envasesSugeridos, explicarPresentacion, interpretarUnidad, nombreDePresentacion } from "@/dominio/catalogo/productos";
+import { DIBUJOS_PARA_ELEGIR, esDibujoParaElegir } from "@/dominio/catalogo/dibujos";
+import { claveDeDibujo, codigoSugerido, dibujoDeProducto, ejemploDeCostos, envaseComoUnidad, envasesSugeridos, explicarPresentacion, interpretarUnidad, nombreDePresentacion } from "@/dominio/catalogo/productos";
 
 describe("ayudas para cargar productos", () => {
   it("un dibujo según el nombre, o según el grupo", () => {
@@ -12,6 +13,27 @@ describe("ayudas para cargar productos", () => {
     expect(dibujoDeProducto("Níspero", "FRUTA")).toBe("🍎");
     expect(dibujoDeProducto("Bolsas de nylon", "OTRO")).toBe("📦");
     expect(dibujoDeProducto("Carbón")).toBe("📦");
+  });
+
+  it("el dibujo elegido a mano le gana al que sale solo", () => {
+    const elegidos = { [claveDeDibujo("Tomate Redondo")]: "🟥", [claveDeDibujo("Carbón")]: "⚫" };
+    // Se busca por el nombre, sin importar mayúsculas, acentos ni espacios de más.
+    expect(dibujoDeProducto("tomate  redondo", "VERDURA", elegidos)).toBe("🟥");
+    expect(dibujoDeProducto("CARBON", null, elegidos)).toBe("⚫");
+    // Los demás siguen con el suyo.
+    expect(dibujoDeProducto("Tomate perita", "VERDURA", elegidos)).toBe("🍅");
+    expect(dibujoDeProducto("Remolacha", "VERDURA", elegidos)).toBe("🥦");
+  });
+
+  it("la lista para elegir trae verduras, frutas y dibujos más sobrios, sin repetir", () => {
+    expect(DIBUJOS_PARA_ELEGIR.map((g) => g.titulo)).toEqual(["Verduras", "Frutas", "Otros", "Más sobrios"]);
+    const todos = DIBUJOS_PARA_ELEGIR.flatMap((g) => g.dibujos);
+    expect(new Set(todos).size).toBe(todos.length);
+    expect(todos.length).toBeGreaterThan(60);
+    for (const d of ["🍅", "🍌", "📦", "🟢"]) expect(esDibujoParaElegir(d)).toBe(true);
+    for (const d of ["", "🚀", "tomate", "🍅🍅"]) expect(esDibujoParaElegir(d)).toBe(false);
+    // Entran en la columna de la base (hasta 16 caracteres).
+    for (const d of todos) expect(d.length).toBeLessThanOrEqual(16);
   });
 
   it("un código que se arma solo y no se repite", () => {

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { obtenerBaseDatos } from "@/db/cliente";
@@ -10,6 +9,7 @@ import { listarPresentacionesDeCompra } from "@/modulos/catalogo/productos";
 import { obtenerListaCompra, ofertasParaLinea } from "@/modulos/compras/lista-compra";
 import { listarProveedores } from "@/modulos/proveedores/proveedores";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
+import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { parametro } from "@/ui/parametros";
 
