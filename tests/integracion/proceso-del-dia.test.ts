@@ -148,3 +148,102 @@ describe("sugerencias de lugares mientras se escribe (sin salir a internet)", ()
     expect(await sugerirLugares("quinta los nogales, paraje perdido", photon)).toEqual([]);
   });
 });
+
+describe("las direcciones como se dicen: la esquina y la calle con su número (sin salir a internet)", () => {
+  /** Un tramo de calle como lo devuelve Photon: el punto va [lat, lng] y la caja [oeste, norte, este, sur]. */
+  const calle = (nombre: string, punto: [number, number], caja: [number, number, number, number], barrio?: string) => ({
+    geometry: { coordinates: [punto[1], punto[0]] },
+    properties: { name: nombre, osm_key: "highway", extent: caja, district: barrio, city: "San Miguel de Tucumán", state: "Tucumán", countrycode: "AR" },
+  });
+  const local = (nombre: string | undefined, enCalle: string, numero: string, punto: [number, number], ciudad = "San Miguel de Tucumán") => ({
+    geometry: { coordinates: [punto[1], punto[0]] },
+    properties: { name: nombre, street: enCalle, housenumber: numero, osm_key: nombre ? "shop" : "place", city: ciudad, state: ciudad === "San Miguel de Tucumán" ? "Tucumán" : "Jujuy", countrycode: "AR" },
+  });
+  const responder = (features: unknown[]) => new Response(JSON.stringify({ features }));
+  const PROVINCIA = "-66.25,-28.05,-64.45,-26.05";
+
+  it("una esquina se calcula con los tramos de las dos calles y va arriba de todo, en tres consultas al mapa", async () => {
+    const pedidas: { q: string; soloCalles: boolean }[] = [];
+    const photon = async (url: string) => {
+      const p = new URL(url).searchParams;
+      const q = p.get("q")!;
+      pedidas.push({ q, soloCalles: p.get("layer") === "street" && p.get("dedupe") === "0" });
+      if (p.get("layer") !== "street") return responder([local("Tienda San Juan", "Muñecas", "354", [-26.82593, -65.20555]), local("Panadería San Juan", "Muñecas", "10", [-24.25, -65.2], "Palpalá")]);
+      if (q === "muñecas")
+        return responder([
+          calle("Ildefonso de las Muñecas", [-26.82599, -65.20495], [-65.20515, -26.8253, -65.20476, -26.82668], "Centro"),
+          calle("Peatonal Muñecas", [-26.82804, -65.20552], [-65.20591, -26.82668, -65.20515, -26.8294], "Centro"),
+        ]);
+      return responder([calle("San Juan", [-26.82563, -65.20336], [-65.20476, -26.8253, -65.20196, -26.82593], "Centro"), calle("San Juan", [-26.82476, -65.20715], [-65.20953, -26.8242, -65.20476, -26.8253], "Centro")]);
+    };
+    expect(await sugerirLugares("  muñecas  y san juan ", photon)).toEqual([
+      { etiqueta: "Ildefonso de las Muñecas y San Juan", detalle: "Centro, San Miguel de Tucumán", coordenada: { lat: -26.8253, lng: -65.20476 }, nota: "esquina" },
+      // Debajo, lo que coincide de la zona (lo de otra provincia no).
+      { etiqueta: "Tienda San Juan", detalle: "Muñecas 354, San Miguel de Tucumán, Tucumán", coordenada: { lat: -26.82593, lng: -65.20555 } },
+    ]);
+    expect(pedidas).toHaveLength(3);
+    expect(pedidas.filter((p) => p.soloCalles).map((p) => p.q).sort()).toEqual(["muñecas", "san juan"]);
+  });
+
+  it("si las calles no se cruzan, o el mapa no las devuelve, quedan las sugerencias de siempre", async () => {
+    const comun = local("Frutas y Verduras Don José", "Lavalle", "500", [-26.83, -65.21]);
+    // Dos calles paralelas.
+    const paralelas = async (url: string) => {
+      const p = new URL(url).searchParams;
+      if (p.get("layer") !== "street") return responder([comun]);
+      return responder([p.get("q") === "frutas" ? calle("Frutas", [-26.83, -65.205], [-65.21, -26.82995, -65.2, -26.83005]) : calle("Verduras Don José", [-26.84, -65.205], [-65.21, -26.83995, -65.2, -26.84005])]);
+    };
+    expect((await sugerirLugares("frutas y verduras don josé", paralelas)).map((l) => l.etiqueta)).toEqual(["Frutas y Verduras Don José"]);
+    // El mapa falla solo al pedir las calles: no se pierde lo demás.
+    const sinCalles = async (url: string) => (new URL(url).searchParams.get("layer") === "street" ? new Response("", { status: 503 }) : responder([comun]));
+    expect((await sugerirLugares("frutas y verduras don josé", sinCalles)).map((l) => l.etiqueta)).toEqual(["Frutas y Verduras Don José"]);
+    // Si falla todo, se avisa como siempre.
+    expect(await codigoDeError(sugerirLugares("muñecas y san juan", async () => new Response("", { status: 503 })))).toBe("VALIDACION");
+  });
+
+  it("una calle con muchos tramos se vuelve a pedir solo alrededor de la otra", async () => {
+    const cajas: string[] = [];
+    const photon = async (url: string) => {
+      const p = new URL(url).searchParams;
+      const q = p.get("q")!;
+      if (p.get("layer") !== "street") return responder([]);
+      if (q === "catamarca") return responder([calle("Catamarca", [-26.815, -65.2094], [-65.20945, -26.81, -65.20935, -26.82])]);
+      cajas.push(p.get("bbox")!);
+      // En toda la provincia: cincuenta tramos de otras localidades, que llenan la consulta.
+      if (p.get("bbox") === PROVINCIA) return responder(Array.from({ length: 50 }, (_, i) => calle("Sarmiento", [-27 - i * 0.01, -65.3], [-65.31, -27 - i * 0.01 + 0.00005, -65.29, -27 - i * 0.01 - 0.00005])));
+      return responder([calle("Avenida Sarmiento", [-26.8172, -65.209], [-65.215, -26.81715, -65.2, -26.81725], "Barrio Norte")]);
+    };
+    const [esquina] = await sugerirLugares("sarmiento y catamarca", photon);
+    expect(esquina).toMatchObject({ etiqueta: "Avenida Sarmiento y Catamarca", detalle: "Barrio Norte, San Miguel de Tucumán", nota: "esquina" });
+    expect(esquina!.coordenada.lat).toBeCloseTo(-26.8172, 4);
+    expect(esquina!.coordenada.lng).toBeCloseTo(-65.2094, 4);
+    // La segunda vez, en una caja chica alrededor de Catamarca.
+    expect(cajas).toHaveLength(2);
+    expect(cajas[0]).toBe(PROVINCIA);
+    const [oeste, sur, este, norte] = cajas[1]!.split(",").map(Number);
+    expect(este! - oeste!).toBeLessThan(0.01);
+    expect(norte! - sur!).toBeLessThan(0.02);
+  });
+
+  it("la calle con su número se pregunta también con su otro nombre; si el número no está, se ofrece la calle para marcarlo", async () => {
+    const pedidas: string[] = [];
+    const photon = async (url: string) => {
+      const q = new URL(url).searchParams.get("q")!;
+      pedidas.push(q);
+      if (q === "24 de septiembre 500") return responder([{ geometry: { coordinates: [-65.14094, -26.81571] }, properties: { name: "24 de Septiembre", osm_key: "highway", city: "Alderetes", state: "Tucumán", countrycode: "AR" } }]);
+      if (q === "24 de setiembre 500") return responder([local(undefined, "24 de Setiembre de 1812", "500", [-26.83109, -65.20453])]);
+      if (q === "General paz 9000") return responder([calle("General Paz", [-26.834, -65.215], [-65.23, -26.8339, -65.2, -26.8341], "Ciudadela"), local("Kiosco", "General Paz", "1200", [-26.83429, -65.21671])]);
+      return responder([]);
+    };
+    // "septiembre" y "setiembre": la dirección exacta va primero, aunque haya venido en la segunda respuesta.
+    expect((await sugerirLugares("24 de septiembre 500", photon)).map((l) => l.etiqueta)).toEqual(["24 de Setiembre de 1812 500", "24 de Septiembre"]);
+    expect(pedidas).toEqual(["24 de septiembre 500", "24 de setiembre 500"]);
+    // "gral" va completo; el 9000 no existe: la calle con ese número, como lugar aproximado.
+    pedidas.length = 0;
+    expect(await sugerirLugares("gral paz 9000", photon)).toEqual([
+      { etiqueta: "General Paz 9000", detalle: "Ciudadela, San Miguel de Tucumán", coordenada: { lat: -26.83429, lng: -65.21671 }, aproximado: { falta: "el número 9000" } },
+      { etiqueta: "Kiosco", detalle: "General Paz 1200, San Miguel de Tucumán, Tucumán", coordenada: { lat: -26.83429, lng: -65.21671 } },
+    ]);
+    expect(pedidas).toEqual(["General paz 9000"]);
+  });
+});

@@ -11,6 +11,11 @@ import { buscarEnMapaAccion, sugerirLugaresAccion } from "./acciones";
 // elige uno con un toque o con las flechas y Enter. Si Enter no encuentra sugerencias, se busca de la
 // forma de siempre (Nominatim). Lo elegido lleva el mapa a ese lugar para afinarlo y guardarlo.
 //
+// Se busca como se dice una dirección (11/10/2026): la calle con su número ("Buenos Aires 778") o la
+// esquina ("Muñecas y San Juan"), que se calcula y aparece arriba, marcada como esquina. Un número que
+// no está en el mapa sale ubicado entre sus vecinos ("entre el 480 y el 520") o, si no hay vecinos
+// cerca, como la calle donde abrir el mapa para marcarlo.
+//
 // Si el lugar no figura en el mapa (un country, un local sin cargar), aparece la zona donde queda
 // (11/10/2026): al elegirla no se cambia lo escrito; quien lo usa abre el mapa ahí para marcar el punto
 // exacto. Y al tocar un casillero que ya trae una dirección escrita se vuelve a buscar, sin tener que
@@ -22,7 +27,7 @@ export function BuscadorDeLugar({
   valor,
   alCambiar,
   alElegir,
-  placeholder = "Escribí la calle y el número, o el nombre del lugar",
+  placeholder = "Calle y número, la esquina o el nombre del lugar",
   etiqueta = "Buscar la dirección",
   className = "",
   autoFocus = false,
@@ -157,7 +162,7 @@ export function BuscadorDeLugar({
         <ul id={`${id}-lista`} role="listbox" className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-borde bg-superficie py-1 shadow-xl">
           {sugerencias[0]?.aproximado && (
             <li role="presentation" className="px-3 py-2 text-sm text-texto-suave">
-              <b className="text-texto">«{sugerencias[0].aproximado.falta}»</b> no figura en el mapa. Elegí la zona y marcá el punto exacto:
+              <b className="text-texto">«{sugerencias[0].aproximado.falta}»</b> no figura en el mapa. Elegí dónde queda y marcá el punto exacto:
             </li>
           )}
           {sugerencias.map((l, i) => (
@@ -168,14 +173,17 @@ export function BuscadorDeLugar({
                 onClick={() => elegir(l)}
                 className={`flex w-full flex-col items-start px-3 py-2 text-left ${i === marcada ? "bg-marca/15" : "hover:bg-fondo"}`}
               >
-                <span className="font-semibold">{l.etiqueta}</span>
+                <span className="flex flex-wrap items-center gap-x-2 font-semibold">
+                  <span>{l.etiqueta}</span>
+                  {l.nota && <span className="rounded-full bg-marca/15 px-2 text-sm text-marca">{l.nota}</span>}
+                </span>
                 {l.detalle && <span className="text-sm text-texto-suave">{l.detalle}</span>}
               </button>
             </li>
           ))}
           {sugerencias.length === 0 && (
             <li className="px-3 py-2 text-sm text-texto-suave">
-              No figura en el mapa. Probá con la calle o la localidad,{" "}
+              No figura en el mapa. Probá con la calle y el número, la esquina (“Muñecas y San Juan”) o la localidad,{" "}
               <button type="button" onClick={() => consultar(valor, true)} className="font-semibold text-marca underline underline-offset-2">
                 buscá de otra forma
               </button>{" "}

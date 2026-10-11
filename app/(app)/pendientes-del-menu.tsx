@@ -4,7 +4,8 @@ import { obtenerBaseDatos } from "@/db/cliente";
 import { pendientesDelMenu } from "@/modulos/cuentas-clientes/pendientes";
 
 // El número junto a "A cobrar" y "A pagar" en el menú: cuántos clientes deben y a cuántos proveedores
-// se les debe. Se busca aparte (con Suspense) para no demorar la pantalla y se pone al día solo.
+// se les debe. Se busca aparte (con Suspense) para no demorar la pantalla y se pone al día solo. Los
+// dos van del mismo color, rojo (pedido del usuario, 11/10/2026: todos los avisos del menú iguales).
 
 /** Una sola consulta por pedido aunque el menú se dibuje dos veces (celular y computadora). */
 const pendientes = cache((authUserId: string) =>
@@ -22,9 +23,7 @@ export async function InsigniaDePendientes({ authUserId, cual }: { authUserId: s
     <span
       title={texto}
       aria-label={texto}
-      className={`inline-block h-6 min-w-6 shrink-0 rounded-full px-1.5 text-center text-sm leading-6 font-extrabold tabular-nums ${
-        cual === "aCobrar" ? "bg-[var(--etiqueta-azul)] text-etiqueta-texto" : "bg-[var(--vence-fondo)] text-[var(--vence-texto)]"
-      }`}
+      className="inline-block h-6 min-w-6 shrink-0 rounded-full bg-[var(--vence-fondo)] px-1.5 text-center text-sm leading-6 font-extrabold text-[var(--vence-texto)] tabular-nums"
     >
       {n}
     </span>

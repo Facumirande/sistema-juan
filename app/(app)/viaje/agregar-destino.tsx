@@ -174,7 +174,7 @@ export function AgregarDestino({ fecha, favoritos, centro, alCerrar }: { fecha: 
                   setCerca(l.coordenada);
                   setConMapa(true);
                 }}
-                etiqueta="Dirección del destino" placeholder="Calle y número, o el nombre del lugar" />
+                etiqueta="Dirección del destino" placeholder="Calle y número, la esquina o el nombre del lugar" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setConMapa(true)} className={boton}>

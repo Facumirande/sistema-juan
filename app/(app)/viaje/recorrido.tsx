@@ -276,7 +276,7 @@ export function Recorrido({
             <p className="pl-12 text-sm text-texto-suave">{textoSalida}</p>
             {modo === "otra" && (
               <div className="flex flex-col gap-1 pl-12">
-                <BuscadorDeLugar valor={otra} alCambiar={escribirOtra} alElegir={(l) => salirDe(l.coordenada, l.etiqueta)} etiqueta="Dirección de donde salís" placeholder="Calle y número, o el nombre del lugar (o un enlace)" />
+                <BuscadorDeLugar valor={otra} alCambiar={escribirOtra} alElegir={(l) => salirDe(l.coordenada, l.etiqueta)} etiqueta="Dirección de donde salís" placeholder="Calle y número, la esquina o el nombre del lugar (o un enlace)" />
               </div>
             )}
           </li>

@@ -101,7 +101,7 @@ export function FormularioCliente() {
                   setUbicacion(l.coordenada);
                 }}
                 etiqueta="Dirección de entrega"
-                placeholder="Calle y número (elegí de la lista para marcar la ubicación)"
+                placeholder="Calle y número, o la esquina (elegí de la lista para marcar la ubicación)"
               />
               <span className={`text-sm ${ubicacion ? "font-semibold text-marca" : "text-texto-suave"}`}>{ubicacion ? "✓ Ubicación marcada: va a aparecer bien en el recorrido." : "Elegí la dirección de la lista para que quede marcada en el mapa."}</span>
             </div>

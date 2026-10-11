@@ -3,8 +3,27 @@ import { z } from "zod";
 
 import { cliente, destinoFavorito, empresa, entrega, jornada, paradaExtra, puntoEntrega, reparto } from "@/db/esquema";
 import type { BaseDatos, Transaccion } from "@/db/tipos";
-import type { Coordenada } from "@/dominio/entregas/recorrido";
-import { consultasDeRespaldo, coordenadaValida, esEnlaceCortoDeMapa, leerCoordenadas, lugaresDePhoton, ZONA_DEL_NEGOCIO, type LugarSugerido } from "@/dominio/entregas/ubicacion";
+import { distanciaKm, type Coordenada } from "@/dominio/entregas/recorrido";
+import {
+  consultasDeRespaldo,
+  consultasParaElMapa,
+  coordenadaValida,
+  enLaZona,
+  esEnlaceCortoDeMapa,
+  esquinasEntre,
+  leerCalleYNumero,
+  leerCoordenadas,
+  leerEsquina,
+  lugaresDePhoton,
+  NOTA_ESQUINA,
+  ordenarPorNumero,
+  parecidoDeCalle,
+  tramosDePhoton,
+  ZONA_DEL_NEGOCIO,
+  type Caja,
+  type LugarSugerido,
+  type TramoDeCalle,
+} from "@/dominio/entregas/ubicacion";
 import { ErrorDeNegocio } from "@/dominio/errores";
 import type { FechaISO } from "@/dominio/fechas/fechas";
 import { registrarActividad } from "@/modulos/colaboracion/registro";
@@ -296,17 +315,60 @@ async function buscarEnNominatim(buscador: Buscador, parametros: Record<string, 
  * y, si ahí no aparece nada, en todo el país, siempre cerca de San Miguel de Tucumán. Se consulta
  * desde el servidor, un instante después de que se deja de escribir.
  *
+ * Las direcciones se buscan como se dicen (RN-199, 11/10/2026): una esquina ("Muñecas y San Juan")
+ * se calcula con los tramos de las dos calles y va arriba de todo; una calle con su número
+ * ("24 de septiembre 500", "gral paz 1200") se pregunta también con el nombre que tiene en el mapa
+ * y, si el número no está cargado, se lo ubica entre sus vecinos o se ofrece la calle para marcarlo.
+ *
  * Si el lugar no figura en el mapa (un country, un local sin cargar), en vez de no devolver nada se
  * ofrece la zona donde queda (11/10/2026): lo que viene después de la coma o las últimas palabras,
  * marcado como aproximado, para abrir el mapa ahí y poner el punto exacto a mano.
  */
 export async function sugerirLugares(texto: string, buscador: Buscador = fetch): Promise<LugarSugerido[]> {
-  const q = texto.trim();
+  const q = texto.replace(/\s+/g, " ").trim();
   if (q.length < 3) return [];
-  const { caja, centro } = ZONA_DEL_NEGOCIO;
-  const pedir = async (consulta: string, conCaja: boolean): Promise<unknown> => {
-    const parametros = new URLSearchParams({ q: consulta, limit: "6", lat: String(centro.lat), lon: String(centro.lng) });
-    if (conCaja) parametros.set("bbox", `${caja.oeste},${caja.sur},${caja.este},${caja.norte}`);
+  const pedir = pedirAPhoton(buscador);
+  const esquina = leerEsquina(q);
+  if (!esquina) return lugaresComunes(q, pedir);
+  // La esquina se calcula a la par de la búsqueda de siempre (lo escrito puede ser un local: "Frutas y Verduras Don José").
+  const [calculadas, comunes] = await Promise.allSettled([esquinasEnElMapa(esquina, pedir), lugaresComunes(q, pedir)]);
+  if (calculadas.status === "fulfilled" && calculadas.value.length > 0) {
+    // Debajo, solo lo de la zona: lo que coincide en otra provincia con una esquina de acá es ruido.
+    const otros = comunes.status === "fulfilled" ? comunes.value.filter((l) => !l.aproximado && enLaZona(l.coordenada)) : [];
+    return [...calculadas.value, ...otros.slice(0, COMUNES_BAJO_LA_ESQUINA)];
+  }
+  if (comunes.status === "rejected") throw comunes.reason;
+  return comunes.value;
+}
+
+/** Cuántos lugares se ofrecen como mucho. */
+const SUGERENCIAS = 6;
+/** Cuántos se le piden a Photon: junta los repetidos después de cortar, así que pidiendo justo los que se muestran devuelve menos. */
+const PEDIDAS = 20;
+/** Para una calle con número se piden más: detrás de las calles vienen los locales con su número, que sirven de vecinos. */
+const PEDIDAS_CON_NUMERO = 40;
+/** Todos los tramos de una calle (Photon no da más de 50 por consulta). */
+const TRAMOS_POR_CALLE = 50;
+/** Alrededor de una localidad: hasta dónde se buscan sus calles (unos 10 km). */
+const ALREDEDOR_DE_LA_LOCALIDAD = 0.09;
+/** Los tramos de una calle que cuentan como "los de acá" para volver a buscar la otra a su alrededor. */
+const CERCA_DEL_CENTRO_KM = 12;
+/** Con la esquina calculada arriba, cuántos lugares comunes se dejan debajo. */
+const COMUNES_BAJO_LA_ESQUINA = 3;
+
+type PedirAPhoton = (consulta: string, opciones?: { caja?: Caja | null; cerca?: Coordenada; limite?: number; soloCalles?: boolean }) => Promise<unknown>;
+
+/** Una consulta a Photon: adentro de una caja (la provincia, si no se dice otra; `null` es todo el país) y cerca de un punto. */
+const pedirAPhoton =
+  (buscador: Buscador): PedirAPhoton =>
+  async (consulta, { caja = ZONA_DEL_NEGOCIO.caja, cerca = ZONA_DEL_NEGOCIO.centro, limite = PEDIDAS, soloCalles = false } = {}) => {
+    const parametros = new URLSearchParams({ q: consulta, limit: String(limite), lat: String(cerca.lat), lon: String(cerca.lng) });
+    if (caja) parametros.set("bbox", `${caja.oeste},${caja.sur},${caja.este},${caja.norte}`);
+    if (soloCalles) {
+      // Solo calles y sin juntar las que se llaman igual: hacen falta todos los tramos.
+      parametros.set("layer", "street");
+      parametros.set("dedupe", "0");
+    }
     let respuesta: Response;
     try {
       respuesta = await buscador(`https://photon.komoot.io/api/?${parametros.toString()}`, { headers: { "User-Agent": AGENTE, Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
@@ -316,16 +378,88 @@ export async function sugerirLugares(texto: string, buscador: Buscador = fetch):
     if (!respuesta.ok) throw new ErrorDeNegocio("VALIDACION", "El mapa no respondió: probá de nuevo en un rato.");
     return respuesta.json();
   };
-  const enLaZona = lugaresDePhoton(await pedir(q, true));
+
+/** Lo de siempre: lo escrito tal cual (con sus otras maneras de escribirlo), en Tucumán y después en el país; al final, la zona. */
+async function lugaresComunes(q: string, pedir: PedirAPhoton): Promise<LugarSugerido[]> {
+  const conNumero = leerCalleYNumero(q);
+  const consultas = consultasParaElMapa(q);
+  const limite = conNumero ? PEDIDAS_CON_NUMERO : PEDIDAS;
+  const armar = (respuestas: unknown[]): LugarSugerido[] => {
+    // Un lugar de cada respuesta por vez, sin repetir: ninguna manera de escribirlo tapa a la otra.
+    const listas = respuestas.map((r) => lugaresDePhoton(r));
+    const vistos = new Set<string>();
+    const lugares: LugarSugerido[] = [];
+    for (let i = 0; i < Math.max(0, ...listas.map((l) => l.length)); i++) {
+      for (const lista of listas) {
+        const lugar = lista[i];
+        const clave = lugar ? `${lugar.etiqueta}|${lugar.detalle ?? ""}` : null;
+        if (!lugar || !clave || vistos.has(clave)) continue;
+        vistos.add(clave);
+        lugares.push(lugar);
+      }
+    }
+    return (conNumero ? ordenarPorNumero(conNumero, respuestas, lugares) : lugares).slice(0, SUGERENCIAS);
+  };
+  const enLaZona = armar(await Promise.all(consultas.map((c) => pedir(c, { limite }))));
   if (enLaZona.length > 0) return enLaZona;
-  const enElPais = lugaresDePhoton(await pedir(q, false));
+  const enElPais = armar(await Promise.all(consultas.map((c) => pedir(c, { limite, caja: null }))));
   if (enElPais.length > 0) return enElPais;
   // No figura: la zona donde queda, para marcarlo a mano.
   for (const respaldo of consultasDeRespaldo(q)) {
-    const zonas = lugaresDePhoton(await pedir(respaldo.consulta, true), { soloZonas: true });
+    const zonas = lugaresDePhoton(await pedir(respaldo.consulta), { soloZonas: true });
     if (zonas.length > 0) return zonas.slice(0, 3).map((z) => ({ ...z, aproximado: { falta: respaldo.falta } }));
   }
   return [];
+}
+
+/**
+ * La esquina de dos calles (RN-199): se piden todos los tramos de cada una y se calcula dónde se
+ * cruzan. Sin localidad, en la provincia y empezando por San Miguel de Tucumán; con localidad
+ * ("…, Tafí Viejo"), alrededor de ella.
+ */
+async function esquinasEnElMapa(esquina: { a: string; b: string; localidad: string | null }, pedir: PedirAPhoton): Promise<LugarSugerido[]> {
+  let cerca: Coordenada = ZONA_DEL_NEGOCIO.centro;
+  let caja: Caja = ZONA_DEL_NEGOCIO.caja;
+  if (esquina.localidad) {
+    const localidad = lugaresDePhoton(await pedir(esquina.localidad), { soloZonas: true })[0];
+    if (localidad) {
+      cerca = localidad.coordenada;
+      caja = { oeste: cerca.lng - ALREDEDOR_DE_LA_LOCALIDAD, este: cerca.lng + ALREDEDOR_DE_LA_LOCALIDAD, norte: cerca.lat + ALREDEDOR_DE_LA_LOCALIDAD, sur: cerca.lat - ALREDEDOR_DE_LA_LOCALIDAD };
+    }
+  }
+  const tramosDe = async (calle: string, donde: Caja) => {
+    const respuestas = await Promise.all(consultasParaElMapa(calle).map((c) => pedir(c, { caja: donde, cerca, limite: TRAMOS_POR_CALLE, soloCalles: true })));
+    const cuantos = (r: unknown) => ((r as { features?: unknown[] } | null)?.features ?? []).length;
+    return { tramos: respuestas.flatMap((r) => tramosDePhoton(r)), cortada: respuestas.some((r) => cuantos(r) >= TRAMOS_POR_CALLE) };
+  };
+  const [a, b] = await Promise.all([tramosDe(esquina.a, caja), tramosDe(esquina.b, caja)]);
+  let esquinas = esquinasEntre(esquina, a.tramos, b.tramos, cerca);
+  // Una calle con muchos tramos, o con ese nombre en muchas localidades ("Sarmiento"), no entra entera en
+  // una consulta: si no apareció la esquina, se la vuelve a pedir solo alrededor de la otra calle.
+  for (const [cortada, otra, calle, escritaOtra] of [
+    [a, b, esquina.a, esquina.b],
+    [b, a, esquina.b, esquina.a],
+  ] as const) {
+    if (esquinas.length > 0 || !cortada.cortada) continue;
+    const alrededor = cajaAlrededorDe(otra.tramos.filter((t) => parecidoDeCalle(escritaOtra, t.nombre) > 0 && distanciaKm(t.coordenada, cerca) <= CERCA_DEL_CENTRO_KM));
+    if (!alrededor) continue;
+    cortada.tramos = (await tramosDe(calle, alrededor)).tramos;
+    esquinas = esquinasEntre(esquina, a.tramos, b.tramos, cerca);
+  }
+  return esquinas.map((e) => ({ etiqueta: `${e.a} y ${e.b}`, detalle: e.zona, coordenada: e.coordenada, nota: e.segura ? NOTA_ESQUINA : "cerca de la esquina" }));
+}
+
+/** La caja que abarca unos tramos de calle, con un margen de una cuadra; nula si no hay ninguno. */
+function cajaAlrededorDe(tramos: readonly TramoDeCalle[]): Caja | null {
+  const cajas = tramos.flatMap((t) => (t.caja ? [t.caja] : []));
+  if (cajas.length === 0) return null;
+  const margen = 0.0015;
+  return {
+    oeste: Math.min(...cajas.map((c) => c.oeste)) - margen,
+    este: Math.max(...cajas.map((c) => c.este)) + margen,
+    norte: Math.max(...cajas.map((c) => c.norte)) + margen,
+    sur: Math.min(...cajas.map((c) => c.sur)) - margen,
+  };
 }
 
 /**

@@ -6,7 +6,7 @@ import type { Map as MapaLeaflet, Marker } from "leaflet";
 import { useEffect, useRef, useState } from "react";
 
 import type { Coordenada } from "@/dominio/entregas/recorrido";
-import { enLaZona, mostrarCoordenadas, ZONA_DEL_NEGOCIO } from "@/dominio/entregas/ubicacion";
+import { enLaZona, esAOjo, mostrarCoordenadas, ZONA_DEL_NEGOCIO } from "@/dominio/entregas/ubicacion";
 
 import { sugerirLugaresAccion } from "./acciones";
 import { BuscadorDeLugar } from "./buscador-de-lugar";
@@ -110,9 +110,9 @@ export function MapaParaMarcar({
           }
           mapa.current?.setView([l.coordenada.lat, l.coordenada.lng], 17);
           ponerDesdeAfuera.current?.(l.coordenada);
-          setAviso("Listo: si hace falta, arrastrá el punto al lugar exacto y guardalo.");
+          setAviso(esAOjo(l) ? `Es un punto calculado (${l.nota}): arrastralo al lugar exacto y guardalo.` : "Listo: si hace falta, arrastrá el punto al lugar exacto y guardalo.");
         }}
-        placeholder="Buscá la calle y el número (o el lugar)"
+        placeholder="Buscá la calle y el número, la esquina o el lugar"
       />
       <div ref={contenedor} className="relative z-0 h-80 w-full overflow-hidden rounded-xl border border-borde" role="application" aria-label="Mapa: hacé clic en el lugar para marcarlo" />
       <p className="text-sm text-texto-suave" role="status">
