@@ -36,6 +36,8 @@ export interface RenglonDeLista {
   pago: "PAGADO" | "A_CUENTA" | null;
   /** Lo que sale en pesos: lo anotado al comprarlo (`real`) o lo que se calcula con el último precio. Nulo si no se sabe. */
   importe: { texto: string; real: boolean; valor: string } | null;
+  /** Lo que se calcula que sale lo que todavía falta comprar de ese producto ("0" si no falta nada o no tiene precio). */
+  porComprar: string;
   /** "63 kg" */
   total: string;
   /** "≈ 3 × Bolsa 20 kg", si se compra por envase. */
@@ -351,7 +353,7 @@ export function ListaDeCompras({
             const lista = pendientes.length === 0;
             // Una parada terminada llega plegada, para que quede a la vista lo que sigue.
             const plegada = !buscado && !eligiendo && alternadas.has(g.clave) !== lista;
-            const aLlevar = sumar(pendientes.map((r) => (r.importe && !r.importe.real ? r.importe.valor : "0")));
+            const aLlevar = sumar(pendientes.map((r) => r.porComprar));
             const todosElegidos = g.renglones.every((r) => elegidos.has(r.id));
             return (
               <section key={g.clave} aria-label={g.titulo} className={`flex flex-col gap-2 rounded-2xl ${g.clave === ahora ? "border-2 border-marca bg-marca/5 p-2" : ""}`}>

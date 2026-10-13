@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import { obtenerBaseDatos } from "@/db/cliente";
 import { COOKIE_CIRCUITO, SIN_CIRCUITO } from "@/dominio/compras/circuitos";
+import { costoDeLaLista, costoDeLoQueFalta, type ParteDelCosto } from "@/dominio/compras/costo-de-la-lista";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 import { formatearCantidad, formatearMoneda, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { formatearFechaHora } from "@/dominio/fechas/fechas";
@@ -34,16 +35,34 @@ const num = (v: string) => formatearNumero(v, { decimales: 3, recortarCeros: tru
 
 /** Lo que ya se pagó (o quedó a cuenta) por un producto: la suma de sus compras anotadas. Nulo si no hay ninguna con precio. */
 function gastadoEn(l: LineaDeLista) {
-  const conPrecio = l.compras.filter((k) => k.precio !== null);
-  return conPrecio.length > 0 ? sumar(conPrecio.map((k) => dec(k.cantidad).times(k.precio!))) : null;
+  const conPrecio = l.compras.flatMap((k) => (k.subtotal !== null ? [k.subtotal] : []));
+  return conPrecio.length > 0 ? sumar(conPrecio) : null;
 }
+
+/** Un renglón con lo que hace falta para costearlo (sin permiso de ver costos, los importes llegan vacíos). */
+const paraCostear = (l: LineaDeLista) => ({ ...l, compras: l.compras.map((k) => ({ subtotal: k.subtotal ?? "0", pagado: k.pagado ?? "0" })) });
 
 /** Lo que sale un producto, en pesos: lo anotado al comprarlo o, si todavía no, lo que se calcula. */
 function importeDe(l: LineaDeLista): RenglonDeLista["importe"] {
   const gastado = gastadoEn(l);
   if (gastado) return { texto: formatearMoneda(gastado), real: true, valor: gastado.toString() };
-  if (l.estado !== "NO_CONSEGUIDO" && l.costoEstimado && dec(l.costoEstimado).gt(0)) return { texto: formatearMoneda(l.costoEstimado), real: false, valor: l.costoEstimado };
-  return null;
+  // Sin compra anotada: lo que se calcula que sale lo que falta (o lo que se tildó sin anotar el precio).
+  const falta = costoDeLoQueFalta(paraCostear(l));
+  return falta && falta.gt(0) ? { texto: formatearMoneda(falta), real: false, valor: falta.toString() } : null;
+}
+
+/** Uno de los tres números del costo de la compra: el importe y, debajo, cuánto es anotado y cuánto calculado. */
+function Costo({ titulo, parte, anotado, color = "" }: { titulo: string; parte: ParteDelCosto; anotado: string; color?: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-texto-suave">{titulo}</dt>
+      <dd className={`text-3xl font-bold tabular-nums ${color}`}>{formatearMoneda(parte.total)}</dd>
+      <dd className="text-sm text-texto-suave">
+        {formatearMoneda(parte.anotado)} {anotado}
+        {parte.calculado.gt(0) && ` + ≈ ${formatearMoneda(parte.calculado)} calculado`}
+      </dd>
+    </div>
+  );
 }
 
 /** Un producto de la lista, ya dicho en palabras para su renglón. */
@@ -60,6 +79,7 @@ function renglon(l: LineaDeLista, conCompra: boolean): RenglonDeLista {
     compra: conCompra ? datosParaComprar(l) : null,
     pago: l.compras.length === 0 ? null : l.compras.every((k) => !k.aCuenta) ? "PAGADO" : "A_CUENTA",
     importe: importeDe(l),
+    porComprar: costoDeLoQueFalta(paraCostear(l))?.toString() ?? "0",
     total: cant(l.necesidadBase, l.unidadBase),
     equivalencia: porEnvase ? `≈ ${num(l.cantidadPresentaciones!)} × ${l.presentacion}` : null,
     falta: l.estado === "PARCIAL" ? `Falta ${cant(l.pendienteBase, l.unidadBase)}` : null,
@@ -97,10 +117,8 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
   // El circuito que quedó elegido en este aparato ("" = sin circuito; nulo = nunca se eligió: vale el primero).
   const cookieDelCircuito = (await cookies()).get(COOKIE_CIRCUITO)?.value ?? null;
   const circuitoGuardado = cookieDelCircuito === SIN_CIRCUITO ? "" : cookieDelCircuito;
-  // En pesos: lo ya comprado (a lo que salió) y lo que falta (calculado con el último precio de cada puesto).
-  const yaComprado = sumar(lineas.map((l) => gastadoEn(l) ?? dec(0)));
-  const faltaComprar = sumar(lineas.filter((l) => l.estado !== "NO_CONSEGUIDO" && !gastadoEn(l)).map((l) => l.costoEstimado ?? "0"));
-  const totalDeLaLista = yaComprado.plus(faltaComprar);
+  // Lo que cuesta la compra del día: el total, cuánto va en efectivo y cuánto a crédito (RN-204).
+  const costo = costoDeLaLista(lineas.map(paraCostear));
 
   return (
     <section className="flex max-w-5xl flex-col gap-4">
@@ -176,21 +194,17 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
           )}
 
           {lista.costoEstimadoTotal !== null && (
-            <dl className="grid gap-2 rounded-2xl border border-borde bg-superficie p-4 sm:grid-cols-3">
-              <div className="flex flex-col">
-                <dt className="text-texto-suave">💵 Toda la lista sale</dt>
-                <dd className="text-3xl font-bold tabular-nums">{formatearMoneda(totalDeLaLista)}</dd>
-                <dd className="text-sm text-texto-suave">lo ya comprado, a lo que salió; lo demás, calculado</dd>
-              </div>
-              <div className="flex flex-col">
-                <dt className="text-texto-suave">✓ Ya comprado (anotado)</dt>
-                <dd className="text-3xl font-bold text-marca tabular-nums">{formatearMoneda(yaComprado)}</dd>
-              </div>
-              <div className="flex flex-col">
-                <dt className="text-texto-suave">🛒 Falta comprar (se calcula)</dt>
-                <dd className="text-3xl font-bold tabular-nums">{formatearMoneda(faltaComprar)}</dd>
-              </div>
-            </dl>
+            <section aria-label="Costo de la compra" className="flex flex-col gap-3 rounded-2xl border border-borde bg-superficie p-4">
+              <dl className="grid gap-3 sm:grid-cols-3">
+                <Costo titulo="🧾 Total de la compra" parte={costo.total} anotado="ya comprado" />
+                <Costo titulo="💵 En efectivo" parte={costo.efectivo} anotado="ya pagado" color="text-marca" />
+                <Costo titulo="📒 A crédito" parte={costo.credito} anotado="anotado a cuenta" color="text-amber-700 dark:text-amber-400" />
+              </dl>
+              <p className="text-sm text-texto-suave">
+                Calculado: lo que falta comprar (o se tildó sin anotar el precio), al último precio. Sin puesto va en efectivo; con puesto, a crédito.
+                {costo.sinPrecio > 0 && <b className="text-amber-700 dark:text-amber-400"> ⚠ {costo.sinPrecio === 1 ? "1 producto sin precio no entra" : `${costo.sinPrecio} productos sin precio no entran`} en la cuenta.</b>}
+              </p>
+            </section>
           )}
 
           <ListaDeCompras

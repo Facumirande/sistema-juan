@@ -28,6 +28,7 @@ import type { BaseDatos, Transaccion } from "@/db/tipos";
 import { calcularLineaLista, estadoLineaLista, sugerirProveedor, tildeSigueValiendo, type AlertaLista, type Candidato, type EstadoLineaLista } from "@/dominio/compras/lista";
 import { RETIRO_A_LA_VISTA } from "@/dominio/pedidos/tablero";
 import { leerCircuitos, type CircuitoDeCompra } from "@/dominio/compras/circuitos";
+import { repartirLoPagado } from "@/dominio/compras/costo-de-la-lista";
 import { indicadoresCredito, type Semaforo } from "@/dominio/compras/credito";
 import { aNumeric, dec, redondearPesos, sumar } from "@/dominio/dinero/decimal";
 import { ErrorDeNegocio } from "@/dominio/errores";
@@ -38,6 +39,7 @@ import { ejecutarComoUsuario, type ContextoUsuario } from "@/modulos/seguridad/c
 import { numeroObligatorio, textoOpcional, validar } from "@/modulos/validacion";
 
 import { saldosNetos, umbralesSemaforo } from "./cuenta";
+import { esPuestoSinPuesto } from "./sin-puesto";
 
 // Lista de compra (04 §5.c, 08 §5.8): RN-034, RN-037, RN-043 a RN-053.
 
@@ -68,6 +70,8 @@ export interface LineaDeLista {
   proveedorId: string | null;
   proveedor: string | null;
   ubicacion: string | null;
+  /** Sin puesto, o en el puesto genérico de efectivo: lo que falta comprar se paga en el momento (RN-191). */
+  enEfectivo: boolean;
   asignacionManual: boolean;
   /** Solo con `precios.ver_costos`. */
   precioSugerido: string | null;
@@ -92,6 +96,9 @@ export interface LineaDeLista {
     cantidad: string;
     precio: string | null;
     aCuenta: boolean;
+    /** Lo que salió ese producto en esa compra y cuánto de eso ya está pagado (nulos sin `precios.ver_costos`). */
+    subtotal: string | null;
+    pagado: string | null;
     /** La compra tiene solo este producto: se puede corregir o quitar desde el renglón (RN-200). */
     sola: boolean;
   }[];
@@ -548,6 +555,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           presentacion: presentacion.nombre,
           cantidad: compraItem.cantidad,
           precio: compraItem.precioUnitario,
+          subtotal: compraItem.subtotal,
           total: compra.total,
           // Cuántos productos distintos tiene la compra: la de uno solo se corrige desde el renglón.
           productos: sql<number>`(select count(distinct i.producto_id)::int from ${compraItem} i where i.compra_id = "compra"."id")`,
@@ -579,6 +587,13 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
         .orderBy(asc(proveedor.nombre)),
       tx.select({ circuitos: empresa.circuitosCompra }).from(empresa),
     ]);
+    // Lo pagado de cada compra, repartido entre sus productos (la compra se paga entera).
+    const pagadoDe = new Map<(typeof anotadas)[number], string>();
+    for (const compraId of new Set(anotadas.map((a) => a.compraId))) {
+      const suyas = anotadas.filter((a) => a.compraId === compraId);
+      const partes = repartirLoPagado(suyas.map((a) => a.subtotal), suyas[0]!.total, suyas[0]!.imputado);
+      suyas.forEach((a, i) => pagadoDe.set(a, aNumeric(partes[i]!, 2)));
+    }
     const paraQuien = (productoId: string) => {
       const porCliente = new Map<string, string>();
       for (const d of destinos.filter((x) => x.productoId === productoId)) porCliente.set(d.cliente, dec(porCliente.get(d.cliente) ?? "0").plus(d.cantidad).toString());
@@ -614,6 +629,7 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
           proveedorId: f.item.proveedorSugeridoId,
           proveedor: f.proveedor,
           ubicacion: f.ubicacion,
+          enEfectivo: f.item.proveedorSugeridoId === null || esPuestoSinPuesto(f.proveedor),
           asignacionManual: f.item.asignacionManual,
           precioSugerido: verCostos ? f.item.precioSugerido : null,
           costoEstimado: verCostos ? f.item.costoEstimado : null,
@@ -636,6 +652,8 @@ export async function obtenerListaCompra(db: BaseDatos, authUserId: string, fech
               cantidad: a.cantidad,
               precio: verCostos ? a.precio : null,
               aCuenta: dec(a.total).minus(a.imputado).gt(0),
+              subtotal: verCostos ? a.subtotal : null,
+              pagado: verCostos ? (pagadoDe.get(a) ?? "0") : null,
               sola: Number(a.productos) === 1,
             })),
           ofertas: ofertas.filter((o) => o.productoId === f.item.productoId).map((o) => ({ ofertaId: o.ofertaId, proveedorId: o.proveedorId, presentacionId: o.presentacionId, precio: o.precio, factor: o.factor })),

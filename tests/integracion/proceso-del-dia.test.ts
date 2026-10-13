@@ -1,7 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { actividad, compra, compraItem, entrega, proveedor, usuario } from "@/db/esquema";
+import { costoDeLaLista } from "@/dominio/compras/costo-de-la-lista";
+import { dec } from "@/dominio/dinero/decimal";
 import { crearProducto } from "@/modulos/catalogo/productos";
 import { avisosPara } from "@/modulos/colaboracion/avisos";
 import { comprarDeLaLista, destildarConCompra, quitarCompraDeLaLista } from "@/modulos/compras/compra-desde-lista";
@@ -108,6 +110,36 @@ describe("lista de compras: el puesto de cada renglón, sin puesto y destildar",
     expect(await codigoDeError(comprarDeLaLista(j.base.db, j.admin, { itemId: tomate.id, ofertaId: tomate.ofertas[0]!.ofertaId, cantidad: "1", precio: tomate.ofertas[0]!.precio, pagado: true, reemplazaCompraId: conVarios.compraId }))).toBe("VALIDACION");
     expect(await codigoDeError(quitarCompraDeLaLista(j.base.db, j.admin, { itemId: tomate.id, compraId: conVarios.compraId }))).toBe("VALIDACION");
     expect(await codigoDeError(quitarCompraDeLaLista(j.base.db, j.admin, { itemId: tomate.id, compraId: corregida.compraId }))).toBe("NO_ENCONTRADO");
+  });
+});
+
+describe("el costo de la compra del día (RN-204)", () => {
+  it("lo anotado coincide con las compras del día y con lo que ya se les pagó; lo que falta va en efectivo si no tiene puesto", async () => {
+    const lista = (await obtenerListaCompra(j.base.db, j.admin, j.manana))!;
+    const lineas = lista.plan.flatMap((p) => p.lineas);
+    const costo = costoDeLaLista(lineas.map((l) => ({ ...l, compras: l.compras.map((k) => ({ subtotal: k.subtotal!, pagado: k.pagado! })) })));
+    const [enLaBase] = await j.base.comoSuperusuario(() =>
+      j.base.db
+        .select({
+          total: sql<string>`coalesce(sum(${compra.total}), 0)`,
+          pagado: sql<string>`coalesce(sum((select coalesce(sum(i.monto), 0) from imputacion_pago_proveedor i where i.compra_id = "compra"."id" and i.activa)), 0)`,
+        })
+        .from(compra)
+        .where(and(eq(compra.estado, "REGISTRADA"), eq(compra.jornadaId, lista.jornadaId))),
+    );
+    expect(dec(enLaBase!.total).gt(0)).toBe(true);
+    expect(dec(enLaBase!.pagado).gt(0)).toBe(true);
+    // Lo anotado: el total de las compras vigentes, lo ya pagado en efectivo y el resto a crédito, sin perder un peso.
+    expect(costo.total.anotado.toFixed(2)).toBe(dec(enLaBase!.total).toFixed(2));
+    expect(costo.efectivo.anotado.toFixed(2)).toBe(dec(enLaBase!.pagado).toFixed(2));
+    expect(costo.credito.anotado.toFixed(2)).toBe(dec(enLaBase!.total).minus(enLaBase!.pagado).toFixed(2));
+    expect(costo.total.total.toFixed(2)).toBe(costo.efectivo.total.plus(costo.credito.total).toFixed(2));
+    // Cada compra dice lo que salió su producto y cuánto de eso está pagado.
+    const papa = lineas.find((l) => l.producto === "Papa")!;
+    expect(papa.compras).toMatchObject([{ aCuenta: false, subtotal: papa.compras[0]!.pagado }]);
+    expect(papa.enEfectivo).toBe(false);
+    // La banana quedó sin puesto: lo que le falte se paga en efectivo.
+    expect(lineas.find((l) => l.producto === "Banana")).toMatchObject({ proveedorId: null, enEfectivo: true });
   });
 });
 

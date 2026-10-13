@@ -12,6 +12,9 @@ import type { ContextoUsuario } from "@/modulos/seguridad/contexto";
 export const NOMBRE_SIN_PUESTO = "Sin puesto (efectivo)";
 const NOMBRES = ["efectivo", "sin puesto", "sin puesto (efectivo)"];
 
+/** Si un puesto es el genérico de "sin puesto" (el que el negocio usa para lo que se compra en efectivo donde sea). */
+export const esPuestoSinPuesto = (nombre: string | null): boolean => nombre !== null && NOMBRES.includes(nombre.trim().toLowerCase());
+
 /** El puesto genérico para lo que se compra sin decir dónde; lo crea la primera vez. */
 export async function proveedorSinPuesto(tx: Transaccion, c: ContextoUsuario): Promise<{ id: string; nombre: string }> {
   const [ya] = await tx
