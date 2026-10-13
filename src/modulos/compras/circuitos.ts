@@ -46,3 +46,26 @@ export async function guardarCircuitos(db: BaseDatos, authUserId: string, propue
     return revisado.circuitos;
   });
 }
+
+/**
+ * El orden de las paradas de hoy, acomodado desde "Recorrido de compra" (RN-203): se guarda en el
+ * circuito elegido, así queda para los días que siguen. Los puestos de hoy pasan adelante en ese orden
+ * y los demás del circuito conservan el suyo, detrás. Si todavía no hay circuito (o ese ya no existe),
+ * se crea uno con ese orden.
+ */
+export async function ordenarParadas(db: BaseDatos, authUserId: string, datos: { circuitoId: string; paradas: readonly string[] }): Promise<CircuitoDeCompra[]> {
+  return ejecutarComoUsuario(db, authUserId, "lista_compra.editar", async (tx, c) => {
+    const [[e], puestos] = await Promise.all([tx.select({ circuitos: empresa.circuitosCompra }).from(empresa), tx.select({ id: proveedor.id }).from(proveedor).where(eq(proveedor.activo, true))]);
+    const actuales = leerCircuitos(e?.circuitos);
+    const nombres = new Set(actuales.map((x) => x.nombre.toLowerCase()));
+    let nombre = "Mi recorrido";
+    for (let n = 2; nombres.has(nombre.toLowerCase()); n++) nombre = `Mi recorrido ${n}`;
+    const propuestos = actuales.some((x) => x.id === datos.circuitoId)
+      ? actuales.map((x) => (x.id === datos.circuitoId ? { ...x, paradas: [...datos.paradas, ...x.paradas.filter((id) => !datos.paradas.includes(id))] } : x))
+      : [...actuales, { id: datos.circuitoId, nombre, paradas: [...datos.paradas] }];
+    const revisado = revisarCircuitos(propuestos, new Set(puestos.map((p) => p.id)));
+    if ("error" in revisado) throw new ErrorDeNegocio("VALIDACION", revisado.error);
+    await tx.update(empresa).set({ circuitosCompra: revisado.circuitos, actualizadoPor: c.usuarioId }).where(eq(empresa.id, c.empresaId));
+    return revisado.circuitos;
+  });
+}

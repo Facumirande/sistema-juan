@@ -314,6 +314,9 @@ export function ListaDeCompras({
             </button>
           )}
           {circuitos.length === 0 && <span className="min-w-0 flex-1 basis-48 text-sm text-texto-suave">Decí en qué orden recorrés los puestos y la lista te lleva de uno al otro.</span>}
+          <Link href={`/lista-compra/recorrido?fecha=${fecha}`} className="flex min-h-10 items-center rounded-lg border-2 border-marca px-3 font-semibold text-marca">
+            🧭 Armar el recorrido
+          </Link>
           {puede.editar && (
             <Link href={`/lista-compra/circuitos?fecha=${fecha}`} className={`flex min-h-10 items-center rounded-lg px-3 font-semibold ${circuitos.length === 0 ? "bg-marca text-marca-texto" : "ml-auto underline underline-offset-4"}`}>
               {circuitos.length === 0 ? "＋ Armar mi circuito" : "✏️ Editar circuitos"}

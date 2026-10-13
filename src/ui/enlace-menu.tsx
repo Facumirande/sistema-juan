@@ -14,7 +14,7 @@ import { ICONO_NAVEGACION } from "./navegacion";
 // tocarlos reaccionan enseguida (un circulito que gira) aunque la pantalla todavía esté llegando.
 
 /** Pantallas cuyas subpáginas no las marcan (ej. "/balance/movimientos" no marca "Balance"). */
-const SOLO_EXACTA = ["/inicio", "/balance", "/entregas/remitos"];
+const SOLO_EXACTA = ["/inicio", "/balance", "/entregas/remitos", "/lista-compra"];
 
 function Icono({ icono }: { icono: string }) {
   return icono === ICONO_NAVEGACION ? <FlechaNavegacion /> : <>{icono}</>;

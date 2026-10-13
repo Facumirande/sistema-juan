@@ -5,7 +5,7 @@ import { actividad, compra, compraItem, entrega, proveedor, usuario } from "@/db
 import { crearProducto } from "@/modulos/catalogo/productos";
 import { avisosPara } from "@/modulos/colaboracion/avisos";
 import { comprarDeLaLista, destildarConCompra, quitarCompraDeLaLista } from "@/modulos/compras/compra-desde-lista";
-import { circuitosDeCompra, guardarCircuitos } from "@/modulos/compras/circuitos";
+import { circuitosDeCompra, guardarCircuitos, ordenarParadas } from "@/modulos/compras/circuitos";
 import { elegirPuestoDeLinea, elegirPuestoDeLineas, generarListaCompra, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
 import { guardarResponsables, responsablesDelNegocio } from "@/modulos/configuracion/empresa";
 import { iniciarPreparacion } from "@/modulos/entregas/preparacion";
@@ -138,6 +138,18 @@ describe("estar ordenado en la compra: circuitos y preselección (RN-201, RN-202
     expect(await guardarCircuitos(j.base.db, j.admin, [guardados[0]!])).toHaveLength(1);
     const registro = await j.base.comoSuperusuario(() => j.base.db.select({ resumen: actividad.resumen }).from(actividad).where(eq(actividad.entidadTipo, "LISTA_COMPRA")));
     expect(registro.some((r) => r.resumen.includes("circuito de compra “Mercofrut de siempre”"))).toBe(true);
+  });
+
+  it("acomodar las paradas desde el recorrido guarda el orden en el circuito, o crea uno (RN-203)", async () => {
+    // En el circuito elegido: los puestos de hoy pasan adelante, en el orden nuevo; los demás quedan detrás.
+    const [mercofrut] = await ordenarParadas(j.base.db, j.admin, { circuitoId: MERCOFRUT, paradas: [j.ids.B!, j.ids.A!] });
+    expect(mercofrut).toEqual({ id: MERCOFRUT, nombre: "Mercofrut de siempre", paradas: [j.ids.B!, j.ids.A!, j.ids.C!] });
+    // Sin circuito todavía (un id nuevo): se crea "Mi recorrido" con ese orden.
+    const NUEVO = "7f3a2b1c-0d9e-4f8a-9b7c-6d5e4f3a2b1c";
+    const todos = await ordenarParadas(j.base.db, j.admin, { circuitoId: NUEVO, paradas: [j.ids.C!, j.ids.B!] });
+    expect(todos.at(-1)).toEqual({ id: NUEVO, nombre: "Mi recorrido", paradas: [j.ids.C!, j.ids.B!] });
+    expect(await codigoDeError(ordenarParadas(j.base.db, j.admin, { circuitoId: "8a4b3c2d-1e0f-4a9b-8c7d-5e4f3a2b1c0d", paradas: [] }))).toBe("VALIDACION");
+    await guardarCircuitos(j.base.db, j.admin, [mercofrut!]);
   });
 
   it("varios productos se mandan juntos a un puesto: toman su precio si ya lo vende", async () => {

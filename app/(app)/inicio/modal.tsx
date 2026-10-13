@@ -35,7 +35,8 @@ export function Modal({ cerrar, titulo, children }: { cerrar: string; titulo: st
           scroll={false}
           aria-label="Cerrar la tarjeta"
           title="Cerrar"
-          className="absolute top-2 right-2 z-30 flex size-11 items-center justify-center rounded-full bg-black/10 text-2xl leading-none font-bold text-tarjeta-texto shadow-sm backdrop-blur hover:bg-black/20 dark:bg-white/15 dark:hover:bg-white/25"
+          // Corrido de la esquina redondeada y de la barra de desplazamiento, y con fondo liso para que se lea sobre lo que pasa por detrás.
+          className="absolute top-3 right-5 z-30 flex size-11 items-center justify-center rounded-full bg-modal text-2xl leading-none font-bold text-tarjeta-texto shadow-md ring-1 ring-black/15 hover:brightness-95 dark:ring-white/25 dark:hover:brightness-125"
         >
           ✕
         </Link>

@@ -114,6 +114,7 @@ Enfoque: **M** = celular primero; **D** = PC primero (usable en celular); **M/D*
 | P-50 | Lista de compras | `/lista-compra`; descarga en `/lista-compra/planilla?fecha=` | M | `lista_compra.ver` | O +C +F |
 | P-51 | La compra, producto por producto | `/lista-compra/comprar?fecha=&item=` | M | `compras.registrar` | O +C |
 | P-52 | Circuitos de compra | `/lista-compra/circuitos?fecha=` | M | `lista_compra.ver` (armarlos: `lista_compra.editar`) | O +C |
+| P-53 | Recorrido de compra | `/lista-compra/recorrido?fecha=` | M | `lista_compra.ver` (cambiar: `lista_compra.editar`) | O +C |
 | P-55 | Anotar una compra suelta | `/compras/nueva` | M | `compras.registrar` | C +F |
 | P-56 | Compras anotadas | `/compras` | D | `compras.ver` | C +F |
 | P-57 | Detalle de compra | `/compras/[id]` | M/D | `compras.ver` | C +F |
@@ -473,6 +474,15 @@ Para estar ordenado al comprar (RN-201). Se llega desde la lista de compras, en 
 - Cada circuito es una tarjeta con su **nombre** ("Mercofrut de siempre") y sus puestos **numerados**, en el orden en que se recorren. Los puestos **se arrastran** por su manija ⠿ (o suben y bajan con las flechas del teclado), se sacan con la **✕** y se suman con **＋ Agregar puesto** (los que todavía no están, por dónde quedan en el mercado). **🗑 Quitar** saca el circuito; **＋ Otro circuito** agrega uno vacío (hasta 8).
 - La primera vez ya trae un circuito, "Mi circuito", con todos los puestos por dónde quedan en el mercado: solo hay que acomodarlos y sacar los que no se usan.
 - Abajo, fija: **✓ Guardar los circuitos** (vuelve a la lista, ya en ese orden) y **Cancelar**. Si falta un nombre, hay dos iguales o un circuito quedó sin puestos, dice cuál y no guarda nada.
+
+#### P-53 Recorrido de compra
+
+En el menú, en Día de trabajo: **🧭 Recorrido de compra** (también **🧭 Armar el recorrido** en la lista de compras, en orden Por puesto). Es la lista del día como un recorrido, para dejarla armada antes de ir al mercado (RN-203).
+
+- Arriba, el día con su fila de días, los tres pasos en una línea (elegir, mandar al puesto, acomodar y comprar) y la fila **🧭 Circuito** para elegir con cuál se compra.
+- **📥 Por acomodar** (recuadro amarillo): lo que todavía no tiene puesto.
+- Una tarjeta por **puesto**, numeradas en el orden del recorrido, con sus productos como botones (nombre y cantidad; lo ya comprado, tachado). Tocar un producto lo elige; **Elegir todos** elige los de esa parada. Con **↑ ↓** la parada sube o baja y el orden queda guardado solo.
+- Abajo, fija: con productos elegidos, cuántos son, la lista de puestos y **Mandar ahí**; sin nada elegido, cuánto falta comprar y **🛒 Ir a comprar →** (abre la lista de compras en orden Por puesto).
 
 #### P-55 Anotar una compra suelta
 

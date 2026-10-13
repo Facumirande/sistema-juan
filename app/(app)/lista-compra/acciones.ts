@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
 import { comprarDeLaLista, destildarConCompra, quitarCompraDeLaLista } from "@/modulos/compras/compra-desde-lista";
-import { guardarCircuitos } from "@/modulos/compras/circuitos";
+import { guardarCircuitos, ordenarParadas } from "@/modulos/compras/circuitos";
 import { cambiarLineaLista, elegirPuestoDeLineas, generarListaCompra, marcarNoConseguido, ordenarLista, tildarLinea } from "@/modulos/compras/lista-compra";
 import { pagadoDesdeLaLista } from "@/modulos/compras/pagos";
 import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
@@ -164,4 +164,12 @@ export async function guardarCircuitosAccion(_estado: EstadoAccion, datos: FormD
   });
   if (!r.ok) return r;
   redirect(destinoSeguro(campo(datos, "volver"), campo(datos, "fecha")));
+}
+
+/** El orden de las paradas, acomodado en "Recorrido de compra": queda guardado en el circuito elegido. */
+export async function ordenarParadasAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await ordenarParadas(db, authUserId, { circuitoId: campo(datos, "circuitoId"), paradas: datos.getAll("parada").filter((v): v is string => typeof v === "string") });
+    return { ok: true, mensaje: null };
+  });
 }

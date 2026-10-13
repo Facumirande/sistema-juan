@@ -51,6 +51,8 @@ export const MENU: readonly GrupoMenu[] = [
       { pantalla: "P-70", etiqueta: "Preparación", icono: "📦", ruta: "/preparacion", permisos: ["preparacion.ver"], etapa: true },
       { pantalla: "P-81", etiqueta: "Remitos", icono: "🧾", ruta: "/entregas/remitos", permisos: ["documentos.imprimir_entrega"], etapa: true },
       { pantalla: "P-78b", etiqueta: "Logística", icono: ICONO_NAVEGACION, ruta: "/viaje", permisos: ["repartos.ver"], etapa: true },
+      // Preseleccionar dónde se compra cada cosa y en qué orden se recorren los puestos, antes de ir al mercado.
+      { pantalla: "P-53", etiqueta: "Recorrido de compra", icono: "🧭", ruta: "/lista-compra/recorrido", permisos: ["lista_compra.ver"] },
       { pantalla: "P-77", etiqueta: "Mi reparto", icono: "🚚", ruta: "/repartos/mios", permisos: ["repartos.ver_propios"], ocultarCon: ["repartos.gestionar"] },
       { pantalla: "P-94", etiqueta: "Actividad y notas", icono: "💬", ruta: "/actividad", permisos: [] },
     ],
