@@ -6,6 +6,7 @@ import { interpretarNumero } from "@/dominio/dinero/entrada";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import Link from "@/ui/enlace";
 import { ESTADO_INICIAL } from "@/ui/estado-accion";
+import { NumeroQueSePisa } from "@/ui/numero-que-se-pisa";
 
 import { comprarYSeguirAccion, resolverYSeguirAccion } from "../acciones";
 
@@ -242,12 +243,11 @@ export function CompraGuiada({
           >
             −
           </button>
-          <input
+          <NumeroQueSePisa
             id="cantidad"
             name="cantidad"
-            inputMode="decimal"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
+            valor={cantidad}
+            alCambiar={setCantidad}
             className="h-14 min-w-0 flex-1 bg-transparent text-center text-3xl font-bold tabular-nums"
           />
           <button
@@ -269,12 +269,11 @@ export function CompraGuiada({
           <span aria-hidden className="text-3xl font-bold text-texto-suave">
             $
           </span>
-          <input
+          <NumeroQueSePisa
             id="precio"
             name="precio"
-            inputMode="decimal"
-            value={precio}
-            onChange={(e) => setPrecio(e.target.value)}
+            valor={precio}
+            alCambiar={setPrecio}
             placeholder="0"
             className="h-16 min-w-0 flex-1 bg-transparent text-3xl font-bold tabular-nums"
           />

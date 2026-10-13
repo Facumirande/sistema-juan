@@ -6,6 +6,7 @@ import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { listaDePreciosCliente, recargosActuales, type AmbitoRecargo } from "@/modulos/precios-venta/reglas";
 import { sesionParaPantalla } from "@/modulos/seguridad/sesion";
 import { BotonAccion } from "@/ui/boton-accion";
+import { EntradaQueSePisa } from "@/ui/numero-que-se-pisa";
 import Link from "@/ui/enlace";
 import { ALERTAS_PRECIO, ORIGENES_COSTO, ORIGENES_VENTA, UNIDADES_CORTAS } from "@/ui/etiquetas";
 import { FormularioAccion } from "@/ui/formulario-accion";
@@ -25,7 +26,7 @@ function FormRecargo({ ambito, id, valor, editable }: { ambito: AmbitoRecargo; i
       <input type="hidden" name="ambito" value={ambito} />
       {id && <input type="hidden" name="id" value={id} />}
       <label className="flex items-center gap-1">
-        <input
+        <EntradaQueSePisa
           name="valor"
           inputMode="decimal"
           defaultValue={pct(valor)}

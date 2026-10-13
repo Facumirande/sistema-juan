@@ -6,7 +6,8 @@ import { bandejaDeNotas, notasDe } from "@/modulos/colaboracion/notas";
 import { personasDelNegocio } from "@/modulos/colaboracion/personas";
 import { comprarDeLaLista } from "@/modulos/compras/compra-desde-lista";
 import { listarCuentasProveedores } from "@/modulos/compras/cuenta-corriente";
-import { generarListaCompra, marcarNoConseguido, marcarPedidoComprado, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
+import { circuitosDeCompra, guardarCircuitos } from "@/modulos/compras/circuitos";
+import { elegirPuestoDeLineas, generarListaCompra, marcarNoConseguido, marcarPedidoComprado, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
 import { entregarPedido } from "@/modulos/entregas/entregas";
 import { iniciarPreparacion, marcarPreparada, obtenerPreparacion, separarLinea } from "@/modulos/entregas/preparacion";
 import { guardarOrdenDelRecorrido } from "@/modulos/entregas/recorrido";
@@ -107,6 +108,11 @@ describe("idas a la base de cada botón del tablero", () => {
     const renglon = (await obtenerListaCompra(db, a, j.manana))!.plan.flatMap((p) => p.lineas).find((l) => l.estado === "PENDIENTE" || l.estado === "PARCIAL")!;
     await hasta(4, "tildar un producto", () => tildarLinea(db, a, { itemId: renglon.id, tildado: true }));
     await hasta(4, "destildarlo", () => tildarLinea(db, a, { itemId: renglon.id, tildado: false }));
+    // Preseleccionar: varios renglones a un puesto, juntos; y armar el circuito de compra.
+    const paraMandar = (await obtenerListaCompra(db, a, j.manana))!.plan.flatMap((p) => p.lineas).filter((l) => l.proveedorId).slice(0, 4);
+    await hasta(4, "mandar varios productos a un puesto", () => elegirPuestoDeLineas(db, a, { itemIds: paraMandar.map((l) => l.id), proveedorId: paraMandar[0]!.proveedorId }));
+    await hasta(2, "circuitos de compra", () => circuitosDeCompra(db, a));
+    await hasta(4, "guardar los circuitos", () => guardarCircuitos(db, a, [{ id: "3f2b8c1e-7a4d-4e6f-9b0a-5c1d2e3f4a5b", nombre: "Mercofrut", paradas: [paraMandar[0]!.proveedorId!] }]));
     await hasta(4, "marcar que no se consiguió", () => marcarNoConseguido(db, a, { itemId: renglon.id, motivo: "No se consiguió en el mercado" }));
     await hasta(4, "volver a buscarlo", () => marcarNoConseguido(db, a, { itemId: renglon.id, motivo: null }));
     // "💲 Precio y puesto" en un renglón de la lista: la compra con su precio, en el puesto que ya lo vende.

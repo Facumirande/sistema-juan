@@ -206,7 +206,7 @@ Todo corre en el servidor, también cuando lo dispara quien prepara: DOC-03 qued
 |---|---|
 | Cuándo | Después de generar o regenerar la lista (04 §5.c, paso 9); se reimprime a demanda. |
 | Fuente | `lista_compra`, `lista_compra_item`, `proveedor` (nombre y `ubicacion_mercado`), `producto`, `presentacion`; la deuda de cada puesto solo con `proveedores.ver_credito`. |
-| Agrupación | Por puesto (el elegido en el renglón o el sugerido), en el orden de `ubicacion_mercado`; dentro, por orden de categoría y nombre. Aparte, "Sin puesto". |
+| Agrupación | Por puesto (el elegido en el renglón o el sugerido): primero los del circuito de compra elegido en ese aparato, en su orden (RN-201), y después los demás en el orden de `ubicacion_mercado`; dentro, por orden de categoría y nombre. Aparte, "Sin puesto". |
 | Filtro por defecto | La lista completa del día: lo que falta y lo ya comprado o no conseguido (marcado ☑ "YA COMPRADO" o ✕), con para qué cliente es cada producto. Opción "Solo lo que falta comprar" (`?falta=1`). Desde el botón 🖨️ Imprimir de la lista se abre directamente el diálogo de impresión. |
 
 **Contenido** (simplificado el 10/10/2026: lo que sirve para comprar, nada más)

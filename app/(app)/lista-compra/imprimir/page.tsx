@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 
 import { obtenerBaseDatos } from "@/db/cliente";
+import { COOKIE_CIRCUITO, SIN_CIRCUITO, circuitoElegido } from "@/dominio/compras/circuitos";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 import { formatearCantidad, formatearMoneda, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { formatearFechaHora, sumarDias } from "@/dominio/fechas/fechas";
@@ -38,9 +40,17 @@ export default async function ImprimirListaCompra({ searchParams }: PageProps<"/
   const soloFalta = parametro(f.falta) === "1";
   const lista = await obtenerListaCompra(db, sesion.authUserId, fecha);
 
+  // Los puestos salen en el orden del circuito elegido en este aparato (RN-201); los demás, por dónde quedan.
+  const guardado = (await cookies()).get(COOKIE_CIRCUITO)?.value ?? null;
+  const circuito = circuitoElegido(lista?.circuitos ?? [], guardado === SIN_CIRCUITO ? "" : guardado);
+  const lugar = (proveedorId: string | null) => {
+    const i = proveedorId && circuito ? circuito.paradas.indexOf(proveedorId) : -1;
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
   const grupos = (lista?.plan ?? [])
     .map((p) => ({ ...p, lineas: p.lineas.filter((l) => !soloFalta || l.estado === "PENDIENTE" || l.estado === "PARCIAL") }))
-    .filter((p) => p.lineas.length > 0);
+    .filter((p) => p.lineas.length > 0)
+    .sort((a, b) => lugar(a.proveedorId) - lugar(b.proveedorId));
   const subtotal = (lineas: typeof grupos[number]["lineas"]) => sumar(lineas.map((l) => l.costoEstimado ?? "0"));
   const total = sumar(grupos.map((g) => subtotal(g.lineas)));
   const todasLasLineas = (lista?.plan ?? []).flatMap((p) => p.lineas);

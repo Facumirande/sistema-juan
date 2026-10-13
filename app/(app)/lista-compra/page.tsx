@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 
 import { obtenerBaseDatos } from "@/db/cliente";
+import { COOKIE_CIRCUITO, SIN_CIRCUITO } from "@/dominio/compras/circuitos";
 import { dec, sumar } from "@/dominio/dinero/decimal";
 import { formatearCantidad, formatearMoneda, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import { formatearFechaHora } from "@/dominio/fechas/fechas";
@@ -16,7 +18,7 @@ import { parametro } from "@/ui/parametros";
 import { SelectorDeDia } from "@/ui/selector-de-dia";
 
 import { generarListaAccion } from "./acciones";
-import { datosParaComprar } from "./datos-para-comprar";
+import { compraEnPalabras, datosParaComprar } from "./datos-para-comprar";
 import { ListaDeCompras, type RenglonDeLista } from "./lista";
 
 export const metadata: Metadata = { title: "Lista de compras · Sistema Repartos" };
@@ -39,8 +41,8 @@ function gastadoEn(l: LineaDeLista) {
 /** Lo que sale un producto, en pesos: lo anotado al comprarlo o, si todavía no, lo que se calcula. */
 function importeDe(l: LineaDeLista): RenglonDeLista["importe"] {
   const gastado = gastadoEn(l);
-  if (gastado) return { texto: formatearMoneda(gastado), real: true };
-  if (l.estado !== "NO_CONSEGUIDO" && l.costoEstimado && dec(l.costoEstimado).gt(0)) return { texto: formatearMoneda(l.costoEstimado), real: false };
+  if (gastado) return { texto: formatearMoneda(gastado), real: true, valor: gastado.toString() };
+  if (l.estado !== "NO_CONSEGUIDO" && l.costoEstimado && dec(l.costoEstimado).gt(0)) return { texto: formatearMoneda(l.costoEstimado), real: false, valor: l.costoEstimado };
   return null;
 }
 
@@ -54,7 +56,7 @@ function renglon(l: LineaDeLista, conCompra: boolean): RenglonDeLista {
     productoId: l.productoId,
     producto: l.producto,
     grupo: l.grupo,
-    compras: l.compras.map((k) => `${k.proveedor} · ${num(k.cantidad)} × ${k.presentacion}${k.precio ? ` a ${formatearMoneda(k.precio)}` : ""} · ${k.aCuenta ? "a cuenta" : "pagado"}`),
+    compras: l.compras.map(compraEnPalabras),
     compra: conCompra ? datosParaComprar(l) : null,
     pago: l.compras.length === 0 ? null : l.compras.every((k) => !k.aCuenta) ? "PAGADO" : "A_CUENTA",
     importe: importeDe(l),
@@ -92,6 +94,9 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
   const faltan = lineas.filter((l) => l.estado === "PENDIENTE" || l.estado === "PARCIAL");
   const chico = "flex min-h-11 items-center gap-2 rounded-xl border border-borde bg-superficie px-4 font-semibold hover:border-marca/60";
   const cerrado = lista?.estadoJornada === "CERRADA";
+  // El circuito que quedó elegido en este aparato ("" = sin circuito; nulo = nunca se eligió: vale el primero).
+  const cookieDelCircuito = (await cookies()).get(COOKIE_CIRCUITO)?.value ?? null;
+  const circuitoGuardado = cookieDelCircuito === SIN_CIRCUITO ? "" : cookieDelCircuito;
   // En pesos: lo ya comprado (a lo que salió) y lo que falta (calculado con el último precio de cada puesto).
   const yaComprado = sumar(lineas.map((l) => gastadoEn(l) ?? dec(0)));
   const faltaComprar = sumar(lineas.filter((l) => l.estado !== "NO_CONSEGUIDO" && !gastadoEn(l)).map((l) => l.costoEstimado ?? "0"));
@@ -193,6 +198,8 @@ export default async function PaginaListaCompra({ searchParams }: PageProps<"/li
             renglones={lineas.map((l) => renglon(l, puede("compras.registrar") && !cerrado))}
             puede={{ editar: puede("lista_compra.editar") && !cerrado, comprar: puede("compras.registrar") && !cerrado, exceder: puede("compras.exceder_limite"), pagar: puede("pagos.registrar") }}
             proveedores={lista.proveedores}
+            circuitos={lista.circuitos}
+            circuitoInicial={circuitoGuardado}
           />
 
           <details className="rounded-2xl border border-borde bg-superficie p-4 print:hidden">

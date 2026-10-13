@@ -1,18 +1,38 @@
 "use client";
 
-import { startTransition, useActionState, useState } from "react";
+import { startTransition, useActionState, useState, useTransition } from "react";
 
 import { interpretarNumero } from "@/dominio/dinero/entrada";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
+import { NumeroQueSePisa } from "@/ui/numero-que-se-pisa";
 
-import { comprarDeLaListaAccion } from "./acciones";
+import { comprarDeLaListaAccion, quitarCompraAccion } from "./acciones";
 
 // "💲 Precio y puesto" de un renglón de la lista de compras (pedido del usuario, 07/10/2026): se
 // anota ahí mismo en qué puesto se compró, cuánto y a cuánto, sin salir de la lista. Es una compra
 // común: el precio queda como el último de ese puesto para ese producto (en la ficha del producto y
 // en la del proveedor, con su historial) y, si es a cuenta, se suma a lo que se le debe.
+//
+// Si el producto ya tiene su compra anotada, el panel abre para CORREGIRLA (pedido del usuario,
+// 12/10/2026: al cambiar el precio se anotaba otra compra y los importes se sumaban): lo que se
+// guarda reemplaza a la anterior. Sumar otra compra del mismo producto (lo que faltaba, de otro
+// puesto) es un botón aparte, y cada compra anotada se puede quitar (RN-200).
+
+/** Una compra ya anotada de ese producto en el día. */
+export interface CompraAnotada {
+  compraId: string;
+  /** "Puesto 12 · 3 × Bolsa 20 kg a $21.000 · a cuenta" */
+  texto: string;
+  proveedorId: string;
+  presentacionId: string;
+  cantidad: string;
+  precio: string | null;
+  aCuenta: boolean;
+  /** Tiene solo este producto: se corrige o se quita desde acá. La que tiene varios, desde su ficha. */
+  sola: boolean;
+}
 
 export interface DatosParaComprar {
   /** "kg", "u"… */
@@ -22,6 +42,10 @@ export interface DatosParaComprar {
   /** Los puestos que ya lo venden, con su último precio. */
   ofertas: { ofertaId: string; proveedorId: string; presentacionId: string; precio: string; factor: string }[];
   sugerido: { proveedorId: string | null; envaseId: string | null; cantidad: string };
+  /** Lo que ya se anotó de este producto. */
+  anotadas: CompraAnotada[];
+  /** Todavía falta comprar una parte: lo natural es anotar el resto, no corregir lo anotado. */
+  falta: boolean;
 }
 
 interface Props {
@@ -34,9 +58,15 @@ interface Props {
   alGuardar: () => void;
 }
 
+/** Qué hace el formulario: anota una compra nueva, corrige una anotada o no se muestra (solo la lista de lo anotado). */
+type Modo = { clase: "nueva" } | { clase: "corregir"; compraId: string } | { clase: "ver" };
+
 const sinPesos = (v: string) => formatearMoneda(v).replace("$", "").trim();
+/** Un número guardado, como se escribe: con sus decimales si los tiene ("1.234,5"). */
+const escrito = (v: string, decimales: number) => formatearNumero(v, { decimales, recortarCeros: true });
 const etiqueta = "text-sm font-semibold text-texto-suave";
 const control = (mal: boolean) => `rounded-xl border-2 bg-superficie ${mal ? "border-error" : "border-borde"}`;
+const nuevaClave = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "");
 
 export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores, puedeExceder, alGuardar }: Props) {
   // Al guardar bien, el renglón se cierra solo y queda tildado con su puesto y su precio.
@@ -45,17 +75,25 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
     if (r.ok) alGuardar();
     return r;
   }, ESTADO_INICIAL);
-  const [clave] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : ""));
+  const [quitando, empezarAQuitar] = useTransition();
+  const [avisoAlQuitar, setAvisoAlQuitar] = useState<EstadoAccion>(ESTADO_INICIAL);
   const ofertaDe = (p: string, e: string) => datos.ofertas.find((o) => o.proveedorId === p && o.presentacionId === e) ?? null;
-  const [proveedorId, setProveedorId] = useState(datos.sugerido.proveedorId ?? "");
-  const [envaseId, setEnvaseId] = useState(datos.sugerido.envaseId ?? datos.envases[0]?.id ?? "");
-  const [cantidad, setCantidad] = useState(datos.sugerido.cantidad);
-  const [precio, setPrecio] = useState(() => {
-    const o = ofertaDe(datos.sugerido.proveedorId ?? "", datos.sugerido.envaseId ?? "");
-    return o ? sinPesos(o.precio) : "";
-  });
-  // Con puesto, a cuenta; sin puesto, pagado en efectivo (se puede cambiar; 10/10/2026).
-  const [pago, setPago] = useState<"CUENTA" | "PAGADO">(datos.sugerido.proveedorId ? "CUENTA" : "PAGADO");
+  const corregibles = datos.anotadas.filter((a) => a.sola);
+  // Con todo comprado, tocar "$" es para corregir lo anotado; si falta una parte, para anotar el resto.
+  const alAbrir: Modo = datos.anotadas.length === 0 || datos.falta ? { clase: "nueva" } : corregibles.length > 0 ? { clase: "corregir", compraId: corregibles.at(-1)!.compraId } : { clase: "ver" };
+  const paraCargar = (m: Modo) => {
+    const a = m.clase === "corregir" ? (datos.anotadas.find((x) => x.compraId === m.compraId) ?? null) : null;
+    if (a) return { proveedorId: a.proveedorId, envaseId: a.presentacionId, cantidad: escrito(a.cantidad, 3), precio: a.precio ? escrito(a.precio, 2) : "", pago: a.aCuenta ? ("CUENTA" as const) : ("PAGADO" as const) };
+    const proveedorId = datos.sugerido.proveedorId ?? "";
+    const o = ofertaDe(proveedorId, datos.sugerido.envaseId ?? "");
+    // Con puesto, a cuenta; sin puesto, pagado en efectivo (se puede cambiar; 10/10/2026).
+    return { proveedorId, envaseId: datos.sugerido.envaseId ?? datos.envases[0]?.id ?? "", cantidad: datos.sugerido.cantidad, precio: o ? sinPesos(o.precio) : "", pago: proveedorId ? ("CUENTA" as const) : ("PAGADO" as const) };
+  };
+  const [modo, setModo] = useState<Modo>(alAbrir);
+  const [campos, setCampos] = useState(() => paraCargar(alAbrir));
+  const { proveedorId, envaseId, cantidad, precio, pago } = campos;
+  // Cada compra que se manda lleva su clave: dos toques seguidos no la anotan dos veces.
+  const [clave, setClave] = useState(nuevaClave);
   const [exceder, setExceder] = useState(false);
   const [motivoExceso, setMotivoExceso] = useState("");
   // Recién al tocar "Guardar" se marcan en rojo los casilleros obligatorios que quedaron vacíos.
@@ -74,6 +112,13 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
     );
   }
 
+  const cambiarDeModo = (m: Modo) => {
+    setModo(m);
+    setCampos(paraCargar(m));
+    setClave(nuevaClave());
+    setRevisado(false);
+    setAvisoAlQuitar(ESTADO_INICIAL);
+  };
   const oferta = ofertaDe(proveedorId, envaseId);
   const envase = datos.envases.find((e) => e.id === envaseId) ?? null;
   const proveedor = proveedores.find((p) => p.id === proveedorId) ?? null;
@@ -86,20 +131,19 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
   const enOrden = [...proveedores].sort((a, b) => Number(loVenden.has(b.id)) - Number(loVenden.has(a.id)));
   const falta = { cantidad: !c || c.lte(0), precio: !p || p.lte(0) };
   const confirmar = estado.requiereConfirmacion === true;
+  const corrigiendo = modo.clase === "corregir";
 
-  const elegir = (nuevoProveedor: string, nuevoEnvase: string) => {
-    setProveedorId(nuevoProveedor);
-    setEnvaseId(nuevoEnvase);
+  const elegir = (nuevoProveedor: string, nuevoEnvase: string, nuevoPago = pago) => {
     const o = ofertaDe(nuevoProveedor, nuevoEnvase);
-    setPrecio(o ? sinPesos(o.precio) : "");
+    // Al corregir, el precio que se está arreglando no se pisa por cambiar de puesto o de envase.
+    setCampos((v) => ({ ...v, proveedorId: nuevoProveedor, envaseId: nuevoEnvase, pago: nuevoPago, precio: corrigiendo && v.precio ? v.precio : o ? sinPesos(o.precio) : "" }));
   };
   const elegirProveedor = (id: string) => {
     // Si ese puesto lo vende en otro envase, se pasa a ese.
     const suya = ofertaDe(id, envaseId) ?? datos.ofertas.find((o) => o.proveedorId === id) ?? null;
-    elegir(id, suya?.presentacionId ?? envaseId);
-    setPago(id ? "CUENTA" : "PAGADO");
+    elegir(id, suya?.presentacionId ?? envaseId, id ? "CUENTA" : "PAGADO");
   };
-  const sumar = (paso: number) => setCantidad(formatearNumero(String(Math.max(0, (c ? Number(c.toString()) : 0) + paso)), { decimales: 3, recortarCeros: true }));
+  const sumar = (paso: number) => setCampos((v) => ({ ...v, cantidad: formatearNumero(String(Math.max(0, (c ? Number(c.toString()) : 0) + paso)), { decimales: 3, recortarCeros: true }) }));
   const guardar = () => {
     setRevisado(true);
     if (falta.cantidad || falta.precio) return;
@@ -110,6 +154,7 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
     fd.append("pago", proveedorId ? pago : "PAGADO");
     fd.append("cantidad", cantidad);
     fd.append("precio", precio);
+    if (modo.clase === "corregir") fd.append("reemplaza", modo.compraId);
     if (confirmar) fd.append("confirmarVariacion", "on");
     if (exceder) {
       fd.append("exceder", "on");
@@ -117,133 +162,183 @@ export function PrecioYPuesto({ itemId, productoId, producto, datos, proveedores
     }
     startTransition(() => enviar(fd));
   };
+  const quitar = (a: CompraAnotada) => {
+    if (!window.confirm(`¿Quitar esta compra de ${producto}?\n\n${a.texto}\n\nQueda anulada: deja de contar en la lista y en lo que se le debe al puesto.`)) return;
+    const fd = new FormData();
+    fd.append("itemId", itemId);
+    fd.append("compraId", a.compraId);
+    empezarAQuitar(async () => {
+      const r = await quitarCompraAccion(ESTADO_INICIAL, fd);
+      if (r.ok) alGuardar();
+      else setAvisoAlQuitar(r);
+    });
+  };
   const boton = "flex size-11 shrink-0 items-center justify-center rounded-lg text-3xl leading-none font-bold text-marca hover:bg-fondo";
+  const chico = "min-h-10 rounded-lg border-2 px-3 font-semibold disabled:opacity-60";
+  const ocupado = enviando || quitando;
+  const aviso = estado.mensaje && !estado.ok ? estado : avisoAlQuitar.mensaje && !avisoAlQuitar.ok ? avisoAlQuitar : null;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)]">
-        <label className="flex flex-col gap-1">
-          <span className={etiqueta}>
-            Puesto donde lo compraste
-          </span>
-          <select value={proveedorId} onChange={(e) => elegirProveedor(e.target.value)} className={`h-12 px-3 text-lg font-semibold ${control(false)}`}>
-            <option value="">Sin puesto (efectivo)</option>
-            {enOrden.map((x) => {
-              const suya = datos.ofertas.find((o) => o.proveedorId === x.id);
+      {datos.anotadas.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className={etiqueta}>Ya anotaste</p>
+          <ul className="flex flex-col gap-1.5">
+            {datos.anotadas.map((a) => {
+              const esta = modo.clase === "corregir" && modo.compraId === a.compraId;
               return (
-                <option key={x.id} value={x.id}>
-                  {x.nombre}
-                  {suya ? ` · ${formatearMoneda(suya.precio)}` : ""}
-                </option>
+                <li key={a.compraId} className={`flex flex-wrap items-center gap-2 rounded-xl border-2 bg-superficie px-3 py-2 ${esta ? "border-marca" : "border-borde"}`}>
+                  <span className="min-w-0 flex-1 basis-48 font-semibold">🧾 {a.texto}</span>
+                  {a.sola ? (
+                    <>
+                      <button type="button" onClick={() => cambiarDeModo(esta ? { clase: "ver" } : { clase: "corregir", compraId: a.compraId })} aria-pressed={esta} disabled={ocupado} className={`${chico} ${esta ? "border-marca bg-marca text-marca-texto" : "border-borde hover:border-marca"}`}>
+                        ✏️ Corregir
+                      </button>
+                      <button type="button" onClick={() => quitar(a)} disabled={ocupado} className={`${chico} border-borde hover:border-error`}>
+                        🗑 Quitar
+                      </button>
+                    </>
+                  ) : (
+                    <Link href={`/compras/${a.compraId}`} className={`${chico} flex items-center border-borde hover:border-marca`} title="Esa compra también tiene otros productos: se corrige desde su ficha">
+                      Ver la compra →
+                    </Link>
+                  )}
+                </li>
               );
             })}
-          </select>
-        </label>
-
-        <div className="flex flex-col gap-1">
-          <span className={etiqueta}>
-            Cantidad <span className="text-error">*</span>
-          </span>
-          <div className={`flex items-center gap-1 p-0.5 ${control(revisado && falta.cantidad)}`}>
-            <button type="button" onClick={() => sumar(-1)} aria-label="Uno menos" className={boton}>
-              −
-            </button>
-            <input
-              value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
-              onFocus={(e) => e.target.select()}
-              inputMode="decimal"
-              aria-label={`Cuántos ${envase?.nombre.toLowerCase() ?? "envases"} de ${producto}`}
-              aria-invalid={revisado && falta.cantidad}
-              className="h-11 w-16 min-w-0 flex-1 bg-transparent text-center text-2xl font-extrabold tabular-nums"
-            />
-            <button type="button" onClick={() => sumar(1)} aria-label="Uno más" className={boton}>
-              +
+          </ul>
+          <div>
+            <button type="button" onClick={() => cambiarDeModo(modo.clase === "nueva" ? { clase: "ver" } : { clase: "nueva" })} aria-pressed={modo.clase === "nueva"} disabled={ocupado} className={`${chico} ${modo.clase === "nueva" ? "border-marca bg-marca text-marca-texto" : "border-borde hover:border-marca"}`}>
+              ＋ Anotar otra compra de este producto
             </button>
           </div>
-          {revisado && falta.cantidad && <span className="text-sm font-medium text-error">Falta la cantidad.</span>}
-        </div>
-
-        <label className="flex flex-col gap-1">
-          <span className={etiqueta}>
-            Precio por {envase?.nombre.toLowerCase() ?? "envase"} <span className="text-error">*</span>
-          </span>
-          <span className={`flex items-center gap-2 px-3 ${control(revisado && falta.precio)}`}>
-            <span aria-hidden className="text-2xl font-bold text-texto-suave">
-              $
-            </span>
-            <input
-              value={precio}
-              onChange={(e) => setPrecio(e.target.value)}
-              onFocus={(e) => e.target.select()}
-              inputMode="decimal"
-              placeholder="0"
-              aria-invalid={revisado && falta.precio}
-              className="h-12 min-w-0 flex-1 bg-transparent text-2xl font-extrabold tabular-nums"
-            />
-          </span>
-          {revisado && falta.precio ? (
-            <span className="text-sm font-medium text-error">Falta el precio.</span>
-          ) : (
-            <span className="text-sm text-texto-suave">
-              {oferta ? `Último precio: ${formatearMoneda(oferta.precio)}` : proveedor ? "Primer precio de este puesto: queda guardado." : ""}
-              {porUnidad && ` · ${formatearMoneda(porUnidad.toString())} por ${datos.unidad}`}
-            </span>
+          {modo.clase !== "ver" && (
+            <p className="font-semibold">{corrigiendo ? "✏️ Lo que guardes reemplaza a esa compra: no se suma." : "＋ Esta compra se suma a lo que ya anotaste."}</p>
           )}
-        </label>
-      </div>
-
-      {datos.envases.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="En qué envase lo compraste">
-          <span className={etiqueta}>Envase</span>
-          {datos.envases.map((e) => (
-            <button key={e.id} type="button" onClick={() => elegir(proveedorId, e.id)} aria-pressed={envaseId === e.id} className={`min-h-10 rounded-full border-2 px-4 font-bold ${envaseId === e.id ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie"}`}>
-              {e.nombre}
-            </button>
-          ))}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="grid grid-cols-2 overflow-hidden rounded-xl border-2 border-borde" role="group" aria-label="Forma de pago">
-          {(
-            [
-              ["PAGADO", "💵 Pagado"],
-              ["CUENTA", "📒 A cuenta"],
-            ] as const
-          ).map(([valor, texto]) => (
-            <button
-              key={valor}
-              type="button"
-              onClick={() => setPago(valor)}
-              aria-pressed={(proveedorId ? pago : "PAGADO") === valor}
-              // Sin puesto no hay a quién deberle: queda pagado.
-              disabled={!proveedorId && valor === "CUENTA"}
-              title={!proveedorId && valor === "CUENTA" ? "Elegí el puesto para dejarlo a cuenta" : undefined}
-              className={`min-h-11 px-4 font-bold disabled:cursor-not-allowed disabled:opacity-50 ${(proveedorId ? pago : "PAGADO") === valor ? "bg-marca text-marca-texto" : "bg-superficie"}`}
-            >
-              {texto}
-            </button>
-          ))}
-        </div>
-        <p className="min-w-0 flex-1 text-sm text-texto-suave">{!proveedor ? "Sin puesto: queda pagada en efectivo." : pago === "CUENTA" ? `Queda a pagar: se suma a lo que le debemos a ${proveedor.nombre}.` : "Queda pagada: no suma deuda."}</p>
-        <p className="text-lg">
-          Total <b className="text-2xl tabular-nums">{total ? formatearMoneda(total.toString()) : "$ —"}</b>
-        </p>
-        <button type="button" onClick={guardar} disabled={enviando} className="min-h-12 rounded-xl bg-marca px-5 text-lg font-bold text-marca-texto disabled:animate-pulse disabled:opacity-60">
-          {enviando ? "Guardando…" : confirmar ? "✓ Confirmar" : "✓ Guardar la compra"}
-        </button>
-      </div>
+      {modo.clase !== "ver" && (
+        <>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)]">
+            <label className="flex min-w-0 flex-col gap-1">
+              <span className={etiqueta}>Puesto donde lo compraste</span>
+              <select value={proveedorId} onChange={(e) => elegirProveedor(e.target.value)} className={`h-12 w-full min-w-0 px-3 text-lg font-semibold ${control(false)}`}>
+                <option value="">Sin puesto (efectivo)</option>
+                {enOrden.map((x) => {
+                  const suya = datos.ofertas.find((o) => o.proveedorId === x.id);
+                  return (
+                    <option key={x.id} value={x.id}>
+                      {x.nombre}
+                      {suya ? ` · ${formatearMoneda(suya.precio)}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
 
-      {estado.mensaje && !estado.ok && (
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className={etiqueta}>
+                Cantidad <span className="text-error">*</span>
+              </span>
+              <div className={`flex items-center gap-1 p-0.5 ${control(revisado && falta.cantidad)}`}>
+                <button type="button" onClick={() => sumar(-1)} aria-label="Uno menos" className={boton}>
+                  −
+                </button>
+                <NumeroQueSePisa
+                  valor={cantidad}
+                  alCambiar={(texto) => setCampos((v) => ({ ...v, cantidad: texto }))}
+                  aria-label={`Cuántos ${envase?.nombre.toLowerCase() ?? "envases"} de ${producto}`}
+                  aria-invalid={revisado && falta.cantidad}
+                  className="h-11 w-16 min-w-0 flex-1 bg-transparent text-center text-2xl font-extrabold tabular-nums"
+                />
+                <button type="button" onClick={() => sumar(1)} aria-label="Uno más" className={boton}>
+                  +
+                </button>
+              </div>
+              {revisado && falta.cantidad && <span className="text-sm font-medium text-error">Falta la cantidad.</span>}
+            </div>
+
+            <label className="flex min-w-0 flex-col gap-1">
+              <span className={etiqueta}>
+                Precio por {envase?.nombre.toLowerCase() ?? "envase"} <span className="text-error">*</span>
+              </span>
+              <span className={`flex items-center gap-2 px-3 ${control(revisado && falta.precio)}`}>
+                <span aria-hidden className="text-2xl font-bold text-texto-suave">
+                  $
+                </span>
+                <NumeroQueSePisa
+                  valor={precio}
+                  alCambiar={(texto) => setCampos((v) => ({ ...v, precio: texto }))}
+                  placeholder="0"
+                  aria-invalid={revisado && falta.precio}
+                  className="h-12 min-w-0 flex-1 bg-transparent text-2xl font-extrabold tabular-nums"
+                />
+              </span>
+              {revisado && falta.precio ? (
+                <span className="text-sm font-medium text-error">Falta el precio.</span>
+              ) : (
+                <span className="text-sm text-texto-suave">
+                  {oferta ? `Último precio: ${formatearMoneda(oferta.precio)}` : proveedor ? "Primer precio de este puesto: queda guardado." : ""}
+                  {porUnidad && ` · ${formatearMoneda(porUnidad.toString())} por ${datos.unidad}`}
+                </span>
+              )}
+            </label>
+          </div>
+
+          {datos.envases.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="En qué envase lo compraste">
+              <span className={etiqueta}>Envase</span>
+              {datos.envases.map((e) => (
+                <button key={e.id} type="button" onClick={() => elegir(proveedorId, e.id)} aria-pressed={envaseId === e.id} className={`min-h-10 rounded-full border-2 px-4 font-bold ${envaseId === e.id ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie"}`}>
+                  {e.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="grid grid-cols-2 overflow-hidden rounded-xl border-2 border-borde" role="group" aria-label="Forma de pago">
+              {(
+                [
+                  ["PAGADO", "💵 Pagado"],
+                  ["CUENTA", "📒 A cuenta"],
+                ] as const
+              ).map(([valor, texto]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setCampos((v) => ({ ...v, pago: valor }))}
+                  aria-pressed={(proveedorId ? pago : "PAGADO") === valor}
+                  // Sin puesto no hay a quién deberle: queda pagado.
+                  disabled={!proveedorId && valor === "CUENTA"}
+                  title={!proveedorId && valor === "CUENTA" ? "Elegí el puesto para dejarlo a cuenta" : undefined}
+                  className={`min-h-11 px-4 font-bold disabled:cursor-not-allowed disabled:opacity-50 ${(proveedorId ? pago : "PAGADO") === valor ? "bg-marca text-marca-texto" : "bg-superficie"}`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+            <p className="min-w-0 flex-1 text-sm text-texto-suave">{!proveedor ? "Sin puesto: queda pagada en efectivo." : pago === "CUENTA" ? `Queda a pagar: se suma a lo que le debemos a ${proveedor.nombre}.` : "Queda pagada: no suma deuda."}</p>
+            <p className="text-lg">
+              Total <b className="text-2xl tabular-nums">{total ? formatearMoneda(total.toString()) : "$ —"}</b>
+            </p>
+            <button type="button" onClick={guardar} disabled={ocupado} className="min-h-12 rounded-xl bg-marca px-5 text-lg font-bold text-marca-texto disabled:animate-pulse disabled:opacity-60">
+              {enviando ? "Guardando…" : confirmar ? "✓ Confirmar" : corrigiendo ? "✓ Guardar el cambio" : "✓ Guardar la compra"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {aviso && (
         <div role="alert" className="flex flex-col gap-2 rounded-xl bg-error/10 px-4 py-3 font-medium text-error">
-          <p>{estado.mensaje}</p>
-          {estado.enlace && (
-            <Link href={estado.enlace.href} className="self-start rounded-lg bg-superficie px-3 py-2 font-semibold text-texto shadow-sm">
-              {estado.enlace.texto}{"\u00a0→"}
+          <p>{aviso.mensaje}</p>
+          {aviso.enlace && (
+            <Link href={aviso.enlace.href} className="self-start rounded-lg bg-superficie px-3 py-2 font-semibold text-texto shadow-sm">
+              {aviso.enlace.texto}{" →"}
             </Link>
           )}
-          {puedeExceder && /l[ií]mite/i.test(estado.mensaje) && (
+          {puedeExceder && modo.clase !== "ver" && /l[ií]mite/i.test(aviso.mensaje ?? "") && (
             <div className="flex flex-col gap-2 text-texto">
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={exceder} onChange={(e) => setExceder(e.target.checked)} className="size-5" /> Anotarla igual, aunque pase el límite de crédito del puesto

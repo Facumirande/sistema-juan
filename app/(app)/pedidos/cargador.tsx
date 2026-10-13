@@ -21,6 +21,7 @@ import { NombreDeProducto } from "@/ui/checklist";
 import Link from "@/ui/enlace";
 import { fechaConDia } from "@/ui/etiquetas";
 import { dibujoDeCliente } from "@/ui/etiquetas-tablero";
+import { NumeroQueSePisa } from "@/ui/numero-que-se-pisa";
 
 import { guardarPedidoVisualAccion, historialDeClienteAccion, marcarFrecuenteAccion } from "./acciones";
 
@@ -144,11 +145,9 @@ function Cantidad({ p, entrada, invalida = false, alCambiar, alQuitar }: { p: Pr
           <button type="button" onClick={() => sumar("-1")} aria-label={`Uno menos de ${p.nombre}`} className={boton}>
             −
           </button>
-          <input
-            value={entrada.cantidad}
-            onChange={(e) => alCambiar({ cantidad: e.target.value })}
-            onFocus={(e) => e.target.select()}
-            inputMode="decimal"
+          <NumeroQueSePisa
+            valor={entrada.cantidad}
+            alCambiar={(cantidad) => alCambiar({ cantidad })}
             enterKeyHint="done"
             aria-label={`Cantidad de ${p.nombre}`}
             aria-invalid={invalida}

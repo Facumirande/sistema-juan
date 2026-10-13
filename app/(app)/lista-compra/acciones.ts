@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 
 import { formatearMoneda } from "@/dominio/dinero/formato";
-import { comprarDeLaLista, destildarConCompra } from "@/modulos/compras/compra-desde-lista";
-import { cambiarLineaLista, elegirPuestoDeLinea, generarListaCompra, marcarNoConseguido, ordenarLista, tildarLinea } from "@/modulos/compras/lista-compra";
+import { comprarDeLaLista, destildarConCompra, quitarCompraDeLaLista } from "@/modulos/compras/compra-desde-lista";
+import { guardarCircuitos } from "@/modulos/compras/circuitos";
+import { cambiarLineaLista, elegirPuestoDeLineas, generarListaCompra, marcarNoConseguido, ordenarLista, tildarLinea } from "@/modulos/compras/lista-compra";
 import { pagadoDesdeLaLista } from "@/modulos/compras/pagos";
 import { completarPedidosDelDia } from "@/modulos/pedidos/completar";
 import { ejecutarAccion, tildada } from "@/ui/accion-servidor";
@@ -61,8 +62,18 @@ export async function comprarDeLaListaAccion(_estado: EstadoAccion, datos: FormD
       confirmarVariacion: tildada(datos, "confirmarVariacion"),
       motivoExceso: tildada(datos, "exceder") ? campo(datos, "motivoExceso") : null,
       claveIdempotencia: campo(datos, "claveIdempotencia") || null,
+      // Corregir una compra ya anotada: esta la reemplaza (RN-200).
+      reemplazaCompraId: campo(datos, "reemplaza") || null,
     });
     return { ok: true, mensaje: `Anotado: ${r.producto} en ${r.proveedor} por ${formatearMoneda(r.total)}.${r.advertencia ? ` ${r.advertencia}` : ""}` };
+  });
+}
+
+/** Quitar una compra anotada de un producto de la lista (la que se anotó de más). */
+export async function quitarCompraAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  return ejecutarAccion(async ({ db, authUserId }) => {
+    await quitarCompraDeLaLista(db, authUserId, { itemId: campo(datos, "itemId"), compraId: campo(datos, "compraId") });
+    return { ok: true, mensaje: null };
   });
 }
 
@@ -122,10 +133,35 @@ export async function pagadoDesdeLaListaAccion(_estado: EstadoAccion, datos: For
   });
 }
 
-/** El puesto donde se va a comprar un renglón (vacío = sin puesto, en efectivo). */
+/** El puesto donde se va a comprar un renglón, o varios elegidos juntos (vacío = sin puesto, en efectivo). */
 export async function elegirPuestoAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
   return ejecutarAccion(async ({ db, authUserId }) => {
-    await elegirPuestoDeLinea(db, authUserId, { itemId: campo(datos, "itemId"), proveedorId: campo(datos, "proveedorId") || null });
+    await elegirPuestoDeLineas(db, authUserId, { itemIds: datos.getAll("itemId").filter((v): v is string => typeof v === "string"), proveedorId: campo(datos, "proveedorId") || null });
     return { ok: true, mensaje: null };
   });
+}
+
+/** Guarda los circuitos de compra como quedaron armados y vuelve a la lista. */
+export async function guardarCircuitosAccion(_estado: EstadoAccion, datos: FormData): Promise<EstadoAccion> {
+  const r = await ejecutarAccion(async ({ db, authUserId }) => {
+    let propuestos: unknown;
+    try {
+      propuestos = JSON.parse(campo(datos, "circuitos"));
+    } catch {
+      propuestos = null;
+    }
+    if (!Array.isArray(propuestos)) return { ok: false, mensaje: "No se pudieron leer los circuitos: recargá la página y probá de nuevo." };
+    await guardarCircuitos(
+      db,
+      authUserId,
+      propuestos.map((c: { id?: unknown; nombre?: unknown; paradas?: unknown }) => ({
+        id: String(c?.id ?? ""),
+        nombre: String(c?.nombre ?? ""),
+        paradas: Array.isArray(c?.paradas) ? c.paradas.map(String) : [],
+      })),
+    );
+    return { ok: true, mensaje: null };
+  });
+  if (!r.ok) return r;
+  redirect(destinoSeguro(campo(datos, "volver"), campo(datos, "fecha")));
 }

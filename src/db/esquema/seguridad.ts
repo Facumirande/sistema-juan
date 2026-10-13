@@ -70,6 +70,8 @@ export const empresa = pgTable(
     horaCortePedidos: time("hora_corte_pedidos"),
     /** Quién se encarga de cada parte del proceso (10/10/2026): { etapa: usuario_id }. */
     responsablesEtapa: jsonb("responsables_etapa").$type<Record<string, string>>().notNull().default({}),
+    /** Los circuitos de compra (12/10/2026): [{ id, nombre, paradas: [proveedor_id…] }], en qué orden se recorren los puestos. */
+    circuitosCompra: jsonb("circuitos_compra").$type<unknown>().notNull().default([]),
     cantidadAtipicaMultiplicador: porcentaje("cantidad_atipica_multiplicador").notNull().default("3.000"),
     cantidadAtipicaSemanas: integer("cantidad_atipica_semanas").notNull().default(8),
     toleranciaPesoPct: porcentaje("tolerancia_peso_pct").notNull().default("3.000"),

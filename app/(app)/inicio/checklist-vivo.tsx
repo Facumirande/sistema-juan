@@ -99,8 +99,8 @@ export function ChecklistVivo({ productos, modo, fecha, etiqueta, paraComprar }:
               type="button"
               onClick={() => setAnotando(anotando === p.listaItemId ? null : p.listaItemId!)}
               aria-expanded={anotando === p.listaItemId}
-              aria-label={compra.anotada ? `${p.nombre}: el precio ya está anotado (tocá para sumar otra compra)` : `${p.nombre}: anotar a quién se le compró y a cuánto`}
-              title={compra.anotada ? "Precio ya anotado: tocá para sumar otra compra" : "Anotar el precio de compra y el proveedor"}
+              aria-label={compra.anotada ? `${p.nombre}: el precio ya está anotado (tocá para corregirlo)` : `${p.nombre}: anotar a quién se le compró y a cuánto`}
+              title={compra.anotada ? "Precio ya anotado: tocá para corregirlo" : "Anotar el precio de compra y el proveedor"}
               className={`relative flex size-12 shrink-0 items-center justify-center rounded-xl border-2 text-3xl leading-none font-black shadow-sm transition-transform active:scale-90 ${color}`}
             >
               $

@@ -2,8 +2,12 @@
 
 import { useOptimistic, useRef, useState, useSyncExternalStore, useTransition, type PointerEvent as EventoPuntero } from "react";
 
+import { circuitoElegido, recorrerPorCircuito, type CircuitoDeCompra } from "@/dominio/compras/circuitos";
+import { sumar } from "@/dominio/dinero/decimal";
+import { formatearMoneda } from "@/dominio/dinero/formato";
 import { normalizarBusqueda } from "@/dominio/pedidos/carga";
 import { Buscador } from "@/ui/buscador";
+import { recordarCircuito } from "@/ui/circuito-elegido";
 import { NombreDeProducto } from "@/ui/checklist";
 import Link from "@/ui/enlace";
 import { ESTADO_INICIAL, type EstadoAccion } from "@/ui/estado-accion";
@@ -31,7 +35,7 @@ export interface RenglonDeLista {
   /** Con compras anotadas: si ya están pagadas o falta pagarlas (el interruptor del final del renglón). */
   pago: "PAGADO" | "A_CUENTA" | null;
   /** Lo que sale en pesos: lo anotado al comprarlo (`real`) o lo que se calcula con el último precio. Nulo si no se sabe. */
-  importe: { texto: string; real: boolean } | null;
+  importe: { texto: string; real: boolean; valor: string } | null;
   /** "63 kg" */
   total: string;
   /** "≈ 3 × Bolsa 20 kg", si se compra por envase. */
@@ -64,7 +68,9 @@ const ORDENES: readonly { clave: Orden; texto: string }[] = [
   { clave: "puesto", texto: "Por puesto" },
   { clave: "grupo", texto: "Por grupo" },
 ];
-type Cambio = { id: string } & Partial<Pick<RenglonDeLista, "estado" | "tildado" | "pago" | "puestoId" | "puestoNombre">>;
+type Cambio = { id: string } & Partial<Pick<RenglonDeLista, "estado" | "tildado" | "pago" | "puestoId" | "puestoNombre" | "puestoUbicacion">>;
+/** Un puesto de la lista, o un grupo de productos: una parada de la compra. */
+type Grupo = { clave: string; titulo: string; detalle: string | null; numero: number | null; renglones: RenglonDeLista[] };
 
 // Cómo se prefiere ver la lista se recuerda en este aparato.
 const CLAVE_ORDEN = "lista-de-compras:orden";
@@ -93,14 +99,19 @@ export function ListaDeCompras({
   renglones,
   puede,
   proveedores,
+  circuitos,
+  circuitoInicial,
 }: {
   fecha: string;
   renglones: RenglonDeLista[];
   puede: { editar: boolean; comprar: boolean; exceder: boolean; pagar: boolean };
   /** Los puestos, para elegir dónde se compró. */
   proveedores: { id: string; nombre: string; aCuenta: boolean }[];
+  /** Los circuitos de compra armados y el que quedó elegido en este aparato ("" = sin circuito; nulo = nunca se eligió). */
+  circuitos: CircuitoDeCompra[];
+  circuitoInicial: string | null;
 }) {
-  const [vista, marcar] = useOptimistic(renglones, (actual: RenglonDeLista[], c: Cambio) => actual.map((r) => (r.id === c.id ? { ...r, ...c } : r)));
+  const [vista, marcar] = useOptimistic(renglones, (actual: RenglonDeLista[], cambios: Cambio[]) => actual.map((r) => ({ ...r, ...cambios.find((c) => c.id === r.id) })));
   const orden = useSyncExternalStore(suscribirAlOrden, ordenGuardado, (): Orden => "manual");
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -109,7 +120,16 @@ export function ListaDeCompras({
   const [mensaje, setMensaje] = useState<EstadoAccion>(ESTADO_INICIAL);
   const [ocupado, empezar] = useTransition();
   // Lo último que se mandó, por si el servidor pide confirmarlo.
-  const [ultimo, setUltimo] = useState<{ accion: Accion; datos: Record<string, string | string[]>; cambio?: Cambio } | null>(null);
+  const [ultimo, setUltimo] = useState<{ accion: Accion; datos: Record<string, string | string[]>; cambio?: Cambio | Cambio[] } | null>(null);
+  // El circuito con el que se recorre el mercado (el orden de los puestos).
+  const [circuitoId, setCircuitoId] = useState(circuitoInicial);
+  const circuito = circuitoElegido(circuitos, circuitoId);
+  // Las paradas que se plegaron o desplegaron a mano (las terminadas llegan plegadas).
+  const [alternadas, setAlternadas] = useState<ReadonlySet<string>>(new Set());
+  // "Elegir varios": los productos tildados para mandarlos juntos a un puesto.
+  const [eligiendo, setEligiendo] = useState(false);
+  const [elegidos, setElegidos] = useState<ReadonlySet<string>>(new Set());
+  const [destino, setDestino] = useState("");
   // El orden a mano mientras se arrastra (y hasta que el servidor lo devuelve guardado).
   const [aMano, setAMano] = useState<string[] | null>(null);
   const [arrastrando, setArrastrando] = useState<string | null>(null);
@@ -124,12 +144,22 @@ export function ListaDeCompras({
     window.dispatchEvent(new Event(AVISO_DE_ORDEN));
   };
 
-  const ejecutar = (accion: Accion, datos: Record<string, string | string[]>, cambio?: Cambio) => {
+  const elegirCircuito = (id: string) => {
+    setCircuitoId(id);
+    recordarCircuito(id);
+  };
+  const alternar = (conjunto: ReadonlySet<string>, clave: string) => {
+    const nuevo = new Set(conjunto);
+    if (!nuevo.delete(clave)) nuevo.add(clave);
+    return nuevo;
+  };
+
+  const ejecutar = (accion: Accion, datos: Record<string, string | string[]>, cambio?: Cambio | Cambio[]) => {
     setUltimo({ accion, datos, cambio });
     const fd = new FormData();
     for (const [clave, valor] of Object.entries(datos)) for (const v of Array.isArray(valor) ? valor : [valor]) fd.append(clave, v);
     empezar(async () => {
-      if (cambio) marcar(cambio);
+      if (cambio) marcar(Array.isArray(cambio) ? cambio : [cambio]);
       const r = await accion(ESTADO_INICIAL, fd);
       // Solo se avisa cuando algo no se pudo hacer.
       setMensaje(r.ok ? ESTADO_INICIAL : r.mensaje ? r : { ok: false, mensaje: "No se pudo guardar: revisá la conexión y probá de nuevo." });
@@ -155,30 +185,44 @@ export function ListaDeCompras({
   const enOrden = orden === "alfabetico" ? [...vista].sort((a, b) => a.producto.localeCompare(b.producto, "es")) : aMano ? [...aMano.map((id) => porId.get(id)).filter((r): r is RenglonDeLista => Boolean(r)), ...manual.filter((r) => !aMano.includes(r.id))] : manual;
   const buscado = normalizarBusqueda(busqueda);
   const visibles = buscado ? enOrden.filter((r) => normalizarBusqueda(r.producto).includes(buscado)) : enOrden;
-  const seArrastra = puede.editar && orden === "manual" && !buscado;
-  // Por puesto (los puestos por dónde quedan en el mercado; lo que va sin puesto, al final) o por
-  // grupo (las categorías en su orden); adentro de cada uno, el orden a mano.
-  const grupos: { clave: string; titulo: string; detalle: string | null; renglones: RenglonDeLista[] }[] | null =
-    orden === "puesto" || orden === "grupo"
-      ? (() => {
-          const porClave = new Map<string, { clave: string; titulo: string; detalle: string | null; orden: string; renglones: RenglonDeLista[] }>();
-          for (const r of visibles) {
-            const clave = orden === "puesto" ? (r.puestoId ?? "") : r.categoria;
-            const g = porClave.get(clave) ?? {
-              clave,
-              titulo: orden === "puesto" ? (r.puestoNombre ?? "Sin puesto (efectivo)") : r.categoria,
-              detalle: orden === "puesto" ? r.puestoUbicacion : null,
-              orden: orden === "puesto" ? (r.puestoId ? `0 ${r.puestoUbicacion ?? "~"} ${r.puestoNombre ?? ""}` : "9") : String(r.categoriaOrden).padStart(4, "0"),
-              renglones: [],
-            };
-            g.renglones.push(r);
-            porClave.set(clave, g);
-          }
-          return [...porClave.values()].sort((a, b) => a.orden.localeCompare(b.orden, "es", { numeric: true }));
-        })()
-      : null;
-  const elegirPuesto = (r: RenglonDeLista, proveedorId: string) =>
-    ejecutar(elegirPuestoAccion, { itemId: r.id, proveedorId }, { id: r.id, puestoId: proveedorId || null, puestoNombre: proveedores.find((p) => p.id === proveedorId)?.nombre ?? null });
+  const seArrastra = puede.editar && orden === "manual" && !buscado && !eligiendo;
+  // Por puesto: como se recorre el mercado, con el circuito elegido (RN-201); sin circuito, los puestos
+  // por dónde quedan, y lo que va sin puesto al final. Por grupo: las categorías en su orden. Adentro
+  // de cada uno, el orden a mano.
+  const grupos: Grupo[] | null =
+    orden === "puesto"
+      ? recorrerPorCircuito(visibles, circuito)
+      : orden === "grupo"
+        ? (() => {
+            const porClave = new Map<string, Grupo & { orden: number }>();
+            for (const r of visibles) {
+              const g = porClave.get(r.categoria) ?? { clave: r.categoria, titulo: r.categoria, detalle: null, numero: null, orden: r.categoriaOrden, renglones: [] };
+              g.renglones.push(r);
+              porClave.set(r.categoria, g);
+            }
+            return [...porClave.values()].sort((a, b) => a.orden - b.orden || a.titulo.localeCompare(b.titulo, "es"));
+          })()
+        : null;
+  // La parada que toca ahora: la primera, en el orden del recorrido, donde todavía falta comprar algo.
+  const ahora = orden === "puesto" ? (grupos?.find((g) => g.renglones.some((r) => !hecho(r)))?.clave ?? null) : null;
+  const puestoDe = (proveedorId: string) => ({ puestoId: proveedorId || null, puestoNombre: proveedores.find((p) => p.id === proveedorId)?.nombre ?? null, puestoUbicacion: null });
+  const elegirPuesto = (r: RenglonDeLista, proveedorId: string) => ejecutar(elegirPuestoAccion, { itemId: r.id, proveedorId }, { id: r.id, ...puestoDe(proveedorId) });
+  // Preseleccionar: lo elegido va junto al puesto que se diga (RN-202).
+  const mandarElegidos = () => {
+    const ids = vista.filter((r) => elegidos.has(r.id)).map((r) => r.id);
+    if (ids.length === 0) return;
+    ejecutar(
+      elegirPuestoAccion,
+      { itemId: ids, proveedorId: destino },
+      ids.map((id) => ({ id, ...puestoDe(destino) })),
+    );
+    setElegidos(new Set());
+  };
+  const elegirTodos = (g: Grupo) => {
+    const suyos = g.renglones.map((r) => r.id);
+    const yaEstan = suyos.every((id) => elegidos.has(id));
+    setElegidos(new Set(yaEstan ? [...elegidos].filter((id) => !suyos.includes(id)) : [...elegidos, ...suyos]));
+  };
 
   // ——— Arrastrar un renglón para ordenar ———
   const agarrar = (e: EventoPuntero<HTMLButtonElement>, id: string) => {
@@ -218,7 +262,9 @@ export function ListaDeCompras({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <p className="mr-auto flex items-center gap-2 text-sm text-texto-suave">
-          {seArrastra ? (
+          {eligiendo ? (
+            "Tildá los productos y mandalos juntos a un puesto"
+          ) : seArrastra ? (
             <>
               <span aria-hidden className="text-lg leading-none">
                 ⠿
@@ -236,8 +282,45 @@ export function ListaDeCompras({
             </button>
           ))}
         </span>
+        {puede.editar && (
+          <button
+            type="button"
+            onClick={() => {
+              setEligiendo(!eligiendo);
+              setElegidos(new Set());
+            }}
+            aria-pressed={eligiendo}
+            title="Elegir varios productos y mandarlos juntos a un puesto"
+            className={`min-h-11 rounded-xl border px-3 text-sm font-semibold whitespace-nowrap ${eligiendo ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie hover:border-marca"}`}
+          >
+            ☑ Elegir varios
+          </button>
+        )}
         <Buscador valor={busqueda} alCambiar={setBusqueda} placeholder="Buscar producto" aria-label="Buscar un producto en la lista" className="w-full sm:w-64" />
       </div>
+
+      {/* El circuito: en qué orden se recorren los puestos (RN-201). */}
+      {orden === "puesto" && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-borde bg-superficie p-2 print:hidden" role="group" aria-label="Circuito de compra">
+          <span className="px-1 font-bold">🧭 Circuito</span>
+          {circuitos.map((c) => (
+            <button key={c.id} type="button" onClick={() => elegirCircuito(c.id)} aria-pressed={circuito?.id === c.id} className={`min-h-10 rounded-lg border-2 px-3 font-semibold ${circuito?.id === c.id ? "border-marca bg-marca text-marca-texto" : "border-borde hover:border-marca"}`}>
+              {c.nombre}
+            </button>
+          ))}
+          {circuitos.length > 0 && (
+            <button type="button" onClick={() => elegirCircuito("")} aria-pressed={!circuito} className={`min-h-10 rounded-lg border-2 px-3 font-semibold ${!circuito ? "border-marca bg-marca text-marca-texto" : "border-borde text-texto-suave hover:border-marca"}`}>
+              Sin circuito
+            </button>
+          )}
+          {circuitos.length === 0 && <span className="min-w-0 flex-1 basis-48 text-sm text-texto-suave">Decí en qué orden recorrés los puestos y la lista te lleva de uno al otro.</span>}
+          {puede.editar && (
+            <Link href={`/lista-compra/circuitos?fecha=${fecha}`} className={`flex min-h-10 items-center rounded-lg px-3 font-semibold ${circuitos.length === 0 ? "bg-marca text-marca-texto" : "ml-auto underline underline-offset-4"}`}>
+              {circuitos.length === 0 ? "＋ Armar mi circuito" : "✏️ Editar circuitos"}
+            </Link>
+          )}
+        </div>
+      )}
 
       {mensaje.mensaje && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl bg-error/10 px-4 py-3 font-medium text-error">
@@ -260,16 +343,43 @@ export function ListaDeCompras({
 
       {grupos ? (
         <div className="flex flex-col gap-4" aria-busy={ocupado}>
-          {grupos.map((g) => (
-            <section key={g.clave} aria-label={g.titulo} className="flex flex-col gap-2">
-              <h3 className="flex flex-wrap items-baseline gap-x-2 px-1 text-lg font-extrabold">
-                {orden === "puesto" ? "🏪" : "🧺"} {g.titulo}
-                {g.detalle && <span className="text-sm font-medium text-texto-suave">{g.detalle}</span>}
-                <span className="text-sm font-semibold text-texto-suave">· {g.renglones.filter((r) => !hecho(r)).length} por comprar</span>
-              </h3>
-              <ol className="flex flex-col gap-2">{g.renglones.map((r) => fila(r))}</ol>
-            </section>
-          ))}
+          {grupos.map((g) => {
+            const pendientes = g.renglones.filter((r) => !hecho(r));
+            const lista = pendientes.length === 0;
+            // Una parada terminada llega plegada, para que quede a la vista lo que sigue.
+            const plegada = !buscado && !eligiendo && alternadas.has(g.clave) !== lista;
+            const aLlevar = sumar(pendientes.map((r) => (r.importe && !r.importe.real ? r.importe.valor : "0")));
+            const todosElegidos = g.renglones.every((r) => elegidos.has(r.id));
+            return (
+              <section key={g.clave} aria-label={g.titulo} className={`flex flex-col gap-2 rounded-2xl ${g.clave === ahora ? "border-2 border-marca bg-marca/5 p-2" : ""}`}>
+                <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-lg font-extrabold">
+                  <button type="button" onClick={() => setAlternadas(alternar(alternadas, g.clave))} aria-expanded={!plegada} className="flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-left">
+                    {g.numero !== null ? (
+                      <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-lg ${lista ? "bg-[var(--listo-fondo)] text-white" : "bg-marca text-marca-texto"}`}>{lista ? "✓" : g.numero}</span>
+                    ) : (
+                      <span aria-hidden>{orden === "puesto" ? (lista ? "✓" : "🏪") : "🧺"}</span>
+                    )}
+                    <span className={lista ? "text-texto-suave line-through" : ""}>{g.titulo}</span>
+                    {g.detalle && <span className="text-sm font-medium text-texto-suave">{g.detalle}</span>}
+                    <span className="text-sm font-semibold text-texto-suave">
+                      · {lista ? "listo" : `${pendientes.length} por comprar`}
+                      {!lista && aLlevar.gt(0) && ` · ≈ ${formatearMoneda(aLlevar)}`}
+                    </span>
+                    {g.clave === ahora && <span className="rounded-full bg-marca px-2.5 py-0.5 text-sm text-marca-texto">Ahora</span>}
+                    <span aria-hidden className={`ml-auto text-texto-suave transition-transform ${plegada ? "" : "rotate-90"}`}>
+                      ›
+                    </span>
+                  </button>
+                  {eligiendo && (
+                    <button type="button" onClick={() => elegirTodos(g)} aria-pressed={todosElegidos} className="min-h-10 rounded-lg border-2 border-borde px-3 text-sm font-semibold hover:border-marca">
+                      {todosElegidos ? "Quitar todos" : "Elegir todos"}
+                    </button>
+                  )}
+                </h3>
+                {!plegada && <ol className="flex flex-col gap-2">{g.renglones.map((r) => fila(r))}</ol>}
+              </section>
+            );
+          })}
           {grupos.length === 0 && <p className="rounded-2xl border border-borde bg-superficie p-4 text-texto-suave">Ningún producto de la lista se llama así.</p>}
         </div>
       ) : (
@@ -277,6 +387,38 @@ export function ListaDeCompras({
         {visibles.map((r) => fila(r))}
         {visibles.length === 0 && <li className="rounded-2xl border border-borde bg-superficie p-4 text-texto-suave">Ningún producto de la lista se llama así.</li>}
       </ol>
+      )}
+
+      {/* Preseleccionar: lo tildado se manda junto a un puesto, sin ir renglón por renglón (RN-202). */}
+      {eligiendo && (
+        <div className="sticky bottom-2 z-20 flex flex-wrap items-center gap-2 rounded-2xl border-2 border-marca bg-superficie p-3 shadow-xl print:hidden">
+          <b className="whitespace-nowrap">{elegidos.size === 0 ? "Ninguno elegido" : elegidos.size === 1 ? "1 elegido" : `${elegidos.size} elegidos`}</b>
+          <label className="flex min-w-0 flex-1 basis-44 items-center gap-1.5">
+            <span aria-hidden>🏪</span>
+            <span className="sr-only">Puesto adonde mandarlos</span>
+            <select value={destino} onChange={(e) => setDestino(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border-2 border-borde bg-superficie px-2 font-semibold">
+              <option value="">Sin puesto (efectivo)</option>
+              {proveedores.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={mandarElegidos} disabled={elegidos.size === 0 || ocupado} className="min-h-11 rounded-xl bg-marca px-4 font-bold text-marca-texto disabled:opacity-50">
+            Mandar ahí
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEligiendo(false);
+              setElegidos(new Set());
+            }}
+            className="min-h-11 rounded-xl border-2 border-borde px-4 font-semibold"
+          >
+            Listo
+          </button>
+        </div>
       )}
     </div>
   );
@@ -291,7 +433,7 @@ export function ListaDeCompras({
           if (el) filas.current.set(r.id, el);
           else filas.current.delete(r.id);
         }}
-        className={`rounded-2xl border-2 bg-superficie ${arrastrando === r.id ? "border-marca shadow-lg" : r.estado === "PARCIAL" ? "border-amber-500" : "border-borde"} ${listo ? "opacity-70" : ""}`}
+        className={`rounded-2xl border-2 bg-superficie ${arrastrando === r.id || (eligiendo && elegidos.has(r.id)) ? "border-marca shadow-lg" : r.estado === "PARCIAL" ? "border-amber-500" : "border-borde"} ${listo ? "opacity-70" : ""}`}
       >
         {/* En el celular va en tres columnas (mover · el producto · tildar y precio, uno sobre otro);
             con más ancho, todo en un renglón. */}
@@ -310,7 +452,19 @@ export function ListaDeCompras({
               ⠿
             </button>
           )}
-          <button type="button" onClick={() => setAbierto(desplegado ? null : r.id)} aria-expanded={desplegado} className="col-start-2 row-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1 text-left">
+          {eligiendo && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={elegidos.has(r.id)}
+              aria-label={`Elegir ${r.producto}`}
+              onClick={() => setElegidos(alternar(elegidos, r.id))}
+              className={`row-span-2 flex size-10 shrink-0 items-center justify-center rounded-lg border-2 text-xl font-bold print:hidden ${elegidos.has(r.id) ? "border-marca bg-marca text-marca-texto" : "border-borde bg-superficie"}`}
+            >
+              {elegidos.has(r.id) ? "✓" : ""}
+            </button>
+          )}
+          <button type="button" onClick={() => (eligiendo ? setElegidos(alternar(elegidos, r.id)) : setAbierto(desplegado ? null : r.id))} aria-expanded={eligiendo ? undefined : desplegado} className="col-start-2 row-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1 text-left">
             {/* El nombre no baja de un ancho cómodo: si no entra con la cantidad al lado, la cantidad pasa abajo. */}
             <span className="min-w-0 flex-1 basis-40">
               <NombreDeProducto nombre={r.producto} grupo={r.grupo} className={`text-xl sm:text-2xl ${listo ? "line-through" : ""}`} />
@@ -348,13 +502,14 @@ export function ListaDeCompras({
                 type="button"
                 onClick={() => setComprando(comprando === r.id ? null : r.id)}
                 aria-expanded={comprando === r.id}
-                title="Anotar en qué puesto se compró y a cuánto"
+                title={r.compras.length === 0 ? "Anotar en qué puesto se compró y a cuánto" : r.falta ? "Anotar lo que falta comprar (o corregir lo ya anotado)" : "Corregir lo anotado: el precio, la cantidad o el puesto"}
                 className={`flex min-h-12 min-w-12 items-center justify-center gap-1.5 rounded-xl border-2 font-bold sm:px-3 ${comprando === r.id ? "border-marca bg-marca text-marca-texto" : "border-marca/50 bg-marca/10 text-marca hover:border-marca"}`}
               >
+                {/* Con la compra ya anotada, el botón es para corregirla (no suma otra). */}
                 <span aria-hidden className="text-xl leading-none">
-                  💲
+                  {r.compras.length > 0 && !r.falta ? "✏️" : "💲"}
                 </span>
-                <span className="max-md:sr-only">{r.compras.length ? "Otra compra" : "Precio y puesto"}</span>
+                <span className="max-md:sr-only">{r.compras.length === 0 ? "Precio y puesto" : r.falta ? "Lo que falta" : "Corregir precio"}</span>
                 <span aria-hidden className={`transition-transform max-sm:hidden ${comprando === r.id ? "rotate-180" : ""}`}>
                   ▾
                 </span>

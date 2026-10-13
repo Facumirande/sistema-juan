@@ -204,6 +204,13 @@
       "when": 1791698216941,
       "tag": "0028_dibujo_del_producto",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791854386242,
+      "tag": "0029_circuitos_de_compra",
+      "breakpoints": true
     }
   ]
 }

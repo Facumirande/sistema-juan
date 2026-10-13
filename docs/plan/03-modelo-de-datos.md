@@ -310,6 +310,7 @@ Configuración del negocio. Una fila por empresa. No tiene `empresa_id`; sí tie
 | dias_aviso_vencimiento | int | No | `3` | Anticipación del aviso de deudas por vencer. |
 | hora_corte_pedidos | time | Sí | — | Opcional (ej. 20:00 del día anterior a la entrega): después de esta hora un pedido nuevo se marca tardío (`pedido.es_tardio`). Nulo = sin corte. |
 | responsables_etapa | jsonb | No | `{}` | Quién se encarga de cada parte del proceso, de manera fija: `{ pedidos, en_lista, comprados, preparando, en_camino }` → id de usuario (RN-190). Lo que falta, sin nadie fijo. |
+| circuitos_compra | jsonb | No | `[]` | Los circuitos de compra (RN-201): `[{ id, nombre, paradas: [proveedor_id…] }]`, cada uno con sus puestos en el orden en que se recorren. Lo que no es válido al leerlo se ignora (`leerCircuitos`). |
 | cantidad_atipica_multiplicador | numeric(7,3) | No | `3.000` | Aviso si una cantidad pedida supera N veces el promedio del cliente. |
 | cantidad_atipica_semanas | int | No | `8` | Semanas que se promedian para el aviso anterior. |
 | tolerancia_peso_pct | numeric(7,3) | No | `3.000` | Diferencia entre preparado y pedido que no se considera diferencia. |

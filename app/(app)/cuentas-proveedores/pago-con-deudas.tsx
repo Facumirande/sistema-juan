@@ -6,6 +6,7 @@ import { imputarFIFO } from "@/dominio/compras/credito";
 import { dec, sumar, type ValorDecimal } from "@/dominio/dinero/decimal";
 import { interpretarNumero } from "@/dominio/dinero/entrada";
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
+import { NumeroQueSePisa } from "@/ui/numero-que-se-pisa";
 
 import type { DeudaParaImputar } from "./imputacion-pago";
 
@@ -96,14 +97,12 @@ export function PagoConDeudas({ deudas, proveedor }: { deudas: DeudaParaImputar[
           <span aria-hidden className="text-3xl font-bold">
             $
           </span>
-          <input
+          <NumeroQueSePisa
             name="monto"
             required
-            inputMode="decimal"
-            autoComplete="off"
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onFocus={(e) => e.currentTarget.select()}
+            valor={texto}
+            alCambiar={setTexto}
+            aria-label="Cuánto le pagás"
             placeholder="Ej. 200.000"
             className="h-16 w-full max-w-xs rounded-xl border-2 border-borde bg-superficie px-4 text-3xl font-bold tabular-nums"
           />

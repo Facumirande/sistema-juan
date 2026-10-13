@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, useTransition, type FormEvent } fro
 
 import { formatearMoneda, formatearNumero } from "@/dominio/dinero/formato";
 import { ESTADO_INICIAL } from "@/ui/estado-accion";
+import { EntradaQueSePisa } from "@/ui/numero-que-se-pisa";
 
 import { guardarCajaInicialAccion } from "./acciones";
 
@@ -104,7 +105,7 @@ function EditorDeCaja({ resumen, cerrar }: { resumen: ResumenParaVer; cerrar: ()
         <span aria-hidden className="text-2xl font-bold">
           $
         </span>
-        <input
+        <EntradaQueSePisa
           id={id}
           name="monto"
           inputMode="numeric"

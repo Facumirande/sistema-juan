@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { actividad, compra, entrega, proveedor, usuario } from "@/db/esquema";
+import { actividad, compra, compraItem, entrega, proveedor, usuario } from "@/db/esquema";
 import { crearProducto } from "@/modulos/catalogo/productos";
 import { avisosPara } from "@/modulos/colaboracion/avisos";
-import { comprarDeLaLista, destildarConCompra } from "@/modulos/compras/compra-desde-lista";
-import { elegirPuestoDeLinea, generarListaCompra, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
+import { comprarDeLaLista, destildarConCompra, quitarCompraDeLaLista } from "@/modulos/compras/compra-desde-lista";
+import { circuitosDeCompra, guardarCircuitos } from "@/modulos/compras/circuitos";
+import { elegirPuestoDeLinea, elegirPuestoDeLineas, generarListaCompra, obtenerListaCompra, tildarLinea } from "@/modulos/compras/lista-compra";
 import { guardarResponsables, responsablesDelNegocio } from "@/modulos/configuracion/empresa";
 import { iniciarPreparacion } from "@/modulos/entregas/preparacion";
 import { eliminarPedido, recuperarPedido } from "@/modulos/entregas/volver-atras";
@@ -60,6 +61,109 @@ describe("lista de compras: el puesto de cada renglón, sin puesto y destildar",
     // El tomate se compró en parte junto con lechuga y cebolla: esa compra no se toca desde acá.
     const tomate = await linea("Tomate redondo");
     expect(await codigoDeError(destildarConCompra(j.base.db, j.admin, { itemId: tomate.id }))).toBe("VALIDACION");
+  });
+
+  it("corregir el precio de una compra anotada la reemplaza: no se suma (RN-200)", async () => {
+    const paraComprar = async (nombre: string) => (await obtenerListaCompra(j.base.db, j.admin, j.manana, { paraComprar: true }))!.plan.flatMap((p) => p.lineas).find((l) => l.producto === nombre)!;
+    const vigentes = (productoId: string) => j.base.comoSuperusuario(() => j.base.db.select({ id: compra.id, total: compra.total }).from(compra).innerJoin(compraItem, eq(compraItem.compraId, compra.id)).where(and(eq(compra.estado, "REGISTRADA"), eq(compraItem.productoId, productoId))));
+    const papa = await paraComprar("Papa");
+    expect(papa.estado).toBe("PENDIENTE");
+    const oferta = papa.ofertas[0]!;
+    // Los envases que hacen falta para cubrir todo lo pedido.
+    const cantidad = String(Math.ceil(Number(papa.pendienteBase) / Number(oferta.factor)));
+    // Se anota a cuenta, con un precio mal escrito.
+    const primera = await comprarDeLaLista(j.base.db, j.comprador, { itemId: papa.id, ofertaId: oferta.ofertaId, cantidad, precio: "10000", pagado: false, confirmarVariacion: true });
+    const anotada = await paraComprar("Papa");
+    expect(anotada.estado).toBe("COMPRADO");
+    expect(anotada.compras).toMatchObject([{ compraId: primera.compraId, proveedorId: oferta.proveedorId, presentacionId: oferta.presentacionId, aCuenta: true, sola: true }]);
+    // Corregir anula la compra anterior: hace falta también ese permiso (quien solo compra no lo tiene).
+    expect(await codigoDeError(comprarDeLaLista(j.base.db, j.comprador, { itemId: papa.id, ofertaId: oferta.ofertaId, cantidad, precio: "10500", pagado: false, reemplazaCompraId: primera.compraId }))).toBe("SIN_PERMISO");
+    // Un precio que cambia mucho pide confirmar; mientras tanto no se tocó nada: sigue la compra anterior.
+    expect(await codigoDeError(comprarDeLaLista(j.base.db, j.admin, { itemId: papa.id, ofertaId: oferta.ofertaId, cantidad, precio: "20000", pagado: true, reemplazaCompraId: primera.compraId }))).toBe("VALIDACION");
+    expect((await vigentes(papa.productoId)).map((k) => k.id)).toEqual([primera.compraId]);
+    // Confirmado: la nueva reemplaza a la anterior. Sigue habiendo una sola compra y lo comprado no se duplica.
+    const clave = "7b0c1f0e-52a7-4c0e-9d3a-0f4b9f1c2a11";
+    const corregida = await comprarDeLaLista(j.base.db, j.admin, { itemId: papa.id, ofertaId: oferta.ofertaId, cantidad, precio: "20000", pagado: true, reemplazaCompraId: primera.compraId, confirmarVariacion: true, claveIdempotencia: clave });
+    expect(corregida.compraId).not.toBe(primera.compraId);
+    const despues = await paraComprar("Papa");
+    expect(despues.compras).toMatchObject([{ compraId: corregida.compraId, aCuenta: false }]);
+    expect(Number(despues.compras[0]!.precio)).toBe(20000);
+    expect(despues.compradoBase).toBe(anotada.compradoBase);
+    expect(despues.estado).toBe("COMPRADO");
+    expect((await vigentes(papa.productoId)).map((k) => k.id)).toEqual([corregida.compraId]);
+    const [vieja] = await j.base.comoSuperusuario(() => j.base.db.select({ estado: compra.estado, motivo: compra.motivoAnulacion }).from(compra).where(eq(compra.id, primera.compraId)));
+    expect(vieja).toEqual({ estado: "ANULADA", motivo: "Se corrigió la compra de Papa en la lista de compras" });
+    // El mismo toque mandado dos veces no hace nada más.
+    const repetida = await comprarDeLaLista(j.base.db, j.admin, { itemId: papa.id, ofertaId: oferta.ofertaId, cantidad, precio: "20000", pagado: true, reemplazaCompraId: primera.compraId, confirmarVariacion: true, claveIdempotencia: clave });
+    expect(repetida.compraId).toBe(corregida.compraId);
+    expect(await vigentes(papa.productoId)).toHaveLength(1);
+    // Anotar otra compra (sin decir que corrige) sí se suma; y la que se anotó de más se quita.
+    const deMas = await comprarDeLaLista(j.base.db, j.comprador, { itemId: papa.id, ofertaId: oferta.ofertaId, cantidad: "1", precio: "20000", pagado: true });
+    expect((await paraComprar("Papa")).compras).toHaveLength(2);
+    expect(await quitarCompraDeLaLista(j.base.db, j.admin, { itemId: papa.id, compraId: deMas.compraId })).toMatchObject({ producto: "Papa" });
+    expect((await paraComprar("Papa")).compras.map((k) => k.compraId)).toEqual([corregida.compraId]);
+    // Una compra con varios productos no se corrige ni se quita desde un renglón; ni la de otro producto.
+    const tomate = await paraComprar("Tomate redondo");
+    const conVarios = tomate.compras.find((k) => !k.sola)!;
+    expect(await codigoDeError(comprarDeLaLista(j.base.db, j.admin, { itemId: tomate.id, ofertaId: tomate.ofertas[0]!.ofertaId, cantidad: "1", precio: tomate.ofertas[0]!.precio, pagado: true, reemplazaCompraId: conVarios.compraId }))).toBe("VALIDACION");
+    expect(await codigoDeError(quitarCompraDeLaLista(j.base.db, j.admin, { itemId: tomate.id, compraId: conVarios.compraId }))).toBe("VALIDACION");
+    expect(await codigoDeError(quitarCompraDeLaLista(j.base.db, j.admin, { itemId: tomate.id, compraId: corregida.compraId }))).toBe("NO_ENCONTRADO");
+  });
+});
+
+describe("estar ordenado en la compra: circuitos y preselección (RN-201, RN-202)", () => {
+  const MERCOFRUT = "5d1e0f3a-8b2c-4d7e-9a61-0c2b4e6f8a10";
+  const CORTA = "6e2f1a4b-9c3d-4e8f-8b72-1d3c5f7a9b21";
+
+  it("se arman con su nombre y sus puestos en orden; la lista de compras los trae", async () => {
+    const antes = await circuitosDeCompra(j.base.db, j.admin);
+    expect(antes.circuitos).toEqual([]);
+    expect(antes.puestos.map((p) => p.id)).toEqual(expect.arrayContaining([j.ids.A!, j.ids.B!, j.ids.C!]));
+    const guardados = await guardarCircuitos(j.base.db, j.admin, [
+      { id: MERCOFRUT, nombre: "  Mercofrut de siempre ", paradas: [j.ids.C!, j.ids.A!, j.ids.C!, "0b9f6c1e-3f5a-4d2b-9c1a-7e8d6f5a4b3c"] },
+      { id: CORTA, nombre: "Vuelta corta", paradas: [j.ids.B!] },
+    ]);
+    // Un puesto repetido cuenta una vez y uno que no existe se saca solo.
+    expect(guardados).toEqual([
+      { id: MERCOFRUT, nombre: "Mercofrut de siempre", paradas: [j.ids.C!, j.ids.A!] },
+      { id: CORTA, nombre: "Vuelta corta", paradas: [j.ids.B!] },
+    ]);
+    expect((await obtenerListaCompra(j.base.db, j.admin, j.manana))!.circuitos).toEqual(guardados);
+    expect((await circuitosDeCompra(j.base.db, j.comprador)).circuitos).toEqual(guardados);
+    // Lo que no se puede guardar dice por qué, y lo guardado queda como estaba.
+    expect(await codigoDeError(guardarCircuitos(j.base.db, j.admin, [{ id: MERCOFRUT, nombre: "", paradas: [j.ids.A!] }]))).toBe("VALIDACION");
+    expect(await codigoDeError(guardarCircuitos(j.base.db, j.admin, [{ id: MERCOFRUT, nombre: "Sin puestos", paradas: [] }]))).toBe("VALIDACION");
+    expect((await circuitosDeCompra(j.base.db, j.admin)).circuitos).toEqual(guardados);
+    // Guardar la lista sin uno lo quita.
+    expect(await guardarCircuitos(j.base.db, j.admin, [guardados[0]!])).toHaveLength(1);
+    const registro = await j.base.comoSuperusuario(() => j.base.db.select({ resumen: actividad.resumen }).from(actividad).where(eq(actividad.entidadTipo, "LISTA_COMPRA")));
+    expect(registro.some((r) => r.resumen.includes("circuito de compra “Mercofrut de siempre”"))).toBe(true);
+  });
+
+  it("varios productos se mandan juntos a un puesto: toman su precio si ya lo vende", async () => {
+    const lineas = (await obtenerListaCompra(j.base.db, j.admin, j.manana))!.plan.flatMap((p) => p.lineas);
+    const tres = lineas.slice(0, 3);
+    expect(tres).toHaveLength(3);
+    expect(await elegirPuestoDeLineas(j.base.db, j.admin, { itemIds: tres.map((l) => l.id), proveedorId: j.ids.C! })).toBe(3);
+    const despues = (await obtenerListaCompra(j.base.db, j.admin, j.manana, { paraComprar: true }))!.plan.flatMap((p) => p.lineas).filter((l) => tres.some((t) => t.id === l.id));
+    expect(despues.map((l) => l.proveedorId)).toEqual([j.ids.C, j.ids.C, j.ids.C]);
+    expect(despues.every((l) => l.asignacionManual)).toBe(true);
+    for (const l of despues) {
+      // Con precio en ese puesto, queda calculado lo que sale; si todavía no lo vende, sin precio.
+      const suya = l.ofertas.find((o) => o.proveedorId === j.ids.C);
+      expect(l.precioSugerido === null).toBe(!suya);
+      if (suya) expect(Number(l.precioSugerido)).toBe(Number(suya.precio));
+    }
+    // Queda a mano: al rearmar la lista se respeta. Y sin puesto, para todos juntos.
+    await generarListaCompra(j.base.db, j.comprador, j.manana);
+    expect((await linea(tres[0]!.producto)).proveedorId).toBe(j.ids.C);
+    await elegirPuestoDeLineas(j.base.db, j.admin, { itemIds: tres.map((l) => l.id), proveedorId: null });
+    expect((await linea(tres[1]!.producto)).proveedorId).toBeNull();
+    // Nada elegido, o un puesto que no existe: se avisa.
+    expect(await codigoDeError(elegirPuestoDeLineas(j.base.db, j.admin, { itemIds: [], proveedorId: j.ids.C! }))).toBe("VALIDACION");
+    expect(await codigoDeError(elegirPuestoDeLineas(j.base.db, j.admin, { itemIds: [tres[0]!.id], proveedorId: "0b9f6c1e-3f5a-4d2b-9c1a-7e8d6f5a4b3c" }))).toBe("NO_ENCONTRADO");
+    const avisos = await j.base.comoSuperusuario(() => j.base.db.select({ resumen: actividad.resumen }).from(actividad).where(eq(actividad.entidadTipo, "LISTA_COMPRA")));
+    expect(avisos.some((r) => r.resumen.startsWith("eligió comprar 3 productos en "))).toBe(true);
   });
 });
 

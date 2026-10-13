@@ -1,6 +1,6 @@
 import { presentacionesNecesarias } from "@/dominio/unidades/unidades";
 import { dec } from "@/dominio/dinero/decimal";
-import { ABREVIATURA_UNIDAD, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
+import { ABREVIATURA_UNIDAD, formatearMoneda, formatearNumero, type UnidadMedida } from "@/dominio/dinero/formato";
 import type { LineaDeLista } from "@/modulos/compras/lista-compra";
 
 import type { DatosParaComprar } from "./precio-y-puesto";
@@ -19,7 +19,12 @@ export function envasesQueFaltan(l: LineaDeLista): string {
   return formatearNumero(n.isZero() ? "1" : n.toString(), { decimales: 3, recortarCeros: true });
 }
 
-/** Los puestos que lo venden, sus envases y lo que se propone comprar (dónde, en qué y cuánto). */
+/** Una compra anotada, dicha en palabras: "Puesto 12 · 3 × Bolsa 20 kg a $21.000 · a cuenta". */
+export function compraEnPalabras(k: LineaDeLista["compras"][number]): string {
+  return `${k.proveedor} · ${formatearNumero(k.cantidad, { decimales: 3, recortarCeros: true })} × ${k.presentacion}${k.precio ? ` a ${formatearMoneda(k.precio)}` : ""} · ${k.aCuenta ? "a cuenta" : "pagado"}`;
+}
+
+/** Los puestos que lo venden, sus envases, lo que se propone comprar (dónde, en qué y cuánto) y lo que ya se anotó. */
 export function datosParaComprar(l: LineaDeLista): DatosParaComprar {
   return {
     unidad: ABREVIATURA_UNIDAD[l.unidadBase as UnidadMedida] ?? l.unidadBase.toLowerCase(),
@@ -30,5 +35,7 @@ export function datosParaComprar(l: LineaDeLista): DatosParaComprar {
       envaseId: l.presentacionId ?? l.ofertas[0]?.presentacionId ?? l.envases[0]?.id ?? null,
       cantidad: envasesQueFaltan(l),
     },
+    anotadas: l.compras.map((k) => ({ compraId: k.compraId, texto: compraEnPalabras(k), proveedorId: k.proveedorId, presentacionId: k.presentacionId, cantidad: k.cantidad, precio: k.precio, aCuenta: k.aCuenta, sola: k.sola })),
+    falta: l.estado === "PARCIAL",
   };
 }

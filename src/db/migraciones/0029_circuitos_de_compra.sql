@@ -1,0 +1,1 @@
+ALTER TABLE "empresa" ADD COLUMN "circuitos_compra" jsonb DEFAULT '[]'::jsonb NOT NULL;

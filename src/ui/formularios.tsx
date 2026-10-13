@@ -1,4 +1,5 @@
 import Link from "./enlace";
+import { EntradaQueSePisa } from "./numero-que-se-pisa";
 
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
@@ -41,9 +42,18 @@ export function Campo({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HTMLInp
   );
 }
 
-/** Campo para precios y cantidades: acepta "17.550" o "1.234,56" y abre el teclado numérico en el celular. */
-export function CampoNumero(props: InputHTMLAttributes<HTMLInputElement> & { etiqueta: string; ayuda?: string }) {
-  return <Campo inputMode="decimal" autoComplete="off" {...props} />;
+/**
+ * Campo para precios y cantidades: acepta "17.550" o "1.234,56" y abre el teclado numérico en el
+ * celular. Si ya trae un número cargado, lo que se escribe lo pisa entero (no se le pega atrás).
+ */
+export function CampoNumero({ etiqueta, ayuda, ...input }: InputHTMLAttributes<HTMLInputElement> & { etiqueta: string; ayuda?: string }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1">
+      <Etiqueta texto={etiqueta} obligatorio={input.required} />
+      <EntradaQueSePisa inputMode="decimal" autoComplete="off" {...input} className={`${CLASES_CONTROL} ${input.className ?? ""}`} />
+      {ayuda && <span className="text-sm text-texto-suave">{ayuda}</span>}
+    </label>
+  );
 }
 
 export interface Opcion {
